@@ -1,0 +1,41 @@
+@model CustomerContract
+@{
+    ViewData["Title"] = "Delete Contract";
+    var total = Model.ContractRoutes.Sum(AnnualBillingHelper.GetBillingAmount);
+}
+
+<h1 class="h2 mb-4">Delete Contract</h1>
+<p>Remove <strong>@Model.ContractName</strong> (@BillingTermDisplay.Label(Model.Term)) from <strong>@Model.Customer.CustomerName</strong>?</p>
+
+<dl class="row">
+    <dt class="col-sm-3">Months of Service</dt>
+    <dd class="col-sm-9">@SubscribedMonths.Format(Model.ServiceMonthMask)</dd>
+    <dt class="col-sm-3">Next Bill Date</dt>
+    <dd class="col-sm-9">@Model.NextBillDate.ToString("MMM d, yyyy")</dd>
+    <dt class="col-sm-3">Contract End</dt>
+    <dd class="col-sm-9">@BillingDueCalculator.FormatContractEndDate(Model.ContractEndDate)</dd>
+    <dt class="col-sm-3">Routes</dt>
+    <dd class="col-sm-9">
+        @if (Model.ContractRoutes.Any())
+        {
+            <ul class="mb-0">
+            @foreach (var cr in Model.ContractRoutes.OrderBy(cr => cr.Route.RouteName))
+            {
+                <li>@cr.Route.RouteName — @AnnualBillingHelper.GetBillingAmount(cr).ToString("C")</li>
+            }
+            </ul>
+        }
+        else
+        {
+            <span class="text-muted">No routes</span>
+        }
+    </dd>
+    <dt class="col-sm-3">Total</dt>
+    <dd class="col-sm-9">@total.ToString("C")</dd>
+</dl>
+
+<form asp-action="Delete" method="post">
+    <input type="hidden" asp-for="Id" />
+    <button type="submit" class="btn btn-danger">Delete</button>
+    <a asp-controller="Customers" asp-action="Details" asp-route-id="@Model.CustomerId" class="btn btn-outline-secondary">Cancel</a>
+</form>

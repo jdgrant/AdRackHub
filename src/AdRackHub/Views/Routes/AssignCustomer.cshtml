@@ -1,0 +1,102 @@
+@model RouteAssignCustomerViewModel
+@{
+    ViewData["Title"] = $"Add Customer — {Model.RouteName}";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Add Customer to @Model.RouteName</h1>
+    <a asp-action="Details" asp-route-id="@Model.RouteId" class="btn btn-outline-secondary">Back</a>
+</div>
+
+<form asp-action="AssignCustomer" asp-route-id="@Model.RouteId" method="post">
+    <input type="hidden" asp-for="RouteId" />
+    <input type="hidden" asp-for="RouteName" />
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+    <div class="row">
+        <div class="col-lg-5">
+            <div class="mb-3">
+                <label asp-for="CustomerId" class="form-label">Customer</label>
+                <select asp-for="CustomerId" class="form-select" asp-items="ViewBag.CustomerId">
+                    <option value="">Select a customer...</option>
+                </select>
+                <span asp-validation-for="CustomerId" class="text-danger"></span>
+            </div>
+            <div class="mb-3">
+                <label asp-for="Status" class="form-label"></label>
+                <select asp-for="Status" class="form-select" asp-items="Html.GetEnumSelectList<CustomerRouteStatus>()"></select>
+            </div>
+            <div class="mb-3">
+                <label asp-for="BillingTerm" class="form-label"></label>
+                <select asp-for="BillingTerm" class="form-select">
+                    <option value="@BillingFrequency.Monthly">Monthly</option>
+                    <option value="@BillingFrequency.Quarterly">Quarterly</option>
+                    <option value="@BillingFrequency.Annual">Yearly</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label asp-for="RatePerMonth" class="form-label"></label>
+                <div class="input-group">
+                    <span class="input-group-text">$</span>
+                    <input asp-for="RatePerMonth" class="form-control" step="0.01" min="0" />
+                </div>
+                <span asp-validation-for="RatePerMonth" class="text-danger"></span>
+            </div>
+            <div class="form-check mb-3">
+                <input asp-for="AllStops" class="form-check-input" id="allStopsCheck" />
+                <label asp-for="AllStops" class="form-check-label"></label>
+            </div>
+        </div>
+        <div class="col-lg-7">
+            <label class="form-label">Months Subscribed</label>
+            <div class="border rounded p-3 mb-3">
+                <partial name="_SubscribedMonthsCheckboxes" model="Model.SelectedMonthNumbers" />
+            </div>
+            <label class="form-label">Stops on @Model.RouteName</label>
+            <div id="stopsContainer" class="border rounded p-3" style="max-height: 420px; overflow-y: auto;">
+                @if (Model.AvailableStops.Any())
+                {
+                    @for (var i = 0; i < Model.AvailableStops.Count; i++)
+                    {
+                        <div class="form-check stop-item">
+                            <input type="checkbox" class="form-check-input stop-checkbox" name="SelectedStopIds"
+                                   value="@Model.AvailableStops[i].StopId" id="stop_@Model.AvailableStops[i].StopId"
+                                   @(Model.AvailableStops[i].IsSelected ? "checked" : "") />
+                            <label class="form-check-label" for="stop_@Model.AvailableStops[i].StopId">
+                                @Model.AvailableStops[i].StopName
+                            </label>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <p class="text-muted mb-0">No active stops on this route.</p>
+                }
+            </div>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Add Customer</button>
+    <a asp-action="Details" asp-route-id="@Model.RouteId" class="btn btn-outline-secondary">Cancel</a>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        (function () {
+            const allStopsCheck = document.getElementById('allStopsCheck');
+            const stopsContainer = document.getElementById('stopsContainer');
+
+            function toggleStopsDisabled() {
+                const disabled = allStopsCheck.checked;
+                stopsContainer.querySelectorAll('.stop-checkbox').forEach(cb => {
+                    cb.disabled = disabled;
+                    if (disabled) cb.checked = false;
+                });
+            }
+
+            allStopsCheck?.addEventListener('change', toggleStopsDisabled);
+            toggleStopsDisabled();
+        })();
+    </script>
+}

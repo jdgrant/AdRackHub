@@ -1,0 +1,27 @@
+## Build results
+bin/
+obj/
+publish/
+
+## IDE
+.vs/
+.idea/
+*.user
+*.suo
+.cursor/
+
+## OS
+.DS_Store
+
+## User secrets / local overrides
+appsettings.*.local.json
+appsettings.Production.json
+**/appsettings.Production.json
+google-service-account.json
+**/google-service-account.json
+
+## Uploaded customer files
+src/AdRackHub/Data/Uploads/
+src/AdRackHub/App_Data/Uploads/
+Data/Uploads/
+Data/Scans/

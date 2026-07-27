@@ -1,0 +1,39 @@
+@{
+    ViewData["Title"] = "Import Customer Route Matrix";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Import Customer Route Matrix</h1>
+    <a asp-action="Index" class="btn btn-outline-secondary">Back</a>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="h6">Spreadsheet layout</h2>
+        <ul class="mb-0">
+            <li><strong>Customers</strong> are listed down the first column.</li>
+            <li><strong>Routes</strong> are listed across the top row.</li>
+            <li>Enter the <strong>annual price</strong> for each customer/route combination.</li>
+            <li>Enter the <strong>billing cycle</strong> in the column beside each route (Monthly, Quarterly, or Annual).</li>
+            <li>Leave a route cell blank when the customer is not on that route.</li>
+        </ul>
+    </div>
+</div>
+
+<div class="mb-4">
+    <a asp-action="DownloadMatrixTemplate" class="btn btn-outline-primary">Download Spreadsheet (All Customers &amp; Routes)</a>
+</div>
+
+<form asp-action="ImportMatrix" method="post" enctype="multipart/form-data">
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+    <div class="mb-3">
+        <label for="file" class="form-label">Excel file</label>
+        <input type="file" name="file" id="file" class="form-control" accept=".xlsx" required />
+    </div>
+    <button type="submit" class="btn btn-primary">Import</button>
+    <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

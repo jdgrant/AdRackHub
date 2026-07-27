@@ -1,0 +1,212 @@
+﻿@model DashboardViewModel
+@{
+    ViewData["Title"] = "Dashboard";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Dashboard</h1>
+    <div class="d-flex gap-2">
+        <a asp-controller="Customers" asp-action="Index" class="btn btn-outline-primary btn-sm">Customers</a>
+        <a asp-controller="Prospects" asp-action="Index" class="btn btn-outline-primary btn-sm">Prospects</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Customers</div>
+                <div class="display-6">@Model.ActiveCustomerCount</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Prospects</div>
+                <div class="display-6">@Model.ProspectCount</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="card stat-card warning h-100">
+            <div class="card-body">
+                <div class="text-muted small">High Value</div>
+                <div class="display-6">@Model.HighValueProspectCount</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="card stat-card danger h-100">
+            <div class="card-body">
+                <div class="text-muted small">At Risk</div>
+                <div class="display-6">@Model.AtRiskCustomerCount</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg">
+        <div class="card stat-card @(Model.OverdueTaskCount > 0 ? "danger" : "") h-100">
+            <div class="card-body">
+                <div class="text-muted small">Open Tasks</div>
+                <div class="display-6">@Model.OpenTaskCount</div>
+                @if (Model.OverdueTaskCount > 0)
+                {
+                    <div class="small text-danger mt-1">@Model.OverdueTaskCount overdue</div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>
+                    <span class="crm-flag-icon-sm crm-flag-at-risk me-1" aria-hidden="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+                            <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
+                        </svg>
+                    </span>
+                    At Risk Customers
+                </span>
+                <span class="badge bg-danger">@Model.AtRiskCustomerCount</span>
+            </div>
+            <div class="card-body p-0">
+                @if (Model.AtRiskCustomers.Any())
+                {
+                    <ul class="list-group list-group-flush">
+                        @foreach (var item in Model.AtRiskCustomers)
+                        {
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <a asp-controller="Customers" asp-action="Details" asp-route-id="@item.Id">@item.Name</a>
+                                <span class="badge @(item.Status == CustomerStatus.Active ? "bg-success" : "bg-secondary")">@item.Status</span>
+                            </li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <p class="text-muted p-3 mb-0">No customers marked at risk.</p>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>
+                    <span class="crm-flag-icon-sm crm-flag-high-value me-1" aria-hidden="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+                            <path d="M3.612 15.443c-.386.198-.824-.149-.746-.592l.83-4.73L.173 6.765c-.329-.314-.158-.888.283-.95l4.898-.696L7.538.792c.197-.39.73-.39.927 0l2.184 4.327 4.898.696c.441.062.612.636.282.95l-3.522 3.356.83 4.73c.078.443-.36.79-.746.592L8 13.187l-4.389 2.256z"/>
+                        </svg>
+                    </span>
+                    High Value Prospects
+                </span>
+                <span class="badge crm-badge-high-value">@Model.HighValueProspectCount</span>
+            </div>
+            <div class="card-body p-0">
+                @if (Model.HighValueProspects.Any())
+                {
+                    <ul class="list-group list-group-flush">
+                        @foreach (var item in Model.HighValueProspects)
+                        {
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <a asp-controller="Customers" asp-action="Details" asp-route-id="@item.Id">@item.Name</a>
+                                <span class="badge @(item.Status == CustomerStatus.Active ? "bg-success" : "bg-secondary")">@item.Status</span>
+                            </li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <p class="text-muted p-3 mb-0">No high value prospects marked.</p>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>CRM Tasks</span>
+        @if (Model.OverdueTaskCount > 0)
+        {
+            <span class="badge bg-danger">@Model.OverdueTaskCount overdue</span>
+        }
+    </div>
+    <div class="card-body p-0">
+        @if (Model.OpenTasks.Any())
+        {
+            <table class="table mb-0">
+                <thead>
+                    <tr>
+                        <th>Task</th>
+                        <th>Account</th>
+                        <th>Due</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var task in Model.OpenTasks)
+                {
+                    <tr class="@(task.IsOverdue ? "table-danger" : null)">
+                        <td>
+                            <a asp-controller="Customers" asp-action="Details" asp-route-id="@task.CustomerId" asp-route-tab="tasks">@task.Title</a>
+                        </td>
+                        <td>
+                            <a asp-controller="Customers" asp-action="Details" asp-route-id="@task.CustomerId">@task.CustomerName</a>
+                            <span class="text-muted small">(@(task.CustomerType == CustomerType.Prospect ? "Prospect" : "Customer"))</span>
+                        </td>
+                        <td class="@(task.IsOverdue ? "text-danger fw-semibold" : "text-muted")">
+                            @(task.DueDate?.ToString("MMM d, yyyy") ?? "—")
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="text-muted p-3 mb-0">No open CRM tasks.</p>
+        }
+    </div>
+</div>
+
+<details class="dashboard-routes">
+    <summary class="dashboard-routes-summary">
+        Routes
+        <span class="text-muted fw-normal ms-2">@Model.ActiveRouteCount active · @Model.ActiveStopCount stops</span>
+    </summary>
+    <div class="card mt-2">
+        <div class="card-body p-0">
+            @if (Model.Routes.Any())
+            {
+                <table class="table mb-0 table-sm">
+                    <thead>
+                        <tr>
+                            <th>Route</th>
+                            <th>Annual Revenue</th>
+                            <th>Stops</th>
+                            <th>Customers</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var route in Model.Routes)
+                    {
+                        <tr>
+                            <td><a asp-controller="Routes" asp-action="Details" asp-route-id="@route.RouteId">@route.RouteName</a></td>
+                            <td>@route.AnnualRevenue.ToString("C0")</td>
+                            <td>@route.StopCount</td>
+                            <td>@route.CustomerCount</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <p class="text-muted p-3 mb-0">No active routes.</p>
+            }
+        </div>
+    </div>
+</details>

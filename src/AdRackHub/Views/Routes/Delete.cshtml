@@ -1,0 +1,9 @@
+@model AdRackHub.Models.Route
+@{ ViewData["Title"] = "Delete Route"; }
+<h1 class="h2 mb-4 text-danger">Delete Route</h1>
+<p>Delete <strong>@Model.RouteName</strong>?</p>
+<form asp-action="Delete" method="post">
+    <input type="hidden" asp-for="Id" />
+    <button type="submit" class="btn btn-danger">Delete</button>
+    <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+</form>

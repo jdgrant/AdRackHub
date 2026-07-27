@@ -1,0 +1,187 @@
+@model CustomerIndexViewModel
+@{
+    var isProspect = Model.ListType == CustomerType.Prospect;
+    ViewData["Title"] = isProspect ? "Prospects" : "Customers";
+    var addLabel = isProspect ? "Add Prospect" : "Add Customer";
+    var emptyMessage = isProspect ? "No prospects match your filters." : "No customers match your filters.";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">@(isProspect ? "Prospects" : "Customers")</h1>
+    <div class="d-flex gap-2">
+        @if (!isProspect)
+        {
+            <a asp-controller="Customers" asp-action="ImportMatrix" class="btn btn-outline-primary">Import Route Matrix</a>
+        }
+        <a asp-controller="@(isProspect ? "Prospects" : "Customers")" asp-action="Create" asp-route-type="@Model.ListType" class="btn btn-primary">@addLabel</a>
+    </div>
+</div>
+
+<ul class="nav nav-tabs mb-4">
+    <li class="nav-item">
+        <a class="nav-link @(isProspect ? "" : "active")"
+           asp-controller="Customers"
+           asp-action="Index"
+           asp-route-search="@ViewBag.Search"
+           asp-route-status="@ViewBag.Status">Customers</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link @(isProspect ? "active" : "")"
+           asp-controller="Prospects"
+           asp-action="Index"
+           asp-route-search="@ViewBag.Search"
+           asp-route-status="@ViewBag.Status">Prospects</a>
+    </li>
+</ul>
+
+@if (TempData["Message"] is string message)
+{
+    <div class="alert alert-success">@message</div>
+}
+
+@if (isProspect)
+{
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card stat-card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Prospects</div>
+                    <div class="display-6">@Model.Summary.ClientCount</div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card stat-card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Clients</div>
+                    <div class="display-6">@Model.Summary.ClientCount</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Routes</div>
+                    <div class="display-6">@Model.Summary.RouteCount</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Total Revenue</div>
+                    <div class="display-6">@Model.Summary.TotalRevenue.ToString("C0")</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card stat-card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Avg Revenue / Client</div>
+                    <div class="display-6">@Model.Summary.AverageRevenuePerClient.ToString("C0")</div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<form method="get" class="row g-2 mb-4" asp-controller="@(isProspect ? "Prospects" : "Customers")" asp-action="Index">
+    @if (!isProspect)
+    {
+        <input type="hidden" name="type" value="@Model.ListType" />
+    }
+    <div class="col-md-4">
+        <input type="text" name="search" value="@ViewBag.Search" class="form-control" placeholder="Search by name or contact..." />
+    </div>
+    <div class="col-md-3">
+        <select name="status" class="form-select" asp-items="Html.GetEnumSelectList<CustomerStatus>()">
+            <option value="">All statuses</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-outline-secondary">Filter</button>
+    </div>
+</form>
+
+@if (Model.Customers.Any())
+{
+    <div class="row g-3">
+    @foreach (var item in Model.Customers)
+    {
+        var activeRoutes = item.CustomerRoutes.Count(cr => cr.Status == CustomerRouteStatus.Active);
+        var previewScan = item.BrochureScans
+            .OrderByDescending(s => s.UploadedAt)
+            .FirstOrDefault(s => s.IsImage)
+            ?? item.BrochureScans.OrderByDescending(s => s.UploadedAt).FirstOrDefault();
+
+        <div class="col-sm-6 col-md-4 col-lg-3 col-xl-2">
+            <div class="card customer-card h-100">
+                <a asp-controller="Customers" asp-action="Details" asp-route-id="@item.Id"
+                   asp-route-search="@ViewBag.Search" asp-route-status="@ViewBag.Status"
+                   class="customer-card-link text-decoration-none text-body">
+                    <div class="customer-card-thumb">
+                        @if (previewScan?.IsImage == true)
+                        {
+                            <img src="@Url.Action("ViewBrochureScan", "Customers", new { id = previewScan.Id })"
+                                 class="customer-card-image"
+                                 alt="@item.CustomerName brochure" />
+                        }
+                        else if (previewScan != null)
+                        {
+                            <div class="customer-card-placeholder customer-card-placeholder-pdf">
+                                <span class="fw-semibold text-danger">PDF</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="customer-card-placeholder">
+                                <span class="text-muted small">No brochure</span>
+                            </div>
+                        }
+                    </div>
+                    <div class="card-body p-2">
+                        <div class="d-flex align-items-center gap-1 min-w-0">
+                            @{ ViewData["IconSize"] = "sm"; }
+                            <partial name="_FlagIcons" model="item" />
+                            <div class="customer-card-name fw-semibold text-truncate" title="@item.CustomerName">@item.CustomerName</div>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(item.Phone))
+                        {
+                            <div class="small text-muted text-truncate mt-1" title="@item.Phone">@item.Phone</div>
+                        }
+                        <div class="d-flex justify-content-between align-items-center mt-1">
+                            <span class="badge @(item.Status == CustomerStatus.Active ? "bg-success" : "bg-secondary")">@item.Status</span>
+                            @if (!isProspect)
+                            {
+                                <span class="text-muted small">@activeRoutes route@(activeRoutes == 1 ? "" : "s")</span>
+                            }
+                        </div>
+                    </div>
+                </a>
+                <div class="card-footer bg-transparent border-top-0 pt-0 px-2 pb-2">
+                    <div class="d-grid gap-1">
+                        @if (isProspect)
+                        {
+                            <form asp-controller="Customers" asp-action="ToggleType" method="post">
+                                <input type="hidden" name="id" value="@item.Id" />
+                                <input type="hidden" name="returnTo" value="list" />
+                                <button type="submit" class="btn btn-sm btn-success w-100">Make Customer</button>
+                            </form>
+                        }
+                        <a asp-controller="Customers" asp-action="Details" asp-route-id="@item.Id" class="btn btn-sm btn-outline-primary">Details</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    </div>
+}
+else
+{
+    <p class="text-muted">@emptyMessage</p>
+}

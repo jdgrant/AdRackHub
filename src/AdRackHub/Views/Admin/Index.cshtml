@@ -1,0 +1,97 @@
+@model AdminIndexViewModel
+@{
+    ViewData["Title"] = "Admin";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Admin</h1>
+    <div>
+        <a asp-action="OptimizeBrochures" class="btn btn-outline-secondary">Optimize Brochures</a>
+        <a asp-action="WaveSync" class="btn btn-outline-primary">Wave / Zapier Sync</a>
+        <a asp-action="CreateUser" class="btn btn-primary">Add User</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Users</div>
+                <div class="display-6">@Model.UserCount</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Customers</div>
+                <div class="display-6">@Model.CustomerCount</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Routes</div>
+                <div class="display-6">@Model.RouteCount</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Stops</div>
+                <div class="display-6">@Model.StopCount</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h2 class="h5 mb-3">Users</h2>
+<table class="table table-hover">
+    <thead>
+        <tr>
+            <th>Email</th>
+            <th>Name</th>
+            <th>Roles</th>
+            <th>Status</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var user in Model.Users)
+    {
+        <tr>
+            <td>@user.Email</td>
+            <td>@(user.DisplayName ?? "—")</td>
+            <td>
+                @if (user.Roles.Any())
+                {
+                    @string.Join(", ", user.Roles.OrderBy(r => r))
+                }
+                else
+                {
+                    <span class="text-muted">None</span>
+                }
+            </td>
+            <td>
+                @if (user.IsLockedOut)
+                {
+                    <span class="badge bg-danger">Locked</span>
+                }
+                else
+                {
+                    <span class="badge bg-success">Active</span>
+                }
+            </td>
+            <td class="text-end text-nowrap">
+                <a asp-action="EditUser" asp-route-id="@user.Id" class="btn btn-sm btn-outline-primary">Edit</a>
+                @if (user.Id != User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value)
+                {
+                    <a asp-action="DeleteUser" asp-route-id="@user.Id" class="btn btn-sm btn-outline-danger">Delete</a>
+                }
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>

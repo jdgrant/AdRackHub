@@ -1,0 +1,99 @@
+@model GoogleSheetsIndexViewModel
+@{
+    ViewData["Title"] = "Google Sheets";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Google Sheets</h1>
+    @if (Model.CanSync)
+    {
+        <form asp-action="SyncAll" method="post">
+            <button type="submit" class="btn btn-primary">Sync All Routes</button>
+        </form>
+    }
+</div>
+
+<p class="text-muted">
+    Import route stops directly from your shared Google Spreadsheet.
+    Each route maps to a tab with the same columns as CSV import.
+</p>
+
+@if (!Model.Connection.IsConfigured)
+{
+    <div class="alert alert-warning">
+        Google Sheets is not configured. Add these settings to <code>appsettings.Development.json</code>
+        or user secrets:
+        <ul class="mb-0 mt-2">
+            <li><code>GoogleSheets:SpreadsheetId</code> — the ID from the sheet URL</li>
+            <li><code>GoogleSheets:ServiceAccountJsonPath</code> — path to your service account JSON key</li>
+        </ul>
+        <p class="mb-0 mt-2 small">
+            Share the spreadsheet with the service account email (Editor access).
+        </p>
+    </div>
+}
+else if (!Model.Connection.IsConnected)
+{
+    <div class="alert alert-danger">
+        Could not connect to Google Sheets: @Model.Connection.ConnectionError
+    </div>
+}
+else
+{
+    <div class="alert alert-success py-2">
+        Connected to <strong>@(Model.Connection.SpreadsheetTitle ?? "spreadsheet")</strong>
+        (@Model.Connection.SheetNames.Count tabs found).
+    </div>
+}
+
+<table class="table table-sm table-hover">
+    <thead>
+        <tr>
+            <th>Route</th>
+            <th>Sheet Tab</th>
+            <th>Stops in Hub</th>
+            <th>Sheet</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var route in Model.Routes)
+    {
+        <tr>
+            <td>
+                <a asp-controller="Routes" asp-action="Details" asp-route-id="@route.RouteId">@route.RouteName</a>
+            </td>
+            <td>@(route.SheetName ?? "—")</td>
+            <td>@route.StopCount</td>
+            <td>
+                @if (!route.CanSync)
+                {
+                    <span class="text-muted">No sheet mapping</span>
+                }
+                else if (route.SheetFound)
+                {
+                    <span class="badge bg-success">Found</span>
+                }
+                else
+                {
+                    <span class="badge bg-warning text-dark">Missing</span>
+                }
+            </td>
+            <td class="text-end">
+                @if (Model.CanSync && route.CanSync)
+                {
+                    <form asp-action="SyncRoute" method="post" class="d-inline">
+                        <input type="hidden" name="slug" value="@route.Slug" />
+                        <button type="submit" class="btn btn-sm btn-outline-primary">Sync</button>
+                    </form>
+                }
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>
+
+<h2 class="h6 text-muted mt-4">Expected sheet columns</h2>
+<p class="small text-muted mb-0">
+    Status, Step #, Rack Placement/Note, Business Name, Address, City, State, ZIP, Highway/Exit, Notes
+</p>

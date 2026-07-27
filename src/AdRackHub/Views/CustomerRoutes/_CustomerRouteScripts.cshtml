@@ -1,0 +1,75 @@
+<script>
+    (function () {
+        const routeSelect = document.getElementById('routeSelect');
+        const allStopsCheck = document.getElementById('allStopsCheck');
+        const stopsContainer = document.getElementById('stopsContainer');
+        const ratePerMonthInput = document.getElementById('ratePerMonthInput');
+        const routePriceHint = document.getElementById('routePriceHint');
+        const customerRouteId = document.querySelector('input[name="CustomerRoute.Id"]')?.value;
+
+        function toggleStopsDisabled() {
+            const disabled = allStopsCheck.checked;
+            stopsContainer.querySelectorAll('.stop-checkbox').forEach(cb => {
+                cb.disabled = disabled;
+                if (disabled) cb.checked = false;
+            });
+        }
+
+        function renderStops(stops) {
+            stopsContainer.innerHTML = '';
+            if (!stops.length) {
+                stopsContainer.innerHTML = '<p class="text-muted mb-0">No active stops on this route.</p>';
+                return;
+            }
+            stops.forEach(s => {
+                const div = document.createElement('div');
+                div.className = 'form-check stop-item';
+                div.innerHTML = `
+                    <input type="checkbox" class="form-check-input stop-checkbox" name="SelectedStopIds" value="${s.stopId}" id="stop_${s.stopId}" ${s.isSelected ? 'checked' : ''} />
+                    <label class="form-check-label" for="stop_${s.stopId}">${s.stopName}</label>`;
+                stopsContainer.appendChild(div);
+            });
+            toggleStopsDisabled();
+        }
+
+        async function loadRouteDefaults() {
+            const routeId = routeSelect.value;
+            if (!routeId) {
+                routePriceHint.textContent = '';
+                return;
+            }
+
+            const res = await fetch(`/CustomerRoutes/GetRouteDefaults?routeId=${routeId}`);
+            if (!res.ok)
+                return;
+
+            const data = await res.json();
+            if (ratePerMonthInput && document.activeElement !== ratePerMonthInput) {
+                ratePerMonthInput.value = Number(data.ratePerMonth).toFixed(2);
+            }
+            routePriceHint.textContent = `Route price ${Number(data.routePrice).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`;
+        }
+
+        async function loadStops() {
+            const routeId = routeSelect.value;
+            if (!routeId) {
+                stopsContainer.innerHTML = '<p class="text-muted mb-0">Select a route to see stops.</p>';
+                routePriceHint.textContent = '';
+                return;
+            }
+            await loadRouteDefaults();
+            const params = new URLSearchParams({ routeId });
+            if (customerRouteId) params.append('customerRouteId', customerRouteId);
+            const res = await fetch(`/CustomerRoutes/GetStopsForRoute?${params}`);
+            const stops = await res.json();
+            renderStops(stops);
+        }
+
+        routeSelect?.addEventListener('change', loadStops);
+        allStopsCheck?.addEventListener('change', toggleStopsDisabled);
+        toggleStopsDisabled();
+        if (routeSelect?.value) {
+            loadRouteDefaults();
+        }
+    })();
+</script>

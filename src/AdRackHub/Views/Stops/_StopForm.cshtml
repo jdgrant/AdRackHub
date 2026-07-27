@@ -1,0 +1,46 @@
+@model Stop
+<div asp-validation-summary="ModelOnly" class="text-danger"></div>
+<div class="col-md-8">
+    <div class="mb-3">
+        <label asp-for="RouteId" class="form-label"></label>
+        <select asp-for="RouteId" class="form-select" asp-items="ViewBag.RouteId"></select>
+    </div>
+    <div class="mb-3">
+        <label asp-for="StepNumber" class="form-label"></label>
+        <input asp-for="StepNumber" class="form-control" type="number" min="1" />
+    </div>
+    <div class="mb-3">
+        <label asp-for="StopName" class="form-label"></label>
+        <input asp-for="StopName" class="form-control" />
+        <span asp-validation-for="StopName" class="text-danger"></span>
+    </div>
+    <div class="mb-3">
+        <label asp-for="RackPlacement" class="form-label"></label>
+        <input asp-for="RackPlacement" class="form-control" />
+    </div>
+    <div class="mb-3">
+        <label asp-for="StopType" class="form-label"></label>
+        <select asp-for="StopType" class="form-select" asp-items="Html.GetEnumSelectList<StopType>()"></select>
+    </div>
+    <div class="mb-3">
+        <label asp-for="Address" class="form-label"></label>
+        <input asp-for="Address" class="form-control" />
+    </div>
+    <div class="row">
+        <div class="col-md-4 mb-3"><label asp-for="City" class="form-label"></label><input asp-for="City" class="form-control" /></div>
+        <div class="col-md-4 mb-3"><label asp-for="State" class="form-label"></label><input asp-for="State" class="form-control" /></div>
+        <div class="col-md-4 mb-3"><label asp-for="Zip" class="form-label"></label><input asp-for="Zip" class="form-control" /></div>
+    </div>
+    <div class="mb-3">
+        <label asp-for="HighwayExit" class="form-label"></label>
+        <input asp-for="HighwayExit" class="form-control" />
+    </div>
+    <div class="mb-3">
+        <label asp-for="Notes" class="form-label"></label>
+        <textarea asp-for="Notes" class="form-control" rows="2"></textarea>
+    </div>
+    <div class="mb-3">
+        <label asp-for="Status" class="form-label"></label>
+        <select asp-for="Status" class="form-select" asp-items="Html.GetEnumSelectList<StopStatus>()"></select>
+    </div>
+</div>

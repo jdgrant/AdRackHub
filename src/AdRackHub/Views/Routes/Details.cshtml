@@ -1,0 +1,177 @@
+@model AdRackHub.Models.Route
+@{
+    ViewData["Title"] = Model.RouteName;
+    var brochureCounts = ViewBag.BrochureCounts as Dictionary<int, int> ?? new Dictionary<int, int>();
+    var totalBrochures = Model.CustomerRoutes.Count(cr => cr.Status == CustomerRouteStatus.Active);
+    var stopCount = Model.Stops.Count;
+    var totalBrochuresOnStops = brochureCounts.Values.Sum();
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">@Model.RouteName</h1>
+    <div>
+        @if (ViewBag.GoogleSheetsConfigured == true && ViewBag.RouteSheetSlug != null)
+        {
+            <form asp-action="SyncFromSheets" asp-route-id="@Model.Id" method="post" class="d-inline">
+                <button type="submit" class="btn btn-outline-primary">Sync from Google Sheets</button>
+            </form>
+        }
+        <a asp-action="Import" asp-route-id="@Model.Id" class="btn btn-outline-primary">Import Stops</a>
+        @if (Model.Stops.Any(s => s.Status == StopStatus.Active))
+        {
+            <form asp-action="LogAllStops" asp-route-id="@Model.Id" method="post" class="d-inline">
+                <button type="submit" class="btn btn-outline-success">Log All Stops</button>
+            </form>
+        }
+        <a asp-controller="Stops" asp-action="Create" asp-route-routeId="@Model.Id" class="btn btn-success">Add Stop</a>
+        <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary">Edit</a>
+        <a asp-action="Index" class="btn btn-outline-secondary">Back</a>
+    </div>
+</div>
+
+<dl class="row">
+    <dt class="col-sm-2">Description</dt>
+    <dd class="col-sm-10">@(Model.Description ?? "—")</dd>
+    <dt class="col-sm-2">Rate / mo</dt>
+    <dd class="col-sm-10">@SubscribedMonths.DefaultRatePerMonth(Model).ToString("C0") <span class="text-muted small">(@BillingTermDisplay.Label(Model.BillingFrequency) list rate)</span></dd>
+    <dt class="col-sm-2">Status</dt>
+    <dd class="col-sm-10">@Model.Status</dd>
+</dl>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Stops</div>
+                <div class="display-6">@stopCount</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Brochures Subscribed</div>
+                <div class="display-6">@totalBrochures</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Brochure Placements</div>
+                <div class="display-6">@totalBrochuresOnStops</div>
+                <div class="text-muted small mt-1">across all stops</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h3 class="h5 mt-2">Stops</h3>
+@if (Model.Stops.Any())
+{
+    <table class="table table-sm table-hover">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Business</th>
+                <th>Address</th>
+                <th>Placement</th>
+                <th>Exit</th>
+                <th>Brochures</th>
+                <th>Last Visited</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var stop in Model.Stops)
+        {
+            <tr>
+                <td>@(stop.StepNumber?.ToString() ?? "—")</td>
+                <td><a asp-controller="Stops" asp-action="Details" asp-route-id="@stop.Id">@stop.StopName</a></td>
+                <td>@StopAddressHelper.FormatFullAddress(stop)</td>
+                <td>@(stop.RackPlacement ?? "—")</td>
+                <td>@(stop.HighwayExit ?? "—")</td>
+                <td>@(brochureCounts.GetValueOrDefault(stop.Id))</td>
+                <td>@VisitDisplay.Format(stop.LastVisitedAt)</td>
+            </tr>
+        }
+        </tbody>
+        <tfoot class="table-light fw-semibold">
+            <tr>
+                <td colspan="6" class="text-end">Totals</td>
+                <td>@totalBrochuresOnStops</td>
+            </tr>
+        </tfoot>
+    </table>
+}
+else
+{
+    <p class="text-muted">No stops yet. Import a CSV or add stops manually.</p>
+}
+
+<h3 class="h5 mt-4">Customers</h3>
+@if (User.IsInRole(AppRoles.Customers) || User.IsInRole(AppRoles.Admin))
+{
+    <div class="mb-2">
+        <a asp-action="AssignCustomer" asp-route-id="@Model.Id" class="btn btn-sm btn-success">Add Customer</a>
+    </div>
+}
+@if (Model.CustomerRoutes.Any())
+{
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>Customer</th>
+                <th>Billing</th>
+                <th>Months Subscribed</th>
+                <th>Rate / Month</th>
+                <th>Stops</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var cr in Model.CustomerRoutes.OrderBy(c => c.Customer.CustomerName))
+        {
+            var stopNames = cr.AllStops
+                ? Model.Stops.Select(s => s.StopName).ToList()
+                : cr.CustomerRouteStops.Select(crs => crs.Stop.StopName).OrderBy(n => n).ToList();
+            <tr>
+                <td><a asp-controller="Customers" asp-action="Details" asp-route-id="@cr.CustomerId">@cr.Customer.CustomerName</a></td>
+                <td>@BillingTermDisplay.Label(cr.BillingTerm)</td>
+                <td>@SubscribedMonths.Format(cr.SubscribedMonthMask)</td>
+                <td>@cr.RatePerMonth.ToString("C")</td>
+                <td>
+                    @if (cr.AllStops)
+                    {
+                        <span class="badge bg-secondary mb-1">All stops</span>
+                    }
+                    @if (stopNames.Any())
+                    {
+                        <ul class="mb-0 ps-3 small">
+                            @foreach (var stopName in stopNames)
+                            {
+                                <li>@stopName</li>
+                            }
+                        </ul>
+                    }
+                    else if (!cr.AllStops)
+                    {
+                        <span class="text-muted">No stops selected</span>
+                    }
+                </td>
+                <td>@cr.Status</td>
+                <td class="text-end text-nowrap">
+                    @if (User.IsInRole(AppRoles.Customers) || User.IsInRole(AppRoles.Admin))
+                    {
+                        <a asp-controller="CustomerRoutes" asp-action="Edit" asp-route-id="@cr.Id" class="btn btn-sm btn-outline-primary">Edit</a>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+else
+{
+    <p class="text-muted">No customers on this route.</p>
+}

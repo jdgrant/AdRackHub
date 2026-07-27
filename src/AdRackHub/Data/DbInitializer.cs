@@ -1,0 +1,155 @@
+using AdRackHub.Models;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+
+namespace AdRackHub.Data;
+
+public static class DbInitializer
+{
+    public const string DefaultAdminEmail = "jon@ad-rack.net";
+    public static readonly string[] StandardRoutes =
+    [
+        "Central OH",
+        "Northern Interstate",
+        "Cincinnati-NKY",
+        "I-65 & 24",
+        "I-75",
+        "Lex-Frankfort",
+        "Louisville",
+        "Mid-TN",
+        "Northeast OH",
+        "I-64 East of Lexington Rest Area",
+        "I-75 Rest Areas",
+        "I-64 West & I-71 Rest Area",
+        "I-65 Rest Areas"
+    ];
+
+    private static readonly string[] PlaceholderRoutes =
+    [
+        "Route 1 - North Valley",
+        "Route 2 - East Valley",
+        "Route 3 - West Valley"
+    ];
+
+    public static async Task InitializeAsync(
+        ApplicationDbContext context,
+        UserManager<ApplicationUser> userManager,
+        RoleManager<IdentityRole> roleManager,
+        IConfiguration configuration)
+    {
+        await context.Database.MigrateAsync();
+        await EnsureRolesAsync(roleManager);
+        await EnsureAdminUserAsync(userManager, configuration);
+        await EnsureRoutesAsync(context);
+
+    }
+
+    private static async Task EnsureRolesAsync(RoleManager<IdentityRole> roleManager)
+    {
+        foreach (var role in AppRoles.All)
+        {
+            if (!await roleManager.RoleExistsAsync(role))
+                await roleManager.CreateAsync(new IdentityRole(role));
+        }
+    }
+
+    private static async Task EnsureAdminUserAsync(
+        UserManager<ApplicationUser> userManager,
+        IConfiguration configuration)
+    {
+        var adminEmail = configuration["Seed:AdminEmail"] ?? DefaultAdminEmail;
+        var adminPassword = configuration["Seed:AdminPassword"];
+
+        if (await userManager.FindByEmailAsync(adminEmail) != null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(adminPassword))
+            throw new InvalidOperationException(
+                "Seed:AdminPassword must be set in configuration to create the default admin user.");
+
+        var user = new ApplicationUser
+        {
+            UserName = adminEmail,
+            Email = adminEmail,
+            EmailConfirmed = true,
+            DisplayName = "Jon Grant"
+        };
+
+        var result = await userManager.CreateAsync(user, adminPassword);
+        if (!result.Succeeded)
+            throw new InvalidOperationException(
+                $"Failed to create admin user: {string.Join(", ", result.Errors.Select(e => e.Description))}");
+
+        foreach (var role in AppRoles.All)
+            await userManager.AddToRoleAsync(user, role);
+    }
+
+    private static async Task EnsureRoutesAsync(ApplicationDbContext context)
+    {
+        var hasPlaceholders = await context.Routes.AnyAsync(r => PlaceholderRoutes.Contains(r.RouteName));
+        if (hasPlaceholders)
+        {
+            context.CustomerRouteStops.RemoveRange(await context.CustomerRouteStops.ToListAsync());
+            context.CustomerRoutes.RemoveRange(await context.CustomerRoutes.ToListAsync());
+            context.Stops.RemoveRange(await context.Stops.ToListAsync());
+            context.Routes.RemoveRange(await context.Routes.ToListAsync());
+            await context.SaveChangesAsync();
+        }
+
+        var existingNames = await context.Routes.Select(r => r.RouteName).ToListAsync();
+        foreach (var name in StandardRoutes)
+        {
+            if (existingNames.Contains(name))
+                continue;
+
+            context.Routes.Add(new Models.Route
+            {
+                RouteName = name,
+                Price = 0,
+                BillingFrequency = BillingFrequency.Quarterly,
+                Status = RouteStatus.Active
+            });
+        }
+
+        await context.SaveChangesAsync();
+        await DeleteInactiveRoutesAsync(context);
+    }
+
+    public static async Task<int> DeleteInactiveRoutesAsync(ApplicationDbContext context)
+    {
+        var routes = await context.Routes
+            .Where(r => r.Status == RouteStatus.Inactive || !StandardRoutes.Contains(r.RouteName))
+            .ToListAsync();
+
+        if (routes.Count == 0)
+            return 0;
+
+        var routeIds = routes.Select(r => r.Id).ToList();
+        var customerRouteIds = await context.CustomerRoutes
+            .Where(cr => routeIds.Contains(cr.RouteId))
+            .Select(cr => cr.Id)
+            .ToListAsync();
+        var stopIds = await context.Stops
+            .Where(s => routeIds.Contains(s.RouteId))
+            .Select(s => s.Id)
+            .ToListAsync();
+
+        context.CustomerRouteStops.RemoveRange(
+            await context.CustomerRouteStops
+                .Where(crs => customerRouteIds.Contains(crs.CustomerRouteId) || stopIds.Contains(crs.StopId))
+                .ToListAsync());
+
+        context.CustomerRoutes.RemoveRange(
+            await context.CustomerRoutes.Where(cr => routeIds.Contains(cr.RouteId)).ToListAsync());
+
+        context.CustomerContractRoutes.RemoveRange(
+            await context.CustomerContractRoutes.Where(cbr => routeIds.Contains(cbr.RouteId)).ToListAsync());
+
+        context.Stops.RemoveRange(
+            await context.Stops.Where(s => routeIds.Contains(s.RouteId)).ToListAsync());
+
+        context.Routes.RemoveRange(routes);
+        await context.SaveChangesAsync();
+        return routes.Count;
+    }
+}

@@ -1,0 +1,40 @@
+@model IEnumerable<AdRackHub.Models.Route>
+@{
+    ViewData["Title"] = "Routes";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Routes</h1>
+    <a asp-action="Create" class="btn btn-primary">Add Route</a>
+</div>
+
+<form method="get" class="mb-3">
+    <select name="status" class="form-select w-auto d-inline-block" asp-items="Html.GetEnumSelectList<RouteStatus>()">
+        <option value="">All statuses</option>
+    </select>
+    <button type="submit" class="btn btn-outline-secondary">Filter</button>
+</form>
+
+<table class="table table-hover">
+    <thead><tr><th>Route</th><th>Rate / Mo</th><th>Annual Revenue</th><th>Stops</th><th>Customers</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    @foreach (var item in Model)
+    {
+        var ratePerMonth = SubscribedMonths.DefaultRatePerMonth(item);
+        var annualRevenue = item.CustomerRoutes
+            .Where(cr => cr.Status == CustomerRouteStatus.Active)
+            .Sum(cr => cr.RatePerMonth > 0
+                ? cr.RatePerMonth * 12m
+                : ratePerMonth * 12m);
+        <tr>
+            <td><a asp-action="Details" asp-route-id="@item.Id">@item.RouteName</a></td>
+            <td>@ratePerMonth.ToString("C0")</td>
+            <td>@annualRevenue.ToString("C0")</td>
+            <td>@item.Stops.Count(s => s.Status == StopStatus.Active)</td>
+            <td>@item.CustomerRoutes.Count(cr => cr.Status == CustomerRouteStatus.Active)</td>
+            <td>@item.Status</td>
+            <td class="text-end"><a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-sm btn-outline-primary">Edit</a></td>
+        </tr>
+    }
+    </tbody>
+</table>

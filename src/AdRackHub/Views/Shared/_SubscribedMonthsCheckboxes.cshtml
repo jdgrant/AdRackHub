@@ -1,0 +1,19 @@
+@model IReadOnlyList<int>
+@{
+    var selected = Model?.ToHashSet() ?? new HashSet<int>();
+}
+
+<div class="row g-2">
+    @for (var month = 1; month <= 12; month++)
+    {
+        <div class="col-6 col-md-4 col-lg-3">
+            <div class="form-check">
+                <input type="checkbox" class="form-check-input month-checkbox" name="SelectedMonthNumbers"
+                       value="@month" id="month_@month" @(selected.Contains(month) ? "checked" : "") />
+                <label class="form-check-label" for="month_@month">
+                    @(new DateOnly(2000, month, 1).ToString("MMMM"))
+                </label>
+            </div>
+        </div>
+    }
+</div>

@@ -1,0 +1,16 @@
+@model Customer
+@{
+    var isProspect = Model.Type == CustomerType.Prospect;
+    ViewData["Title"] = isProspect ? "Add Prospect" : "Add Customer";
+}
+
+<h1 class="h2 mb-4">@ViewData["Title"]</h1>
+<form asp-action="Create" method="post">
+    <partial name="_CustomerForm" />
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a asp-controller="@(isProspect ? "Prospects" : "Customers")" asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

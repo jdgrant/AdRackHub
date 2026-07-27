@@ -1,0 +1,26 @@
+@{
+    ViewData["Title"] = "Import Stops";
+    var routeId = (int)ViewBag.RouteId;
+}
+
+<h1 class="h2 mb-4">Import Stops</h1>
+
+<form asp-action="Import" asp-route-id="@routeId" method="post" enctype="multipart/form-data">
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+    <div class="mb-3">
+        <label class="form-label">CSV file</label>
+        <input type="file" name="csvFile" class="form-control" accept=".csv,text/csv" required />
+        <div class="form-text">
+            Expected columns: Status, Step #, Rack Placement/Note, Business Name, Address, City, State, ZIP, Highway/Exit, Notes
+        </div>
+    </div>
+
+    <div class="form-check mb-3">
+        <input type="checkbox" name="replaceExisting" value="true" class="form-check-input" id="replaceExisting" checked />
+        <label class="form-check-label" for="replaceExisting">Replace existing stops on this route</label>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Import</button>
+    <a asp-action="Details" asp-route-id="@routeId" class="btn btn-outline-secondary">Cancel</a>
+</form>

@@ -1,0 +1,179 @@
+@model CustomerContractEditViewModel
+
+<div asp-validation-summary="All" class="text-danger"></div>
+<input type="hidden" asp-for="Contract.Id" />
+
+<div class="row">
+    <div class="col-lg-5">
+        <div class="mb-3">
+            <label asp-for="Contract.ContractName" class="form-label"></label>
+            <input asp-for="Contract.ContractName" class="form-control" />
+            <span asp-validation-for="Contract.ContractName" class="text-danger"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="Contract.Term" class="form-label"></label>
+            <select asp-for="Contract.Term" class="form-select">
+                <option value="@BillingFrequency.Monthly">Monthly</option>
+                <option value="@BillingFrequency.Quarterly">Quarterly</option>
+                <option value="@BillingFrequency.Annual">Yearly</option>
+            </select>
+            <span asp-validation-for="Contract.Term" class="text-danger"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="Contract.NextBillDate" class="form-label"></label>
+            <input asp-for="Contract.NextBillDate" class="form-control" type="date" />
+            <div class="form-text">The contract issues the next bill on this date, then every billing term after that.</div>
+            <span asp-validation-for="Contract.NextBillDate" class="text-danger"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="Contract.ContractEndDate" class="form-label"></label>
+            <input asp-for="Contract.ContractEndDate" class="form-control" type="date" />
+            <div class="form-text">Leave blank if the contract does not expire.</div>
+            <span asp-validation-for="Contract.ContractEndDate" class="text-danger"></span>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Months of Service</label>
+            <partial name="_SubscribedMonthsCheckboxes" model="Model.SelectedMonthNumbers" />
+            <div class="form-text">By default all 12 months. Uncheck months when service is not provided.</div>
+        </div>
+        <div class="mb-3">
+            <label asp-for="Contract.Notes" class="form-label"></label>
+            <textarea asp-for="Contract.Notes" class="form-control" rows="3"></textarea>
+        </div>
+    </div>
+    <div class="col-lg-7">
+        <label class="form-label">Routes on this contract</label>
+        <p class="text-muted small">Select routes and set the monthly rate per route. The bill amount is calculated from the contract billing term.</p>
+        <div style="max-height: 520px; overflow-y: auto;">
+            @if (Model.AvailableRoutes.Any())
+            {
+                @for (var i = 0; i < Model.AvailableRoutes.Count; i++)
+                {
+                    var route = Model.AvailableRoutes[i];
+                    var collapseId = $"routeStops_{route.RouteId}";
+                    <div class="border rounded mb-2 route-block" data-route-id="@route.RouteId">
+                        <input type="hidden" asp-for="AvailableRoutes[i].RouteId" />
+                        <input type="hidden" asp-for="AvailableRoutes[i].RouteName" />
+                        <input type="hidden" asp-for="AvailableRoutes[i].Price" />
+                        <input type="hidden" asp-for="AvailableRoutes[i].DefaultBillingAmount" />
+                        <input type="hidden" asp-for="AvailableRoutes[i].BillingFrequency" />
+                        <div class="d-flex flex-wrap align-items-center gap-2 p-2">
+                            <div class="form-check mb-0 flex-grow-1">
+                                <input type="checkbox" class="form-check-input route-checkbox" name="SelectedRouteIds" value="@route.RouteId"
+                                       id="route_@route.RouteId" @(route.IsSelected ? "checked" : "") />
+                                <label class="form-check-label" for="route_@route.RouteId">
+                                    <strong>@route.RouteName</strong>
+                                    <span class="text-muted small">(catalog @route.DefaultBillingAmount.ToString("C") / month)</span>
+                                </label>
+                            </div>
+                            @if (route.Stops.Any())
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                        data-bs-toggle="collapse" data-bs-target="#@collapseId" aria-expanded="false" aria-controls="@collapseId">
+                                    Locations (@route.Stops.Count(s => s.IsSelected)@(route.AllStops ? "" : $"/{route.Stops.Count}"))
+                                </button>
+                            }
+                            <div class="input-group input-group-sm" style="width: 8.5rem;">
+                                <span class="input-group-text">$</span>
+                                <input type="number"
+                                       class="form-control"
+                                       asp-for="AvailableRoutes[i].BillingAmount"
+                                       step="0.01"
+                                       min="0"
+                                       aria-label="Monthly rate for @route.RouteName" />
+                                <span class="input-group-text">/mo</span>
+                            </div>
+                        </div>
+                        @if (route.Stops.Any())
+                        {
+                            <div class="collapse border-top" id="@collapseId">
+                                <div class="p-3">
+                                    <div class="form-check mb-2">
+                                        <input asp-for="AvailableRoutes[i].AllStops" class="form-check-input all-stops-check" data-route-index="@i" />
+                                        <label asp-for="AvailableRoutes[i].AllStops" class="form-check-label">All locations on this route</label>
+                                    </div>
+                                    <div class="ms-3 route-stop-list" data-route-index="@i">
+                                        @for (var j = 0; j < route.Stops.Count; j++)
+                                        {
+                                            <div class="form-check">
+                                                <input type="hidden" asp-for="AvailableRoutes[i].Stops[j].StopId" />
+                                                <input type="hidden" asp-for="AvailableRoutes[i].Stops[j].StopName" />
+                                                <input asp-for="AvailableRoutes[i].Stops[j].IsSelected" class="form-check-input route-stop-checkbox" data-route-index="@i" />
+                                                <label asp-for="AvailableRoutes[i].Stops[j].IsSelected" class="form-check-label">
+                                                    @route.Stops[j].StopName
+                                                </label>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="px-3 pb-2 text-muted small">No active locations on this route.</div>
+                        }
+                    </div>
+                }
+            }
+            else
+            {
+                <p class="text-muted mb-0">No active routes available.</p>
+            }
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        function syncAllStops(routeIndex) {
+            const allStopsCheck = document.querySelector(`.all-stops-check[data-route-index="${routeIndex}"]`);
+            const stopChecks = document.querySelectorAll(`.route-stop-checkbox[data-route-index="${routeIndex}"]`);
+            if (!allStopsCheck) return;
+
+            const allSelected = allStopsCheck.checked;
+            stopChecks.forEach(function (checkbox) {
+                checkbox.checked = allSelected;
+                checkbox.disabled = allSelected;
+            });
+        }
+
+        document.querySelectorAll('.all-stops-check').forEach(function (checkbox) {
+            const routeIndex = checkbox.dataset.routeIndex;
+            checkbox.addEventListener('change', function () { syncAllStops(routeIndex); });
+            syncAllStops(routeIndex);
+        });
+
+        document.querySelectorAll('.route-stop-checkbox').forEach(function (checkbox) {
+            checkbox.addEventListener('change', function () {
+                const routeIndex = checkbox.dataset.routeIndex;
+                const allStopsCheck = document.querySelector(`.all-stops-check[data-route-index="${routeIndex}"]`);
+                const stopChecks = document.querySelectorAll(`.route-stop-checkbox[data-route-index="${routeIndex}"]`);
+                if (!allStopsCheck || allStopsCheck.checked) return;
+
+                const anySelected = Array.from(stopChecks).some(function (cb) { return cb.checked; });
+                if (!anySelected) checkbox.checked = true;
+            });
+        });
+
+        const form = document.querySelector('form');
+        if (form) {
+            form.addEventListener('submit', function () {
+                document.querySelectorAll('.route-checkbox').forEach(function (cb) {
+                    const block = cb.closest('.route-block');
+                    if (!block) return;
+                    if (!cb.checked) {
+                        block.querySelectorAll('input, select, textarea').forEach(function (el) { el.disabled = true; });
+                    }
+                });
+
+                document.querySelectorAll('.all-stops-check:checked').forEach(function (allStops) {
+                    const routeIndex = allStops.dataset.routeIndex;
+                    const stopList = document.querySelector(`.route-stop-list[data-route-index="${routeIndex}"]`);
+                    if (stopList) {
+                        stopList.querySelectorAll('input').forEach(function (el) { el.disabled = true; });
+                    }
+                });
+            });
+        }
+    });
+</script>

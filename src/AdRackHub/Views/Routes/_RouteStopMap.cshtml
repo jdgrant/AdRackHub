@@ -1,0 +1,19 @@
+@model IReadOnlyList<RouteMapStopItem>
+@{
+    var mapId = ViewData["MapElementId"] as string ?? "routeMap";
+    var statusId = ViewData["MapStatusId"] as string ?? "mapStatus";
+    var height = ViewData["MapHeight"] as string ?? "420px";
+}
+
+@if (Model.Count > 0)
+{
+    <p class="map-status text-muted mb-2" id="@statusId">Loading map for @Model.Count stop@(Model.Count == 1 ? "" : "s")…</p>
+    <div id="@mapId" class="route-map" style="height: @height;"></div>
+    <p class="text-muted small mt-2 mb-0">Markers are placed from stop addresses. A few locations may take a moment to appear.</p>
+}
+else
+{
+    <div class="alert alert-warning mb-0">
+        No stops with addresses are available to map. Add addresses to stops on this route first.
+    </div>
+}

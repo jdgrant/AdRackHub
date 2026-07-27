@@ -1,0 +1,491 @@
+@model Customer
+@{
+    ViewData["Title"] = Model.CustomerName;
+    var isProspect = Model.Type == CustomerType.Prospect;
+    var billingContacts = Model.Contacts.Where(c => c.Role == ContactRole.Billing || c.Role == ContactRole.Primary).ToList();
+    var draftContact = new Contact
+    {
+        CustomerId = Model.Id,
+        Name = TempData["ContactName"]?.ToString() ?? "",
+        Email = TempData["ContactEmail"]?.ToString(),
+        Phone = TempData["ContactPhone"]?.ToString(),
+        Address = TempData["ContactAddress"]?.ToString(),
+        City = TempData["ContactCity"]?.ToString(),
+        State = TempData["ContactState"]?.ToString(),
+        Zip = TempData["ContactZip"]?.ToString(),
+        Role = Enum.TryParse<ContactRole>(TempData["ContactRole"]?.ToString(), out var role) ? role : ContactRole.Primary
+    };
+    ViewBag.ShowContactModal = TempData["ShowContactModal"] != null || string.Equals(Context.Request.Query["addContact"], "1", StringComparison.Ordinal);
+    var activeContractRoutes = Model.Contracts
+        .Where(c => BillingDueCalculator.IsActiveContract(c))
+        .SelectMany(c => c.ContractRoutes.Select(cbr => new { Contract = c, ContractRoute = cbr }))
+        .OrderBy(x => x.ContractRoute.Route.RouteName)
+        .ThenBy(x => x.Contract.ContractName)
+        .ToList();
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">@Model.CustomerName</h1>
+    <div class="d-flex flex-wrap gap-2">
+        <form asp-action="ToggleType" method="post" class="d-inline">
+            <input type="hidden" name="id" value="@Model.Id" />
+            @if (Model.Type == CustomerType.Prospect)
+            {
+                <button type="submit" class="btn btn-success">Make Customer</button>
+            }
+            else
+            {
+                <button type="submit" class="btn btn-outline-info">Make Prospect</button>
+            }
+        </form>
+        <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary">Edit</a>
+        <a asp-controller="@(Model.Type == CustomerType.Prospect ? "Prospects" : "Customers")" asp-action="Index" class="btn btn-outline-secondary">Back</a>
+    </div>
+</div>
+
+<dl class="row">
+    <dt class="col-sm-3">Type</dt>
+    <dd class="col-sm-9"><span class="badge @(Model.Type == CustomerType.Prospect ? "bg-info" : "bg-primary")">@Model.Type</span></dd>
+    <dt class="col-sm-3">Wave Customer ID</dt>
+    <dd class="col-sm-9">@(Model.WaveCustomerId ?? "—")</dd>
+    <dt class="col-sm-3">Status</dt>
+    <dd class="col-sm-9"><span class="badge @(Model.Status == CustomerStatus.Active ? "bg-success" : "bg-secondary")">@Model.Status</span></dd>
+</dl>
+
+<div class="d-flex justify-content-between align-items-center mt-4 mb-2">
+    <h3 class="h5 mb-0">Brochure Scans</h3>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        @if (Model.BrochureScans.Any())
+        {
+            <div class="row g-3 mb-3 pb-3 border-bottom">
+                @foreach (var scan in Model.BrochureScans)
+                {
+                    var sizeLabel = scan.FileSizeBytes < 1024 * 1024
+                        ? $"{scan.FileSizeBytes / 1024.0:0.#} KB"
+                        : $"{scan.FileSizeBytes / (1024.0 * 1024.0):0.#} MB";
+                    <div class="col-md-4 col-lg-3">
+                        @if (scan.IsImage)
+                        {
+                            <a asp-action="ViewBrochureScan" asp-route-id="@scan.Id" target="_blank" rel="noopener" class="brochure-scan-preview">
+                                <img src="@Url.Action("ViewBrochureScan", new { id = scan.Id })" class="brochure-scan-thumb" alt="@scan.OriginalFileName" />
+                            </a>
+                        }
+                        else
+                        {
+                            <div class="brochure-scan-preview brochure-scan-preview-pdf text-center">
+                                <div class="display-6 text-danger mb-2">PDF</div>
+                                <a asp-action="ViewBrochureScan" asp-route-id="@scan.Id" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">Open PDF</a>
+                            </div>
+                        }
+                        <div class="pt-2">
+                            <div class="small fw-semibold text-truncate" title="@scan.OriginalFileName">@scan.OriginalFileName</div>
+                            <div class="text-muted small">@scan.UploadedAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt") · @sizeLabel</div>
+                            @if (!string.IsNullOrWhiteSpace(scan.Notes))
+                            {
+                                <div class="small mt-1 brochure-scan-notes">@scan.Notes</div>
+                            }
+                            <form asp-action="DeleteBrochureScan" method="post" class="mt-2">
+                                <input type="hidden" name="id" value="@scan.Id" />
+                                <input type="hidden" name="customerId" value="@Model.Id" />
+                                <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this brochure scan?');">Delete</button>
+                            </form>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        <form asp-action="UploadBrochureScan" asp-route-id="@Model.Id" method="post" enctype="multipart/form-data">
+            <div class="mb-3">
+                <label for="brochureFile" class="form-label">Upload scan</label>
+                <input type="file" class="form-control" id="brochureFile" name="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,image/*,application/pdf" required />
+                <div class="form-text">PDF or image, up to 20 MB.</div>
+            </div>
+            <div class="mb-3">
+                <label for="brochureNotes" class="form-label">Notes</label>
+                <textarea class="form-control" id="brochureNotes" name="notes" rows="4" maxlength="2000" placeholder="Optional description"></textarea>
+            </div>
+            <button type="submit" class="btn btn-success">Upload</button>
+        </form>
+    </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mt-4 mb-2">
+    <h3 class="h5 mb-0">Contacts</h3>
+    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#addContactModal">Add Contact</button>
+</div>
+@if (Model.Contacts.Any())
+{
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Role</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Address</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var contact in Model.Contacts)
+        {
+            <tr>
+                <td>@contact.Name</td>
+                <td>@contact.Role</td>
+                <td>@(contact.Email ?? "—")</td>
+                <td>@(contact.Phone ?? "—")</td>
+                <td>@string.Join(", ", new[] { contact.Address, contact.City, contact.State, contact.Zip }.Where(s => !string.IsNullOrEmpty(s)).DefaultIfEmpty("—"))</td>
+                <td class="text-end">
+                    <a asp-controller="Contacts" asp-action="Edit" asp-route-id="@contact.Id" class="btn btn-sm btn-outline-primary">Edit</a>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+else
+{
+    <p class="text-muted">No contacts yet.</p>
+}
+
+@{
+    var openTasks = Model.Tasks
+        .Where(t => t.Status == CustomerTaskStatus.Open)
+        .OrderBy(t => t.DueDate.HasValue ? 0 : 1)
+        .ThenBy(t => t.DueDate)
+        .ThenBy(t => t.CreatedAt)
+        .ToList();
+    var completedTasks = Model.Tasks
+        .Where(t => t.Status == CustomerTaskStatus.Completed)
+        .OrderByDescending(t => t.CompletedAt ?? t.CreatedAt)
+        .ToList();
+}
+
+<div class="d-flex justify-content-between align-items-center mt-4 mb-2">
+    <h3 class="h5 mb-0">Tasks</h3>
+</div>
+<div class="card mb-4">
+    <div class="card-body">
+        @if (openTasks.Any())
+        {
+            <div class="list-group list-group-flush mb-3">
+            @foreach (var task in openTasks)
+            {
+                <div class="list-group-item px-0">
+                    <div class="d-flex justify-content-between gap-3 align-items-start">
+                        <div>
+                            <div class="fw-semibold">@task.Title</div>
+                            @if (!string.IsNullOrWhiteSpace(task.Description))
+                            {
+                                <div class="small mt-1" style="white-space: pre-wrap;">@task.Description</div>
+                            }
+                            <div class="text-muted small mt-1">
+                                @if (task.DueDate.HasValue)
+                                {
+                                    <span class="@(task.IsOverdue ? "text-danger fw-semibold" : "")">
+                                        Due @task.DueDate.Value.ToString("MMM d, yyyy")
+                                        @if (task.IsOverdue)
+                                        {
+                                            <span>(overdue)</span>
+                                        }
+                                    </span>
+                                    <span>·</span>
+                                }
+                                Added @task.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")
+                                @if (!string.IsNullOrWhiteSpace(task.CreatedBy))
+                                {
+                                    <span>by @task.CreatedBy</span>
+                                }
+                            </div>
+                        </div>
+                        <div class="d-flex flex-column gap-1">
+                            <form asp-action="CompleteTask" method="post">
+                                <input type="hidden" name="id" value="@task.Id" />
+                                <input type="hidden" name="customerId" value="@Model.Id" />
+                                <button type="submit" class="btn btn-sm btn-success w-100">Complete</button>
+                            </form>
+                            <form asp-action="DeleteTask" method="post">
+                                <input type="hidden" name="id" value="@task.Id" />
+                                <input type="hidden" name="customerId" value="@Model.Id" />
+                                <button type="submit" class="btn btn-sm btn-outline-danger w-100" onclick="return confirm('Delete this task?');">Delete</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            }
+            </div>
+        }
+        else
+        {
+            <p class="text-muted">No open tasks.</p>
+        }
+
+        <form asp-action="AddTask" method="post" class="border-top pt-3">
+            <input type="hidden" name="customerId" value="@Model.Id" />
+            <div class="row g-2">
+                <div class="col-md-6">
+                    <label class="form-label" for="taskTitle">Task</label>
+                    <input type="text" class="form-control" id="taskTitle" name="title" maxlength="200" required placeholder="Follow up call, send proposal…" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label" for="taskDueDate">Due date</label>
+                    <input type="date" class="form-control" id="taskDueDate" name="dueDate" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label" for="taskDescription">Details</label>
+                    <textarea class="form-control" id="taskDescription" name="description" rows="2" maxlength="2000" placeholder="Optional details"></textarea>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-success">Add Task</button>
+                </div>
+            </div>
+        </form>
+
+        @if (completedTasks.Any())
+        {
+            <details class="mt-3">
+                <summary class="text-muted">Completed tasks (@completedTasks.Count)</summary>
+                <div class="list-group list-group-flush mt-2">
+                @foreach (var task in completedTasks)
+                {
+                    <div class="list-group-item px-0">
+                        <div class="d-flex justify-content-between gap-3 align-items-start">
+                            <div>
+                                <div class="text-decoration-line-through">@task.Title</div>
+                                <div class="text-muted small mt-1">
+                                    Completed @((task.CompletedAt ?? task.CreatedAt).ToLocalTime().ToString("MMM d, yyyy h:mm tt"))
+                                </div>
+                            </div>
+                            <div class="d-flex flex-column gap-1">
+                                <form asp-action="ReopenTask" method="post">
+                                    <input type="hidden" name="id" value="@task.Id" />
+                                    <input type="hidden" name="customerId" value="@Model.Id" />
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary w-100">Reopen</button>
+                                </form>
+                                <form asp-action="DeleteTask" method="post">
+                                    <input type="hidden" name="id" value="@task.Id" />
+                                    <input type="hidden" name="customerId" value="@Model.Id" />
+                                    <button type="submit" class="btn btn-sm btn-outline-danger w-100" onclick="return confirm('Delete this task?');">Delete</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                }
+                </div>
+            </details>
+        }
+    </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mt-4 mb-2">
+    <h3 class="h5 mb-0">Notes &amp; Activity</h3>
+</div>
+<div class="card mb-4">
+    <div class="card-body">
+        <form asp-action="AddNote" method="post" class="mb-3 pb-3 border-bottom">
+            <input type="hidden" name="customerId" value="@Model.Id" />
+            <div class="row g-2">
+                <div class="col-md-3">
+                    <label class="form-label" for="noteKind">Type</label>
+                    <select class="form-select" id="noteKind" name="kind" asp-items="Html.GetEnumSelectList<CustomerNoteKind>()"></select>
+                </div>
+                <div class="col-12">
+                    <label class="form-label" for="noteBody">Note</label>
+                    <textarea class="form-control" id="noteBody" name="body" rows="3" maxlength="4000" required placeholder="Log a note, call, email, meeting, or action…"></textarea>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-success">Add Note</button>
+                </div>
+            </div>
+        </form>
+
+        @if (Model.Notes.Any())
+        {
+            <div class="list-group list-group-flush">
+            @foreach (var note in Model.Notes)
+            {
+                <div class="list-group-item px-0">
+                    <div class="d-flex justify-content-between gap-3 align-items-start">
+                        <div>
+                            <div class="mb-1">
+                                <span class="badge bg-secondary">@note.Kind</span>
+                                <span class="text-muted small ms-1">
+                                    @note.CreatedAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")
+                                    @if (!string.IsNullOrWhiteSpace(note.CreatedBy))
+                                    {
+                                        <span>· @note.CreatedBy</span>
+                                    }
+                                </span>
+                            </div>
+                            <div style="white-space: pre-wrap;">@note.Body</div>
+                        </div>
+                        <form asp-action="DeleteNote" method="post">
+                            <input type="hidden" name="id" value="@note.Id" />
+                            <input type="hidden" name="customerId" value="@Model.Id" />
+                            <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this note?');">Delete</button>
+                        </form>
+                    </div>
+                </div>
+            }
+            </div>
+        }
+        else
+        {
+            <p class="text-muted mb-0">No notes yet.</p>
+        }
+    </div>
+</div>
+
+@if (!isProspect)
+{
+<div class="d-flex justify-content-between align-items-center mt-4 mb-2">
+    <h3 class="h5 mb-0">Contracts</h3>
+    <a asp-controller="CustomerContracts" asp-action="Create" asp-route-customerId="@Model.Id" class="btn btn-sm btn-success">Add Contract</a>
+</div>
+
+@if (billingContacts.Any())
+{
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <div class="text-muted small">Billing contact</div>
+            @foreach (var contact in billingContacts)
+            {
+                <div>
+                    <strong>@contact.Name</strong>
+                    @if (!string.IsNullOrWhiteSpace(contact.Email))
+                    {
+                        <span class="text-muted">— @contact.Email</span>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(contact.Phone))
+                    {
+                        <span class="text-muted">— @contact.Phone</span>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@if (Model.Contracts.Any())
+{
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>Contract</th>
+                <th>Term</th>
+                <th>Months of Service</th>
+                <th>Routes</th>
+                <th>Next Bill</th>
+                <th>Ends</th>
+                <th class="text-end">Total</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var contract in Model.Contracts.OrderBy(b => b.NextBillDate).ThenBy(b => b.ContractName))
+        {
+            var routes = contract.ContractRoutes.OrderBy(cbr => cbr.Route.RouteName).ToList();
+            var total = routes.Sum(AnnualBillingHelper.GetBillingAmount);
+            var isExpired = contract.ContractEndDate.HasValue && contract.ContractEndDate.Value < DateOnly.FromDateTime(DateTime.Today);
+            <tr class="@(isExpired ? "text-muted" : "")">
+                <td>@contract.ContractName</td>
+                <td>@BillingTermDisplay.Label(contract.Term)</td>
+                <td>@SubscribedMonths.Format(contract.ServiceMonthMask)</td>
+                <td>
+                    @if (routes.Any())
+                    {
+                        <ul class="mb-0 ps-3">
+                        @foreach (var cbr in routes)
+                        {
+                            <li>
+                                <a asp-controller="Routes" asp-action="Details" asp-route-id="@cbr.Route.Id">@cbr.Route.RouteName</a>
+                                <span class="text-muted">(@AnnualBillingHelper.GetBillingAmount(cbr).ToString("C") / @BillingTermDisplay.Label(contract.Term).ToLower())</span>
+                            </li>
+                        }
+                        </ul>
+                    }
+                    else
+                    {
+                        <span class="text-muted">No routes</span>
+                    }
+                </td>
+                <td>@contract.NextBillDate.ToString("MMM d, yyyy")</td>
+                <td>
+                    @BillingDueCalculator.FormatContractEndDate(contract.ContractEndDate)
+                    @if (isExpired)
+                    {
+                        <span class="badge bg-secondary ms-1">Expired</span>
+                    }
+                </td>
+                <td class="text-end">@total.ToString("C")</td>
+                <td class="text-end text-nowrap">
+                    <a asp-controller="CustomerContracts" asp-action="Edit" asp-route-id="@contract.Id" class="btn btn-sm btn-outline-primary">Edit</a>
+                    <a asp-controller="CustomerContracts" asp-action="Delete" asp-route-id="@contract.Id" class="btn btn-sm btn-outline-danger">Delete</a>
+                </td>
+            </tr>
+        }
+        </tbody>
+        <tfoot class="table-light fw-semibold">
+            <tr>
+                <td colspan="6" class="text-end">All contracts total</td>
+                <td class="text-end">
+                    @(Model.Contracts
+                        .SelectMany(b => b.ContractRoutes)
+                        .Sum(AnnualBillingHelper.GetBillingAmount)
+                        .ToString("C"))
+                </td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+}
+else
+{
+    <p class="text-muted">No contracts yet. Add a contract with routes, service months, and billing term.</p>
+}
+
+<div class="d-flex justify-content-between align-items-center mt-4 mb-2">
+    <h3 class="h5 mb-0">Routes</h3>
+</div>
+@if (activeContractRoutes.Any())
+{
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>Route</th>
+                <th>Contract</th>
+                <th>Billing</th>
+                <th>Months of Service</th>
+                <th class="text-end">Rate / Term</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var item in activeContractRoutes)
+        {
+            var amount = AnnualBillingHelper.GetBillingAmount(item.ContractRoute);
+            <tr>
+                <td><a asp-controller="Routes" asp-action="Details" asp-route-id="@item.ContractRoute.RouteId">@item.ContractRoute.Route.RouteName</a></td>
+                <td>@item.Contract.ContractName</td>
+                <td>@BillingTermDisplay.Label(item.Contract.Term)</td>
+                <td>@SubscribedMonths.Format(item.Contract.ServiceMonthMask)</td>
+                <td class="text-end">@amount.ToString("C")</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+else
+{
+    <p class="text-muted">No routes on active contracts. Add a contract to assign routes.</p>
+}
+}
+
+<partial name="~/Views/Contacts/_CreateContactModal.cshtml" model="draftContact" />
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

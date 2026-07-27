@@ -1,0 +1,50 @@
+@model Contact
+
+<div asp-validation-summary="ModelOnly" class="text-danger"></div>
+<input type="hidden" asp-for="CustomerId" />
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="mb-3">
+            <label asp-for="Name" class="form-label"></label>
+            <input asp-for="Name" class="form-control" />
+            <span asp-validation-for="Name" class="text-danger"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="Role" class="form-label"></label>
+            <select asp-for="Role" class="form-select" asp-items="Html.GetEnumSelectList<ContactRole>()"></select>
+        </div>
+        <div class="mb-3">
+            <label asp-for="Email" class="form-label"></label>
+            <input asp-for="Email" class="form-control" />
+            <span asp-validation-for="Email" class="text-danger"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="Phone" class="form-label">Telephone</label>
+            <input asp-for="Phone" class="form-control" />
+        </div>
+        <div class="mb-3">
+            <label asp-for="WebUrl" class="form-label"></label>
+            <input asp-for="WebUrl" class="form-control" placeholder="https://" />
+            <span asp-validation-for="WebUrl" class="text-danger"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="Address" class="form-label"></label>
+            <input asp-for="Address" class="form-control" />
+        </div>
+        <div class="row">
+            <div class="col-md-5 mb-3">
+                <label asp-for="City" class="form-label"></label>
+                <input asp-for="City" class="form-control" />
+            </div>
+            <div class="col-md-3 mb-3">
+                <label asp-for="State" class="form-label"></label>
+                <input asp-for="State" class="form-control" />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="Zip" class="form-label"></label>
+                <input asp-for="Zip" class="form-control" />
+            </div>
+        </div>
+    </div>
+</div>

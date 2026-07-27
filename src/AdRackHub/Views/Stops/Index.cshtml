@@ -1,0 +1,37 @@
+@model IEnumerable<Stop>
+@{
+    ViewData["Title"] = "Stops";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Stops</h1>
+    <a asp-action="Create" class="btn btn-primary">Add Stop</a>
+</div>
+
+<form method="get" class="row g-2 mb-3">
+    <div class="col-md-4">
+        <select name="routeId" class="form-select" asp-items="ViewBag.RouteId"><option value="">All routes</option></select>
+    </div>
+    <div class="col-md-3">
+        <select name="status" class="form-select" asp-items="Html.GetEnumSelectList<StopStatus>()"><option value="">All statuses</option></select>
+    </div>
+    <div class="col-auto"><button type="submit" class="btn btn-outline-secondary">Filter</button></div>
+</form>
+
+<table class="table table-hover">
+    <thead><tr><th>Route</th><th>Stop</th><th>Type</th><th>City</th><th>State</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    @foreach (var item in Model)
+    {
+        <tr>
+            <td>@item.Route.RouteName</td>
+            <td><a asp-action="Details" asp-route-id="@item.Id">@item.StopName</a></td>
+            <td>@item.StopType</td>
+            <td>@(item.City ?? "—")</td>
+            <td>@(item.State ?? "—")</td>
+            <td>@item.Status</td>
+            <td class="text-end"><a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-sm btn-outline-primary">Edit</a></td>
+        </tr>
+    }
+    </tbody>
+</table>

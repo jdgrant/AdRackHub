@@ -1,0 +1,92 @@
+@model Stop
+@{
+    ViewData["Title"] = Model.StopName;
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">@Model.StopName</h1>
+    <div>
+        @if (Model.Status == StopStatus.Active)
+        {
+            <form asp-action="LogVisit" asp-route-id="@Model.Id" method="post" class="d-inline">
+                <button type="submit" class="btn btn-outline-success">Log Visit</button>
+            </form>
+        }
+        <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-primary">Edit</a>
+        <a asp-action="Index" class="btn btn-outline-secondary">Back</a>
+    </div>
+</div>
+
+<dl class="row">
+    <dt class="col-sm-3">Route</dt>
+    <dd class="col-sm-9"><a asp-controller="Routes" asp-action="Details" asp-route-id="@Model.RouteId">@Model.Route.RouteName</a></dd>
+    <dt class="col-sm-3">Step #</dt>
+    <dd class="col-sm-9">@(Model.StepNumber?.ToString() ?? "—")</dd>
+    <dt class="col-sm-3">Rack Placement</dt>
+    <dd class="col-sm-9">@(Model.RackPlacement ?? "—")</dd>
+    <dt class="col-sm-3">Type</dt>
+    <dd class="col-sm-9">@Model.StopType</dd>
+    <dt class="col-sm-3">Address</dt>
+    <dd class="col-sm-9">@(Model.Address ?? "—")</dd>
+    <dt class="col-sm-3">City / State / Zip</dt>
+    <dd class="col-sm-9">@string.Join(", ", new[] { Model.City, Model.State, Model.Zip }.Where(s => !string.IsNullOrEmpty(s)))</dd>
+    <dt class="col-sm-3">Highway / Exit</dt>
+    <dd class="col-sm-9">@(Model.HighwayExit ?? "—")</dd>
+    <dt class="col-sm-3">Notes</dt>
+    <dd class="col-sm-9">@(Model.Notes ?? "—")</dd>
+    <dt class="col-sm-3">Status</dt>
+    <dd class="col-sm-9">@Model.Status</dd>
+    <dt class="col-sm-3">Last Visited</dt>
+    <dd class="col-sm-9">@VisitDisplay.Format(Model.LastVisitedAt)</dd>
+</dl>
+
+<h3 class="h5 mt-4">Visit History</h3>
+@if (Model.Visits.Any())
+{
+    <table class="table table-sm">
+        <thead>
+            <tr>
+                <th>Visited At</th>
+                <th>Visited By</th>
+                <th>Notes</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var visit in Model.Visits)
+        {
+            <tr>
+                <td>@VisitDisplay.Format(visit.VisitedAt)</td>
+                <td>@(visit.VisitedByName ?? "—")</td>
+                <td>@(visit.Notes ?? "—")</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+else
+{
+    <p class="text-muted">No visits logged yet.</p>
+}
+
+<h3 class="h5 mt-4">Customers at this stop</h3>
+@{
+    var customers = Model.CustomerRouteStops
+        .Select(crs => crs.CustomerRoute)
+        .Where(cr => cr.Status == CustomerRouteStatus.Active)
+        .Select(cr => cr.Customer)
+        .DistinctBy(c => c.Id)
+        .ToList();
+}
+@if (customers.Any())
+{
+    <ul>
+    @foreach (var customer in customers)
+    {
+        <li><a asp-controller="Customers" asp-action="Details" asp-route-id="@customer.Id">@customer.CustomerName</a></li>
+    }
+    </ul>
+}
+else
+{
+    <p class="text-muted">No customers assigned to this stop.</p>
+}

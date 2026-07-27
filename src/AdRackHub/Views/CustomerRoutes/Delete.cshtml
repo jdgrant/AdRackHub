@@ -1,0 +1,12 @@
+@model CustomerRoute
+@{
+    ViewData["Title"] = "Remove Route";
+}
+
+<h1 class="h2 mb-4">Remove Route Assignment</h1>
+<p>Remove <strong>@Model.Customer.CustomerName</strong> from <strong>@Model.Route.RouteName</strong>?</p>
+<form asp-action="Delete" method="post">
+    <input type="hidden" asp-for="Id" />
+    <button type="submit" class="btn btn-danger">Remove</button>
+    <a asp-controller="Customers" asp-action="Details" asp-route-id="@Model.CustomerId" class="btn btn-outline-secondary">Cancel</a>
+</form>

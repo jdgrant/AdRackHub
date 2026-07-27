@@ -1,0 +1,141 @@
+@model OptimizeBrochuresViewModel
+@{
+    ViewData["Title"] = "Optimize Brochures";
+    string FormatBytes(long bytes) =>
+        bytes < 1024 ? $"{bytes} B"
+        : bytes < 1024 * 1024 ? $"{bytes / 1024.0:0.#} KB"
+        : $"{bytes / (1024.0 * 1024.0):0.#} MB";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Optimize Brochures</h1>
+    <a asp-action="Index" class="btn btn-outline-secondary">Back</a>
+</div>
+
+@if (TempData["Message"] != null)
+{
+    <div class="alert alert-success">@TempData["Message"]</div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-warning">@TempData["Error"]</div>
+}
+
+<p class="text-muted mb-4">
+    Shrink brochure images for the web: longest edge capped at
+    <strong>@Model.Stats.MaxLongEdgePixels px</strong>, saved as JPEG quality
+    <strong>@Model.Stats.JpegQuality</strong>. PDFs are left unchanged.
+    Already-small JPEGs are skipped.
+</p>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Image brochures</div>
+                <div class="display-6">@Model.Stats.ImageScans</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">PDF brochures</div>
+                <div class="display-6">@Model.Stats.PdfScans</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Image size on disk</div>
+                <div class="display-6" style="font-size: 1.75rem;">@FormatBytes(Model.Stats.TotalImageBytesOnDisk)</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Missing files</div>
+                <div class="display-6">@Model.Stats.MissingFiles</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<form asp-action="OptimizeBrochuresConfirm" method="post" class="mb-4"
+      onsubmit="return confirm('Optimize all brochure images now? This rewrites files on disk and cannot be undone.');">
+    @Html.AntiForgeryToken()
+    <button type="submit" class="btn btn-primary" @(Model.Stats.ImageScans == 0 ? "disabled" : null)>
+        Optimize all brochure images
+    </button>
+</form>
+
+@if (Model.LastResult != null)
+{
+    var r = Model.LastResult;
+    <h2 class="h5 mb-3">Last run</h2>
+    <div class="row g-3 mb-3">
+        <div class="col-md-2">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Optimized</div>
+                    <div class="fs-4">@r.Optimized</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Already OK</div>
+                    <div class="fs-4">@r.SkippedAlreadyOptimized</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Missing</div>
+                    <div class="fs-4">@r.SkippedMissingFile</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">PDFs skipped</div>
+                    <div class="fs-4">@r.SkippedPdf</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Failed</div>
+                    <div class="fs-4">@r.Failed</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Space saved</div>
+                    <div class="fs-4" style="font-size: 1.25rem;">@FormatBytes(r.BytesSaved)</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (r.Errors.Count > 0)
+    {
+        <div class="alert alert-warning">
+            <div class="fw-semibold mb-2">Errors</div>
+            <ul class="mb-0">
+                @foreach (var err in r.Errors.Take(20))
+                {
+                    <li>@err</li>
+                }
+            </ul>
+        </div>
+    }
+}

@@ -1,0 +1,9 @@
+@model Stop
+@{ ViewData["Title"] = "Delete Stop"; }
+<h1 class="h2 mb-4 text-danger">Delete Stop</h1>
+<p>Delete <strong>@Model.StopName</strong>?</p>
+<form asp-action="Delete" method="post">
+    <input type="hidden" asp-for="Id" />
+    <button type="submit" class="btn btn-danger">Delete</button>
+    <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+</form>

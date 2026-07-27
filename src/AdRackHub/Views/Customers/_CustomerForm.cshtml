@@ -1,0 +1,91 @@
+@model Customer
+
+<div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="mb-3">
+            <label asp-for="CustomerName" class="form-label"></label>
+            <input asp-for="CustomerName" class="form-control" />
+            <span asp-validation-for="CustomerName" class="text-danger"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="Address" class="form-label"></label>
+            <input asp-for="Address" class="form-control" />
+        </div>
+        <div class="row">
+            <div class="col-md-5 mb-3">
+                <label asp-for="City" class="form-label"></label>
+                <input asp-for="City" class="form-control" />
+            </div>
+            <div class="col-md-3 mb-3">
+                <label asp-for="State" class="form-label"></label>
+                <input asp-for="State" class="form-control" />
+            </div>
+            <div class="col-md-4 mb-3">
+                <label asp-for="Zip" class="form-label"></label>
+                <input asp-for="Zip" class="form-control" />
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label asp-for="Phone" class="form-label"></label>
+                <input asp-for="Phone" class="form-control" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label asp-for="Email" class="form-label"></label>
+                <input asp-for="Email" class="form-control" />
+                <span asp-validation-for="Email" class="text-danger"></span>
+            </div>
+        </div>
+        <div class="mb-3">
+            <label asp-for="WebUrl" class="form-label"></label>
+            <input asp-for="WebUrl" class="form-control" placeholder="https://" />
+        </div>
+        <div class="mb-3">
+            <label asp-for="AccountManagerId" class="form-label"></label>
+            <select asp-for="AccountManagerId" class="form-select" asp-items="ViewBag.AccountManagers">
+                <option value="">— Select —</option>
+            </select>
+            <span asp-validation-for="AccountManagerId" class="text-danger"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="WaveCustomerId" class="form-label"></label>
+            <input asp-for="WaveCustomerId" class="form-control" placeholder="Optional — created automatically on first billing send" />
+            <div class="form-text">Leave blank to create the customer in Wave when billing is sent.</div>
+        </div>
+        <div class="mb-3">
+            <label asp-for="Type" class="form-label"></label>
+            <select asp-for="Type" class="form-select" asp-items="Html.GetEnumSelectList<CustomerType>()"></select>
+            <div class="form-text">Use Type to move a record between Customers and Prospects.</div>
+        </div>
+        <div class="mb-3">
+            <label asp-for="Status" class="form-label"></label>
+            <select asp-for="Status" class="form-select" asp-items="Html.GetEnumSelectList<CustomerStatus>()"></select>
+        </div>
+        @if (Model.Type == CustomerType.Prospect || ViewBag.ShowTypeSelector == true)
+        {
+            <div class="mb-3 form-check" id="highValueFlag">
+                <input asp-for="IsHighValueProspect" class="form-check-input" />
+                <label asp-for="IsHighValueProspect" class="form-check-label"></label>
+                <div class="form-text">Shown with a star icon on prospect lists and details.</div>
+            </div>
+        }
+        else
+        {
+            <input type="hidden" asp-for="IsHighValueProspect" />
+        }
+        @if (Model.Type == CustomerType.Customer || ViewBag.ShowTypeSelector == true)
+        {
+            <div class="mb-3 form-check" id="atRiskFlag">
+                <input asp-for="IsAtRisk" class="form-check-input" />
+                <label asp-for="IsAtRisk" class="form-check-label"></label>
+                <div class="form-text">Shown with a warning icon next to the name.</div>
+            </div>
+        }
+        else
+        {
+            <input type="hidden" asp-for="IsAtRisk" />
+        }
+    </div>
+</div>

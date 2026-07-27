@@ -1,0 +1,17 @@
+@model CustomerContractEditViewModel
+@{
+    ViewData["Title"] = "Add Contract";
+    var customerId = (int)(ViewBag.CustomerId ?? Model.Contract.CustomerId);
+}
+
+<h1 class="h2 mb-4">Add Contract — @ViewBag.CustomerName</h1>
+<form asp-controller="CustomerContracts" asp-action="Create" asp-route-customerId="@customerId" method="post">
+    <input type="hidden" name="customerId" value="@customerId" />
+    <partial name="_CustomerContractForm" />
+    <button type="submit" class="btn btn-primary">Save Contract</button>
+    <a asp-controller="Customers" asp-action="Details" asp-route-id="@customerId" class="btn btn-outline-secondary">Cancel</a>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

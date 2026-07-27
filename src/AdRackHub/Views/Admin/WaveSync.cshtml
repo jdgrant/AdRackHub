@@ -1,0 +1,153 @@
+@model WaveSyncSetupViewModel
+@{
+    ViewData["Title"] = "Wave / Zapier Sync";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Wave / Zapier Sync</h1>
+    <a asp-action="Index" class="btn btn-outline-secondary">Back</a>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Inbound Secret</div>
+                <div class="fw-semibold">@(Model.InboundConfigured ? "Configured" : "Not set")</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Zapier Outbound URL</div>
+                <div class="fw-semibold">@(Model.OutboundConfigured ? "Configured" : "Not set")</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Wave API</div>
+                <div class="fw-semibold">@(Model.WaveApiConfigured ? "Configured" : "Not set")</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Direct Customer Push</div>
+                <div class="fw-semibold">@(Model.PushCustomersToWaveApi ? "Enabled" : "Disabled")</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<p class="text-muted">
+    Configure <code>WaveSync:InboundWebhookSecret</code>, <code>WaveSync:OutboundWebhookUrl</code>, and
+    <code>Wave:AccessToken</code> / <code>Wave:BusinessId</code> in appsettings.
+    Every inbound request must include header <code>X-AdRackHub-Webhook-Secret</code>.
+</p>
+
+<h2 class="h5 mt-4">Webhook endpoints</h2>
+<table class="table table-sm">
+    <thead>
+        <tr>
+            <th>Purpose</th>
+            <th>Method</th>
+            <th>URL</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Health check</td>
+            <td>GET</td>
+            <td><code>@Model.HealthUrl</code></td>
+        </tr>
+        <tr>
+            <td>Import customer from Wave</td>
+            <td>POST</td>
+            <td><code>@Model.ImportCustomerUrl</code></td>
+        </tr>
+        <tr>
+            <td>Billing callback (recurring invoice ID)</td>
+            <td>POST</td>
+            <td><code>@Model.BillingCallbackUrl</code></td>
+        </tr>
+    </tbody>
+</table>
+
+<h2 class="h5 mt-4">Zapier setup</h2>
+
+<h3 class="h6 mt-3">1. Wave → AdRackHub (new Wave customers)</h3>
+<ol>
+    <li>Trigger: <strong>Wave — New Customer</strong></li>
+    <li>Action: <strong>Webhooks by Zapier — POST</strong> to <code>@Model.ImportCustomerUrl</code></li>
+    <li>Header: <code>X-AdRackHub-Webhook-Secret</code> = your secret</li>
+    <li>JSON body:
+        <pre class="bg-light p-2 small">{
+  "waveCustomerId": "{{customer id}}",
+  "name": "{{customer name}}",
+  "email": "{{customer email}}",
+  "phone": "{{customer phone}}",
+  "address": "{{customer address line 1}}",
+  "city": "{{customer city}}",
+  "state": "{{customer state}}",
+  "zip": "{{customer postal code}}"
+}</pre>
+    </li>
+</ol>
+
+<h3 class="h6 mt-3">2. AdRackHub → Wave (new customers here)</h3>
+<p>
+    When you create a customer in AdRackHub, we POST <code>customer.created</code> to your Zapier Catch Hook
+    and also create the customer in Wave directly when the Wave API is configured.
+</p>
+<ol>
+    <li>Trigger: <strong>Webhooks by Zapier — Catch Hook</strong> (copy URL into <code>WaveSync:OutboundWebhookUrl</code>)</li>
+    <li>Filter: Only continue if <code>event</code> equals <code>customer.created</code></li>
+    <li>Action: <strong>Wave — Create Customer</strong> (skip if <code>waveCustomerId</code> is already set)</li>
+</ol>
+
+<h3 class="h6 mt-3">3. AdRackHub → Wave (recurring billing contracts)</h3>
+<p>
+    When you add a contract with routes on a customer, AdRackHub POSTs <code>contract.created</code> with line items and schedule.
+    Wave does not expose recurring-invoice creation via API, so Zapier should create the recurring invoice in Wave.
+</p>
+<ol>
+    <li>Same Catch Hook as above</li>
+    <li>Filter: Only continue if <code>event</code> equals <code>contract.created</code></li>
+    <li>Action: <strong>Wave — Create Recurring Invoice</strong> using <code>waveCustomerId</code>, <code>lineItems</code>, and <code>schedule.frequency</code></li>
+    <li>Optional: POST back to <code>@Model.BillingCallbackUrl</code> with <code>customerContractId</code> and <code>waveRecurringInvoiceId</code></li>
+</ol>
+
+<h3 class="h6 mt-3">Outbound payload examples</h3>
+<pre class="bg-light p-2 small">// customer.created
+{
+  "event": "customer.created",
+  "customerId": 42,
+  "customerName": "Example Hotel",
+  "waveCustomerId": "QnVzaW5lc3M6...",
+  "status": "Active",
+  "primaryContact": { "name": "...", "email": "...", "phone": "..." }
+}
+
+// contract.created
+{
+  "event": "contract.created",
+  "customerContractId": 7,
+  "customerId": 42,
+  "customerName": "Example Hotel",
+  "waveCustomerId": "QnVzaW5lc3M6...",
+  "contractName": "Quarterly Contract",
+  "term": "Quarterly",
+  "billingAnchorMonth": 1,
+  "nextBillDate": "2026-01-01",
+  "serviceMonthMask": 4095,
+  "contractEndDate": null,
+  "totalAmount": 1200.00,
+  "lineItems": [
+    { "description": "Quarterly Contract (Quarterly) — Central OH", "quantity": 1, "unitPrice": 600, "routeName": "Central OH" }
+  ],
+  "schedule": { "frequency": "QUARTERLY", "startMonth": 1, "startMonthName": "January" }
+}</pre>

@@ -1,0 +1,8 @@
+@model AdRackHub.Models.Route
+@{ ViewData["Title"] = "Create Route"; }
+<h1 class="h2 mb-4">Create Route</h1>
+<form asp-action="Create" method="post">
+    <partial name="_RouteForm" model="Model" />
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+</form>
