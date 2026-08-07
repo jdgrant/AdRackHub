@@ -61,6 +61,8 @@ public class CustomersController : Controller
                 || (c.WebUrl != null && c.WebUrl.Contains(search))
                 || c.Contacts.Any(ct =>
                     ct.Name.Contains(search)
+                    || (ct.FirstName != null && ct.FirstName.Contains(search))
+                    || (ct.LastName != null && ct.LastName.Contains(search))
                     || (ct.Email != null && ct.Email.Contains(search))
                     || (ct.Phone != null && ct.Phone.Contains(search))
                     || (ct.City != null && ct.City.Contains(search))
@@ -123,15 +125,18 @@ public class CustomersController : Controller
         if (id == null) return NotFound();
 
         var customer = await _context.Customers
+            .AsSplitQuery()
             .Include(c => c.Contacts.OrderBy(ct => ct.Name))
             .Include(c => c.CustomerRoutes)
                 .ThenInclude(cr => cr.Route)
+                    .ThenInclude(r => r.Stops)
             .Include(c => c.CustomerRoutes)
                 .ThenInclude(cr => cr.CustomerRouteStops)
                     .ThenInclude(crs => crs.Stop)
             .Include(c => c.Contracts)
                 .ThenInclude(b => b.ContractRoutes)
                     .ThenInclude(cbr => cbr.Route)
+                        .ThenInclude(r => r.Stops)
             .Include(c => c.BrochureScans.OrderByDescending(s => s.UploadedAt))
             .Include(c => c.BrochureInventories.OrderByDescending(i => i.InventoryDate).ThenByDescending(i => i.CreatedAt))
             .Include(c => c.Notes.OrderByDescending(n => n.CreatedAt))
@@ -203,6 +208,7 @@ public class CustomersController : Controller
             "tasks" => "tasks",
             "contacts" => "contacts",
             "brochures" => "brochures",
+            "routes" when !isProspect => "routes",
             "contracts" when !isProspect => "contracts",
             _ => "activity"
         };
@@ -223,7 +229,9 @@ public class CustomersController : Controller
         try
         {
             await _brochureScanService.SaveAsync(id, file, notes, cancellationToken);
-            TempData["Message"] = "Brochure scan uploaded.";
+            TempData["Message"] = Path.GetExtension(file.FileName).Equals(".pdf", StringComparison.OrdinalIgnoreCase)
+                ? "Brochure PDF converted to PNG and uploaded."
+                : "Brochure scan uploaded.";
         }
         catch (Exception ex)
         {
@@ -294,6 +302,34 @@ public class CustomersController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditBrochureInventory(
+        int id,
+        int customerId,
+        DateOnly? inventoryDate,
+        int? quantity,
+        string? notes)
+    {
+        var inventory = await _context.CustomerBrochureInventories
+            .FirstOrDefaultAsync(i => i.Id == id && i.CustomerId == customerId);
+        if (inventory == null)
+            return NotFound();
+
+        if (!quantity.HasValue || quantity.Value < 0)
+        {
+            TempData["Error"] = "Enter a brochure count of zero or greater.";
+            return RedirectToAction(nameof(Details), new { id = customerId, tab = "brochures" });
+        }
+
+        inventory.Quantity = quantity.Value;
+        inventory.InventoryDate = inventoryDate ?? inventory.InventoryDate;
+        inventory.Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+        await _context.SaveChangesAsync();
+        TempData["Message"] = "Inventory record updated.";
+        return RedirectToAction(nameof(Details), new { id = customerId, tab = "brochures" });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteBrochureInventory(int id, int customerId)
     {
         var inventory = await _context.CustomerBrochureInventories
@@ -330,6 +366,27 @@ public class CustomersController : Controller
         });
         await _context.SaveChangesAsync();
         TempData["Message"] = "Note added.";
+        return RedirectToAction(nameof(Details), new { id = customerId, tab = "activity" });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditNote(int id, int customerId, CustomerNoteKind kind, string? body)
+    {
+        var note = await _context.CustomerNotes.FirstOrDefaultAsync(n => n.Id == id && n.CustomerId == customerId);
+        if (note == null)
+            return NotFound();
+
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            TempData["Error"] = "Enter a note before saving.";
+            return RedirectToAction(nameof(Details), new { id = customerId, tab = "activity" });
+        }
+
+        note.Kind = Enum.IsDefined(kind) ? kind : note.Kind;
+        note.Body = body.Trim();
+        await _context.SaveChangesAsync();
+        TempData["Message"] = "Note updated.";
         return RedirectToAction(nameof(Details), new { id = customerId, tab = "activity" });
     }
 

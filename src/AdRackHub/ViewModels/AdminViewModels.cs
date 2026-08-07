@@ -84,6 +84,7 @@ public class WaveSyncSetupViewModel
     public string HealthUrl => $"{BaseUrl}/api/wave-sync";
     public string ImportCustomerUrl => $"{BaseUrl}/api/wave-sync/customers";
     public string BillingCallbackUrl => $"{BaseUrl}/api/wave-sync/billing/callback";
+    public string InvoiceCallbackUrl => $"{BaseUrl}/api/wave-sync/invoices/callback";
 }
 
 public class OptimizeBrochuresViewModel

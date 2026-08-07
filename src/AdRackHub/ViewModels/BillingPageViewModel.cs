@@ -9,9 +9,32 @@ public class BillingPageViewModel
     public int Month { get; set; }
     public string PeriodLabel { get; set; } = string.Empty;
     public bool WaveConfigured { get; set; }
+    public bool CreateOnSendConfigured { get; set; }
     public BillingRun? Run { get; set; }
     public List<DueContractItem> DueContracts { get; set; } = new();
-    public List<ConfiguredContractRow> AllContracts { get; set; } = new();
+    public List<BillingRunInvoice> SubmittedInvoices { get; set; } = new();
+
+    public IReadOnlyList<DueContractSummary> DueContractSummaries => DueContracts
+        .GroupBy(i => i.CustomerContractId)
+        .Select(g =>
+        {
+            var first = g.First();
+            return new DueContractSummary
+            {
+                CustomerId = first.CustomerId,
+                CustomerName = first.CustomerName,
+                WaveCustomerId = first.WaveCustomerId,
+                CustomerContractId = first.CustomerContractId,
+                ContractName = first.ContractName,
+                Term = first.Term,
+                RouteNames = g.Select(i => i.RouteName).Distinct().OrderBy(n => n).ToList(),
+                Products = g.Select(i => RouteProductHelper.LabelForRouteName(i.RouteName)).Distinct().OrderBy(p => p).ToList(),
+                Amount = g.Sum(i => i.Amount)
+            };
+        })
+        .OrderBy(s => s.CustomerName)
+        .ThenBy(s => s.ContractName)
+        .ToList();
 
     public decimal DueTotal => DueContracts.Sum(i => i.Amount);
     public int DueCustomerCount => DueContracts.Select(i => i.CustomerId).Distinct().Count();
@@ -23,22 +46,23 @@ public class BillingPageViewModel
     public bool CanSendToWave => WaveConfigured && HasDueContracts && !IsFullySubmitted
         && (Run == null || Run.Invoices.Any(i =>
             i.Status is BillingRunInvoiceStatus.Pending or BillingRunInvoiceStatus.Failed));
-    public bool IsFullySubmitted => Run?.Status == BillingRunStatus.Submitted;
+    public bool IsFullySubmitted => Run != null
+        && Run.Invoices.Any()
+        && Run.Invoices.All(i => i.Status is BillingRunInvoiceStatus.Submitted
+            or BillingRunInvoiceStatus.Received
+            or BillingRunInvoiceStatus.Canceled
+            or BillingRunInvoiceStatus.Skipped);
 }
 
-public class ConfiguredContractRow
+public class DueContractSummary
 {
-    public int CustomerContractId { get; set; }
-    public int CustomerId { get; set; }
-    public string CustomerName { get; set; } = string.Empty;
-    public string? WaveCustomerId { get; set; }
-    public string ContractName { get; set; } = string.Empty;
-    public BillingFrequency Term { get; set; }
-    public int BillingAnchorMonth { get; set; }
-    public int ServiceMonthMask { get; set; }
-    public DateOnly? ContractEndDate { get; set; }
-    public DateOnly NextBillDate { get; set; }
-    public List<string> RouteNames { get; set; } = new();
-    public decimal Total { get; set; }
-    public bool IsDueThisPeriod { get; set; }
+    public int CustomerId { get; init; }
+    public string CustomerName { get; init; } = string.Empty;
+    public string? WaveCustomerId { get; init; }
+    public int CustomerContractId { get; init; }
+    public string ContractName { get; init; } = string.Empty;
+    public BillingFrequency Term { get; init; }
+    public List<string> RouteNames { get; init; } = new();
+    public List<string> Products { get; init; } = new();
+    public decimal Amount { get; init; }
 }

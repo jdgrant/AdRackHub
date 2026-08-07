@@ -79,6 +79,10 @@ public class StopsController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(Stop stop)
     {
+        ModelState.Remove(nameof(Stop.Route));
+        ModelState.Remove(nameof(Stop.CustomerRouteStops));
+        ModelState.Remove(nameof(Stop.Visits));
+
         if (ModelState.IsValid)
         {
             _context.Add(stop);
@@ -104,20 +108,30 @@ public class StopsController : Controller
     {
         if (id != stop.Id) return NotFound();
 
+        ModelState.Remove(nameof(Stop.Route));
+        ModelState.Remove(nameof(Stop.CustomerRouteStops));
+        ModelState.Remove(nameof(Stop.Visits));
+
         if (ModelState.IsValid)
         {
-            try
-            {
-                _context.Update(stop);
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                if (!await _context.Stops.AnyAsync(s => s.Id == id))
-                    return NotFound();
-                throw;
-            }
-            return RedirectToAction(nameof(Details), new { id = stop.Id });
+            var existing = await _context.Stops.FindAsync(id);
+            if (existing == null) return NotFound();
+
+            existing.RouteId = stop.RouteId;
+            existing.StepNumber = stop.StepNumber;
+            existing.StopName = stop.StopName;
+            existing.StopType = stop.StopType;
+            existing.RackPlacement = stop.RackPlacement;
+            existing.Address = stop.Address;
+            existing.City = stop.City;
+            existing.State = stop.State;
+            existing.Zip = stop.Zip;
+            existing.HighwayExit = stop.HighwayExit;
+            existing.Notes = stop.Notes;
+            existing.Status = stop.Status;
+
+            await _context.SaveChangesAsync();
+            return RedirectToAction(nameof(Details), new { id = existing.Id });
         }
         await PopulateRoutesAsync(stop.RouteId);
         return View(stop);

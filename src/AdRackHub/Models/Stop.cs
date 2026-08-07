@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 
 namespace AdRackHub.Models;
 
@@ -51,7 +52,14 @@ public class Stop
     [Display(Name = "Last Visited")]
     public DateTime? LastVisitedAt { get; set; }
 
-    public Route Route { get; set; } = null!;
+    // Not posted from Create/Edit forms — only RouteId is. Must stay optional for validation
+    // so ASP.NET does not reject the save ("The Route field is required.").
+    [ValidateNever]
+    public Route? Route { get; set; }
+
+    [ValidateNever]
     public ICollection<CustomerRouteStop> CustomerRouteStops { get; set; } = new List<CustomerRouteStop>();
+
+    [ValidateNever]
     public ICollection<StopVisit> Visits { get; set; } = new List<StopVisit>();
 }

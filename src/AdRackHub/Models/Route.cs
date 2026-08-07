@@ -28,6 +28,35 @@ public class Route
     [Required]
     public RouteStatus Status { get; set; } = RouteStatus.Active;
 
+    [StringLength(200)]
+    [Display(Name = "Wave Product ID")]
+    public string? WaveProductId { get; set; }
+
+    /// <summary>
+    /// Derived product: names containing "Rest Area" (including "Rest Area - …") map to Rest Area; everything else is Exits.
+    /// </summary>
+    [NotMapped]
+    [Display(Name = "Product")]
+    public RouteProduct Product => RouteProductHelper.FromRouteName(RouteName);
+
     public ICollection<Stop> Stops { get; set; } = new List<Stop>();
     public ICollection<CustomerRoute> CustomerRoutes { get; set; } = new List<CustomerRoute>();
+}
+
+public static class RouteProductHelper
+{
+    public static RouteProduct FromRouteName(string? routeName) =>
+        !string.IsNullOrWhiteSpace(routeName)
+        && routeName.Contains("Rest Area", StringComparison.OrdinalIgnoreCase)
+            ? RouteProduct.RestArea
+            : RouteProduct.Exits;
+
+    public static string Label(RouteProduct product) => product switch
+    {
+        RouteProduct.RestArea => "Rest Area",
+        RouteProduct.Exits => "Exits",
+        _ => product.ToString()
+    };
+
+    public static string LabelForRouteName(string? routeName) => Label(FromRouteName(routeName));
 }

@@ -450,10 +450,10 @@ public class CustomerRouteMatrixService
         instructions.Cell(11, 1).Value = "Monthly, Quarterly, or Annual (M, Q, and Y also work).";
         instructions.Cell(13, 1).Value = "Example";
         instructions.Cell(14, 1).Value = CustomerColumn;
-        instructions.Cell(14, 2).Value = "Central OH";
-        instructions.Cell(14, 3).Value = GetRouteBillingColumnName("Central OH");
-        instructions.Cell(14, 4).Value = "Louisville";
-        instructions.Cell(14, 5).Value = GetRouteBillingColumnName("Louisville");
+        instructions.Cell(14, 2).Value = "Exit - Central OH";
+        instructions.Cell(14, 3).Value = GetRouteBillingColumnName("Exit - Central OH");
+        instructions.Cell(14, 4).Value = "Exit - Louisville";
+        instructions.Cell(14, 5).Value = GetRouteBillingColumnName("Exit - Louisville");
         instructions.Cell(15, 1).Value = "Example Visitor Center";
         instructions.Cell(15, 2).Value = 1200;
         instructions.Cell(15, 3).Value = "Quarterly";

@@ -27,11 +27,13 @@ public class RouteSheetSyncService
         bool replaceExisting = true,
         CancellationToken cancellationToken = default)
     {
-        var routeName = RouteSheetMap.GetRouteName(routeSlug);
-        var route = await _context.Routes.FirstOrDefaultAsync(r => r.RouteName == routeName, cancellationToken)
-            ?? throw new InvalidOperationException($"Route '{routeName}' not found in the database.");
-
         var sheetName = RouteSheetMap.GetSheetName(routeSlug);
+        var nameCandidates = RouteSheetMap.DatabaseNameCandidates(sheetName);
+        var route = await _context.Routes.FirstOrDefaultAsync(
+                r => nameCandidates.Contains(r.RouteName),
+                cancellationToken)
+            ?? throw new InvalidOperationException($"Route matching '{sheetName}' not found in the database.");
+
         var rows = await _googleSheetsService.GetSheetValuesAsync(sheetName, cancellationToken);
         if (rows.Count == 0)
             throw new InvalidOperationException($"Sheet '{sheetName}' is empty.");
@@ -42,7 +44,7 @@ public class RouteSheetSyncService
         return new RouteSheetSyncResult
         {
             RouteSlug = routeSlug,
-            RouteName = routeName,
+            RouteName = route.RouteName,
             SheetName = sheetName,
             Imported = importResult.Imported
         };

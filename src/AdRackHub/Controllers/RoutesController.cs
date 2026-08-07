@@ -30,7 +30,7 @@ public class RoutesController : Controller
         _visitService = visitService;
     }
 
-    public async Task<IActionResult> Index(RouteStatus? status)
+    public async Task<IActionResult> Index(RouteStatus? status, RouteProduct? product)
     {
         var query = _context.Routes
             .Include(r => r.Stops)
@@ -40,7 +40,13 @@ public class RoutesController : Controller
         if (status.HasValue)
             query = query.Where(r => r.Status == status.Value);
 
+        if (product == RouteProduct.RestArea)
+            query = query.Where(r => r.RouteName.Contains("Rest Area"));
+        else if (product == RouteProduct.Exits)
+            query = query.Where(r => !r.RouteName.Contains("Rest Area"));
+
         ViewBag.Status = status;
+        ViewBag.Product = product;
         return View(await query.OrderBy(r => r.RouteName).ToListAsync());
     }
 

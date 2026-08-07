@@ -1,6 +1,8 @@
 @model IEnumerable<AdRackHub.Models.Route>
 @{
     ViewData["Title"] = "Routes";
+    var selectedStatus = ViewBag.Status as RouteStatus?;
+    var selectedProduct = ViewBag.Product as RouteProduct?;
 }
 
 <div class="page-header">
@@ -8,15 +10,26 @@
     <a asp-action="Create" class="btn btn-primary">Add Route</a>
 </div>
 
-<form method="get" class="mb-3">
-    <select name="status" class="form-select w-auto d-inline-block" asp-items="Html.GetEnumSelectList<RouteStatus>()">
+<form method="get" class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+    <select name="status" class="form-select w-auto">
         <option value="">All statuses</option>
+        @foreach (RouteStatus status in Enum.GetValues<RouteStatus>())
+        {
+            <option value="@status" selected="@(selectedStatus == status)">@status</option>
+        }
+    </select>
+    <select name="product" class="form-select w-auto">
+        <option value="">All products</option>
+        @foreach (RouteProduct product in Enum.GetValues<RouteProduct>())
+        {
+            <option value="@product" selected="@(selectedProduct == product)">@RouteProductHelper.Label(product)</option>
+        }
     </select>
     <button type="submit" class="btn btn-outline-secondary">Filter</button>
 </form>
 
 <table class="table table-hover">
-    <thead><tr><th>Route</th><th>Rate / Mo</th><th>Annual Revenue</th><th>Stops</th><th>Customers</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Route</th><th>Product</th><th>Wave Product ID</th><th>Rate / Mo</th><th>Annual Revenue</th><th>Stops</th><th>Customers</th><th>Status</th><th></th></tr></thead>
     <tbody>
     @foreach (var item in Model)
     {
@@ -28,6 +41,8 @@
                 : ratePerMonth * 12m);
         <tr>
             <td><a asp-action="Details" asp-route-id="@item.Id">@item.RouteName</a></td>
+            <td>@RouteProductHelper.Label(item.Product)</td>
+            <td><span class="small">@(string.IsNullOrWhiteSpace(item.WaveProductId) ? "—" : item.WaveProductId)</span></td>
             <td>@ratePerMonth.ToString("C0")</td>
             <td>@annualRevenue.ToString("C0")</td>
             <td>@item.Stops.Count(s => s.Status == StopStatus.Active)</td>

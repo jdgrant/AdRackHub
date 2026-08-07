@@ -32,7 +32,7 @@ public class CustomerContractsController : Controller
         {
             CustomerId = customerId,
             Term = BillingFrequency.Quarterly,
-            ContractName = DefaultContractName(customer.CustomerName, today),
+            ContractName = await SuggestUniqueContractNameAsync(customerId, customer.CustomerName, today),
             ServiceMonthMask = SubscribedMonths.AllMonthsMask,
             NextBillDate = new DateOnly(today.Year, today.Month, 1),
             BillingAnchorMonth = today.Month
@@ -64,14 +64,24 @@ public class CustomerContractsController : Controller
 
         ApplyContractFields(vm);
         ValidateRouteStops(vm);
+        await ValidateUniqueContractNameAsync(vm);
 
         if (ModelState.IsValid)
         {
-            _context.Add(vm.Contract);
-            await _context.SaveChangesAsync();
-            await SyncRoutesAsync(vm);
-            await _waveSyncService.PushContractToWaveAsync(vm.Contract.Id);
-            return RedirectToAction("Details", "Customers", new { id = vm.Contract.CustomerId });
+            try
+            {
+                _context.Add(vm.Contract);
+                await _context.SaveChangesAsync();
+                await SyncRoutesAsync(vm);
+                await _waveSyncService.PushContractToWaveAsync(vm.Contract.Id);
+                return RedirectToAction("Details", "Customers", new { id = vm.Contract.CustomerId });
+            }
+            catch (DbUpdateException ex) when (IsDuplicateContractNameException(ex))
+            {
+                ModelState.AddModelError(
+                    "Contract.ContractName",
+                    DuplicateContractNameMessage(vm.Contract.ContractName));
+            }
         }
 
         vm.AvailableRoutes = await GetAvailableRoutesAsync(
@@ -130,6 +140,7 @@ public class CustomerContractsController : Controller
 
         ApplyContractFields(vm);
         ValidateRouteStops(vm);
+        await ValidateUniqueContractNameAsync(vm);
 
         if (ModelState.IsValid)
         {
@@ -138,6 +149,7 @@ public class CustomerContractsController : Controller
                 _context.Update(vm.Contract);
                 await _context.SaveChangesAsync();
                 await SyncRoutesAsync(vm);
+                return RedirectToAction("Details", "Customers", new { id = vm.Contract.CustomerId });
             }
             catch (DbUpdateConcurrencyException)
             {
@@ -145,8 +157,12 @@ public class CustomerContractsController : Controller
                     return NotFound();
                 throw;
             }
-
-            return RedirectToAction("Details", "Customers", new { id = vm.Contract.CustomerId });
+            catch (DbUpdateException ex) when (IsDuplicateContractNameException(ex))
+            {
+                ModelState.AddModelError(
+                    "Contract.ContractName",
+                    DuplicateContractNameMessage(vm.Contract.ContractName));
+            }
         }
 
         vm.AvailableRoutes = await GetAvailableRoutesAsync(
@@ -246,8 +262,46 @@ public class CustomerContractsController : Controller
         if (vm.SelectedMonthNumbers == null || !vm.SelectedMonthNumbers.Any())
             ModelState.AddModelError("", "Select at least one month of service.");
 
+        vm.Contract.ContractName = (vm.Contract.ContractName ?? string.Empty).Trim();
         vm.Contract.ServiceMonthMask = SubscribedMonths.BuildMask(vm.SelectedMonthNumbers ?? new List<int>());
         vm.Contract.BillingAnchorMonth = vm.Contract.NextBillDate.Month;
+    }
+
+    private async Task ValidateUniqueContractNameAsync(CustomerContractEditViewModel vm)
+    {
+        var name = (vm.Contract.ContractName ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(name) || vm.Contract.CustomerId <= 0)
+            return;
+
+        var duplicate = await _context.CustomerContracts.AsNoTracking().AnyAsync(c =>
+            c.CustomerId == vm.Contract.CustomerId
+            && c.Id != vm.Contract.Id
+            && c.ContractName == name);
+
+        if (duplicate)
+            ModelState.AddModelError("Contract.ContractName", DuplicateContractNameMessage(name));
+    }
+
+    private static string DuplicateContractNameMessage(string? name)
+    {
+        var display = string.IsNullOrWhiteSpace(name) ? "this name" : $"\"{name.Trim()}\"";
+        return $"A contract named {display} already exists for this customer. Choose a different contract name.";
+    }
+
+    private static bool IsDuplicateContractNameException(DbUpdateException ex)
+    {
+        for (Exception? current = ex; current != null; current = current.InnerException)
+        {
+            var message = current.Message;
+            if (message.Contains("IX_CustomerBillings_CustomerId_BillName", StringComparison.OrdinalIgnoreCase)
+                || (message.Contains("duplicate", StringComparison.OrdinalIgnoreCase)
+                    && message.Contains("BillName", StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void ValidateRouteStops(CustomerContractEditViewModel vm)
@@ -288,6 +342,27 @@ public class CustomerContractsController : Controller
     {
         asOf ??= DateOnly.FromDateTime(DateTime.Today);
         return $"{customerName} {asOf.Value.Year}";
+    }
+
+    private async Task<string> SuggestUniqueContractNameAsync(int customerId, string customerName, DateOnly asOf)
+    {
+        var baseName = DefaultContractName(customerName, asOf).Trim();
+        var existing = await _context.CustomerContracts.AsNoTracking()
+            .Where(c => c.CustomerId == customerId)
+            .Select(c => c.ContractName)
+            .ToListAsync();
+
+        if (!existing.Any(n => string.Equals(n.Trim(), baseName, StringComparison.OrdinalIgnoreCase)))
+            return baseName;
+
+        for (var suffix = 2; suffix < 100; suffix++)
+        {
+            var candidate = $"{baseName} ({suffix})";
+            if (!existing.Any(n => string.Equals(n.Trim(), candidate, StringComparison.OrdinalIgnoreCase)))
+                return candidate;
+        }
+
+        return $"{baseName} ({DateTime.UtcNow:HHmmss})";
     }
 
     private async Task<List<RouteSelectionItem>> GetAvailableRoutesAsync(

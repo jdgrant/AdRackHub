@@ -183,7 +183,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         {
             e.Property(i => i.TotalAmount).HasPrecision(18, 2);
             e.Property(i => i.Status).HasConversion<string>();
-            e.HasIndex(i => new { i.BillingRunId, i.CustomerId }).IsUnique();
+            // Multiple invoices per customer/period are allowed (catch-up billing, one invoice per contract send).
+            e.HasIndex(i => new { i.BillingRunId, i.CustomerId });
             e.HasOne(i => i.BillingRun)
                 .WithMany(r => r.Invoices)
                 .HasForeignKey(i => i.BillingRunId)

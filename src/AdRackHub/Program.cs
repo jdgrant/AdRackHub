@@ -299,7 +299,8 @@ using (var scope = app.Services.CreateScope())
 
     foreach (var (routeKey, routeName) in RouteImportMap.KeyToRouteName)
     {
-        var route = await context.Routes.FirstOrDefaultAsync(r => r.RouteName == routeName);
+        var nameCandidates = RouteSheetMap.DatabaseNameCandidates(routeName);
+        var route = await context.Routes.FirstOrDefaultAsync(r => nameCandidates.Contains(r.RouteName));
         if (route == null || await context.Stops.AnyAsync(s => s.RouteId == route.Id))
             continue;
 
@@ -339,7 +340,8 @@ static async Task ImportRouteAsync(
     if (!RouteImportMap.KeyToRouteName.TryGetValue(routeKey, out var routeName))
         throw new InvalidOperationException($"Unknown route key '{routeKey}'.");
 
-    var route = await context.Routes.FirstOrDefaultAsync(r => r.RouteName == routeName)
+    var nameCandidates = RouteSheetMap.DatabaseNameCandidates(routeName);
+    var route = await context.Routes.FirstOrDefaultAsync(r => nameCandidates.Contains(r.RouteName))
         ?? throw new InvalidOperationException($"{routeName} route not found.");
 
     var csvPath = Path.Combine(contentRoot, "Data", "Imports", $"{routeKey}.csv");

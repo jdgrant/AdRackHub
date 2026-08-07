@@ -10,6 +10,12 @@ public class WaveSyncOptions
     /// <summary>Zapier Catch Hook URL — AdRackHub POSTs here when customers or billing contracts are created.</summary>
     public string? OutboundWebhookUrl { get; set; }
 
+    /// <summary>Zapier Catch Hook used by the Billing page "Test Zapier Invoice" button.</summary>
+    public string? TestZapierWebhookUrl { get; set; }
+
+    /// <summary>Make.com custom webhook URL used by the Billing page "Test Make Invoice" button.</summary>
+    public string? TestMakeWebhookUrl { get; set; }
+
     /// <summary>When true and Wave API credentials are set, new customers are created in Wave directly (in addition to the outbound webhook).</summary>
     public bool PushCustomersToWaveApi { get; set; } = true;
 }

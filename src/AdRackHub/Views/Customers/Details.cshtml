@@ -16,14 +16,18 @@
     {
         CustomerId = Model.Id,
         Name = TempData["ContactName"]?.ToString() ?? "",
+        FirstName = TempData["ContactFirstName"]?.ToString(),
+        LastName = TempData["ContactLastName"]?.ToString(),
         Email = TempData["ContactEmail"]?.ToString(),
         Phone = TempData["ContactPhone"]?.ToString(),
+        CellPhone = TempData["ContactCellPhone"]?.ToString(),
         Address = TempData["ContactAddress"]?.ToString(),
         City = TempData["ContactCity"]?.ToString(),
         State = TempData["ContactState"]?.ToString(),
         Zip = TempData["ContactZip"]?.ToString(),
         WebUrl = TempData["ContactWebUrl"]?.ToString(),
-        Role = Enum.TryParse<ContactRole>(TempData["ContactRole"]?.ToString(), out var role) ? role : ContactRole.Primary
+        Role = Enum.TryParse<ContactRole>(TempData["ContactRole"]?.ToString(), out var role) ? role : ContactRole.Primary,
+        SendInvoice = string.Equals(TempData["ContactSendInvoice"]?.ToString(), "true", StringComparison.OrdinalIgnoreCase)
     };
     ViewBag.ShowContactModal = TempData["ShowContactModal"] != null || string.Equals(Context.Request.Query["addContact"], "1", StringComparison.Ordinal);
     var activeContractRoutes = Model.Contracts
@@ -31,6 +35,47 @@
         .SelectMany(c => c.ContractRoutes.Select(cbr => new { Contract = c, ContractRoute = cbr }))
         .OrderBy(x => x.ContractRoute.Route.RouteName)
         .ThenBy(x => x.Contract.ContractName)
+        .ToList();
+    var customerRoutesByRouteId = Model.CustomerRoutes
+        .Where(cr => cr.Status == CustomerRouteStatus.Active)
+        .GroupBy(cr => cr.RouteId)
+        .ToDictionary(g => g.Key, g => g.First());
+    var contractedRouteOutlines = activeContractRoutes
+        .GroupBy(x => x.ContractRoute.RouteId)
+        .Select(g =>
+        {
+            var route = g.First().ContractRoute.Route;
+            customerRoutesByRouteId.TryGetValue(g.Key, out var customerRoute);
+            var allStops = customerRoute?.AllStops ?? true;
+            IEnumerable<Stop> stops;
+            if (customerRoute == null || customerRoute.AllStops)
+            {
+                stops = route.Stops
+                    .Where(s => s.Status == StopStatus.Active)
+                    .OrderBy(s => s.StepNumber.HasValue ? 0 : 1)
+                    .ThenBy(s => s.StepNumber)
+                    .ThenBy(s => s.StopName);
+            }
+            else
+            {
+                stops = customerRoute.CustomerRouteStops
+                    .Select(crs => crs.Stop)
+                    .Where(s => s != null && s.Status == StopStatus.Active)
+                    .OrderBy(s => s.StepNumber.HasValue ? 0 : 1)
+                    .ThenBy(s => s.StepNumber)
+                    .ThenBy(s => s.StopName)!;
+            }
+
+            return new
+            {
+                Route = route,
+                CustomerRoute = customerRoute,
+                AllStops = allStops,
+                Stops = stops.ToList(),
+                Contracts = g.Select(x => x.Contract).GroupBy(c => c.Id).Select(cg => cg.First()).OrderBy(c => c.ContractName).ToList()
+            };
+        })
+        .OrderBy(x => x.Route.RouteName)
         .ToList();
     var openTasks = Model.Tasks
         .Where(t => t.Status == CustomerTaskStatus.Open)
@@ -207,6 +252,15 @@
                 @if (!isProspect)
                 {
                     <li class="nav-item" role="presentation">
+                        <button class="nav-link @(activeTab == "routes" ? "active" : "")" id="tab-routes-btn" data-bs-toggle="tab" data-bs-target="#tab-routes" type="button" role="tab">
+                            Routes
+                            @if (contractedRouteOutlines.Count > 0)
+                            {
+                                <span class="badge rounded-pill bg-secondary ms-1">@contractedRouteOutlines.Count</span>
+                            }
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
                         <button class="nav-link @(activeTab == "contracts" ? "active" : "")" id="tab-contracts-btn" data-bs-toggle="tab" data-bs-target="#tab-contracts" type="button" role="tab">
                             Contracts
                             @if (Model.Contracts.Count > 0)
@@ -236,7 +290,7 @@
                             <div class="crm-timeline">
                             @foreach (var note in Model.Notes)
                             {
-                                <div class="crm-timeline-item">
+                                <div class="crm-timeline-item" id="note-@note.Id">
                                     <div class="crm-timeline-dot"></div>
                                     <div class="crm-timeline-body">
                                         <div class="d-flex justify-content-between gap-2 align-items-start">
@@ -250,13 +304,46 @@
                                                     }
                                                 </span>
                                             </div>
-                                            <form asp-action="DeleteNote" method="post">
-                                                <input type="hidden" name="id" value="@note.Id" />
-                                                <input type="hidden" name="customerId" value="@Model.Id" />
-                                                <button type="submit" class="btn btn-sm btn-link text-danger p-0" onclick="return confirm('Delete this note?');">Delete</button>
-                                            </form>
+                                            <div class="d-flex gap-2">
+                                                <button type="button" class="btn btn-sm btn-link p-0"
+                                                        onclick="document.getElementById('note-view-@note.Id').classList.add('d-none'); document.getElementById('note-edit-@note.Id').classList.remove('d-none');">
+                                                    Edit
+                                                </button>
+                                                <form asp-action="DeleteNote" method="post">
+                                                    <input type="hidden" name="id" value="@note.Id" />
+                                                    <input type="hidden" name="customerId" value="@Model.Id" />
+                                                    <button type="submit" class="btn btn-sm btn-link text-danger p-0" onclick="return confirm('Delete this note?');">Delete</button>
+                                                </form>
+                                            </div>
                                         </div>
-                                        <div class="mt-2 crm-pre">@note.Body</div>
+                                        <div id="note-view-@note.Id" class="mt-2 crm-pre">@note.Body</div>
+                                        <form asp-action="EditNote" method="post" id="note-edit-@note.Id" class="mt-2 d-none">
+                                            <input type="hidden" name="id" value="@note.Id" />
+                                            <input type="hidden" name="customerId" value="@Model.Id" />
+                                            <div class="d-flex justify-content-end mb-2">
+                                                <select class="form-select form-select-sm w-auto" name="kind">
+                                                    @foreach (CustomerNoteKind kindOption in Enum.GetValues(typeof(CustomerNoteKind)))
+                                                    {
+                                                        if (kindOption == note.Kind)
+                                                        {
+                                                            <option value="@kindOption" selected>@kindOption</option>
+                                                        }
+                                                        else
+                                                        {
+                                                            <option value="@kindOption">@kindOption</option>
+                                                        }
+                                                    }
+                                                </select>
+                                            </div>
+                                            <textarea class="form-control mb-2" name="body" rows="3" maxlength="4000" required>@note.Body</textarea>
+                                            <div class="d-flex gap-2">
+                                                <button type="submit" class="btn btn-primary btn-sm">Save</button>
+                                                <button type="button" class="btn btn-outline-secondary btn-sm"
+                                                        onclick="document.getElementById('note-edit-@note.Id').classList.add('d-none'); document.getElementById('note-view-@note.Id').classList.remove('d-none');">
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </form>
                                     </div>
                                 </div>
                             }
@@ -389,19 +476,35 @@
                                         <div class="d-flex justify-content-between gap-2">
                                             <div>
                                                 <div class="fw-semibold">@contact.Name</div>
+                                                @if (!string.IsNullOrWhiteSpace(contact.PersonName))
+                                                {
+                                                    <div class="small">@contact.PersonName</div>
+                                                }
                                                 <div class="small text-muted">@contact.Role</div>
                                             </div>
                                             <a asp-controller="Contacts" asp-action="Edit" asp-route-id="@contact.Id" class="btn btn-sm btn-outline-primary">Edit</a>
                                         </div>
                                         <div class="small mt-2">
                                             <div>@(contact.Email ?? "—")</div>
-                                            <div>@(contact.Phone ?? "—")</div>
+                                            <div>Tel: @(contact.Phone ?? "—")</div>
+                                            <div>Cell: @(contact.CellPhone ?? "—")</div>
                                             <div class="text-muted">@string.Join(", ", new[] { contact.Address, contact.City, contact.State, contact.Zip }.Where(s => !string.IsNullOrEmpty(s)).DefaultIfEmpty("—"))</div>
                                             @if (!string.IsNullOrWhiteSpace(contact.WebUrl))
                                             {
                                                 <div><a href="@contact.WebUrl" target="_blank" rel="noopener noreferrer">@contact.WebUrl</a></div>
                                             }
                                         </div>
+                                        <form asp-controller="Contacts" asp-action="ToggleSendInvoice" method="post" class="mt-3 mb-0">
+                                            <input type="hidden" name="id" value="@contact.Id" />
+                                            <input type="hidden" name="sendInvoice" value="@(!contact.SendInvoice)" />
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input" type="checkbox" role="switch"
+                                                       id="sendInvoice-@contact.Id"
+                                                       @(contact.SendInvoice ? "checked" : null)
+                                                       onchange="this.form.submit()" />
+                                                <label class="form-check-label" for="sendInvoice-@contact.Id">Send Invoice</label>
+                                            </div>
+                                        </form>
                                     </div>
                                 </div>
                             }
@@ -480,7 +583,7 @@
                             <div class="fw-semibold mb-2">Upload scan</div>
                             <div class="mb-2">
                                 <input type="file" class="form-control" name="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,image/*,application/pdf" required />
-                                <div class="form-text">PDF or image, up to 20 MB.</div>
+                                <div class="form-text">PDF or image, up to 20 MB. PDFs are converted to PNG.</div>
                             </div>
                             <div class="mb-2">
                                 <textarea class="form-control" name="notes" rows="2" maxlength="2000" placeholder="Optional description"></textarea>
@@ -530,17 +633,48 @@
                                     <tbody>
                                     @foreach (var item in Model.BrochureInventories)
                                     {
-                                        <tr>
+                                        <tr id="inventory-view-@item.Id">
                                             <td>@item.InventoryDate.ToString("MMM d, yyyy")</td>
                                             <td class="text-end fw-semibold">@item.Quantity.ToString("N0")</td>
                                             <td>@(string.IsNullOrWhiteSpace(item.Notes) ? "—" : item.Notes)</td>
                                             <td>@(item.CreatedBy ?? "—")</td>
                                             <td class="text-muted small">@item.CreatedAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</td>
-                                            <td class="text-end">
+                                            <td class="text-end text-nowrap">
+                                                <button type="button" class="btn btn-sm btn-outline-secondary me-1"
+                                                        onclick="document.getElementById('inventory-view-@item.Id').classList.add('d-none'); document.getElementById('inventory-edit-@item.Id').classList.remove('d-none');">
+                                                    Edit
+                                                </button>
                                                 <form asp-action="DeleteBrochureInventory" method="post" class="d-inline">
                                                     <input type="hidden" name="id" value="@item.Id" />
                                                     <input type="hidden" name="customerId" value="@Model.Id" />
                                                     <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this inventory record?');">Delete</button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                        <tr id="inventory-edit-@item.Id" class="d-none">
+                                            <td colspan="6">
+                                                <form asp-action="EditBrochureInventory" method="post" class="row g-2 align-items-end">
+                                                    <input type="hidden" name="id" value="@item.Id" />
+                                                    <input type="hidden" name="customerId" value="@Model.Id" />
+                                                    <div class="col-sm-4 col-md-3">
+                                                        <label class="form-label small mb-1" for="inventoryDate-@item.Id">Inventory date</label>
+                                                        <input type="date" class="form-control" id="inventoryDate-@item.Id" name="inventoryDate" value="@item.InventoryDate.ToString("yyyy-MM-dd")" required />
+                                                    </div>
+                                                    <div class="col-sm-4 col-md-2">
+                                                        <label class="form-label small mb-1" for="quantity-@item.Id">Count</label>
+                                                        <input type="number" class="form-control" id="quantity-@item.Id" name="quantity" min="0" step="1" value="@item.Quantity" required />
+                                                    </div>
+                                                    <div class="col-sm-12 col-md-4">
+                                                        <label class="form-label small mb-1" for="inventoryNotes-@item.Id">Notes</label>
+                                                        <input type="text" class="form-control" id="inventoryNotes-@item.Id" name="notes" maxlength="1000" value="@item.Notes" placeholder="Optional" />
+                                                    </div>
+                                                    <div class="col-sm-auto d-flex gap-2">
+                                                        <button type="submit" class="btn btn-primary btn-sm">Save</button>
+                                                        <button type="button" class="btn btn-outline-secondary btn-sm"
+                                                                onclick="document.getElementById('inventory-edit-@item.Id').classList.add('d-none'); document.getElementById('inventory-view-@item.Id').classList.remove('d-none');">
+                                                            Cancel
+                                                        </button>
+                                                    </div>
                                                 </form>
                                             </td>
                                         </tr>
@@ -558,6 +692,88 @@
 
                 @if (!isProspect)
                 {
+                    <div class="tab-pane fade @(activeTab == "routes" ? "show active" : "")" id="tab-routes" role="tabpanel">
+                        <div class="crm-panel">
+                            <div class="fw-semibold mb-3">Contracted routes &amp; stops</div>
+                            @if (contractedRouteOutlines.Any())
+                            {
+                                @foreach (var outline in contractedRouteOutlines)
+                                {
+                                    <div class="crm-side-card mb-3">
+                                        <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                                            <div>
+                                                <div class="fw-semibold">
+                                                    <a asp-controller="Routes" asp-action="Details" asp-route-id="@outline.Route.Id">@outline.Route.RouteName</a>
+                                                </div>
+                                                <div class="small text-muted">
+                                                    @RouteProductHelper.Label(outline.Route.Product)
+                                                    · @outline.Contracts.Count contract@(outline.Contracts.Count == 1 ? "" : "s"):
+                                                    @string.Join(", ", outline.Contracts.Select(c => c.ContractName))
+                                                </div>
+                                            </div>
+                                            <div class="text-end">
+                                                @if (outline.AllStops)
+                                                {
+                                                    <span class="badge bg-secondary">All stops</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-primary">Selected stops</span>
+                                                }
+                                                <div class="small text-muted mt-1">@outline.Stops.Count stop@(outline.Stops.Count == 1 ? "" : "s")</div>
+                                            </div>
+                                        </div>
+                                        @if (outline.Stops.Any())
+                                        {
+                                            <details>
+                                                <summary class="small fw-semibold" style="cursor: pointer;">
+                                                    Stops (@outline.Stops.Count)
+                                                </summary>
+                                                <div class="table-responsive mt-2">
+                                                    <table class="table table-sm align-middle mb-0">
+                                                        <thead>
+                                                            <tr>
+                                                                <th style="width: 4rem;">#</th>
+                                                                <th>Stop</th>
+                                                                <th>Type</th>
+                                                                <th>Location</th>
+                                                                <th>Highway / Exit</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                        @foreach (var stop in outline.Stops)
+                                                        {
+                                                            <tr>
+                                                                <td class="text-muted">@(stop.StepNumber?.ToString() ?? "—")</td>
+                                                                <td>
+                                                                    <a asp-controller="Stops" asp-action="Details" asp-route-id="@stop.Id">@stop.StopName</a>
+                                                                </td>
+                                                                <td>@stop.StopType</td>
+                                                                <td class="small text-muted">
+                                                                    @string.Join(", ", new[] { stop.Address, stop.City, stop.State, stop.Zip }.Where(s => !string.IsNullOrWhiteSpace(s)).DefaultIfEmpty("—"))
+                                                                </td>
+                                                                <td class="small">@(stop.HighwayExit ?? "—")</td>
+                                                            </tr>
+                                                        }
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </details>
+                                        }
+                                        else
+                                        {
+                                            <p class="text-muted mb-0 small">No stops selected for this route.</p>
+                                        }
+                                    </div>
+                                }
+                            }
+                            else
+                            {
+                                <p class="text-muted mb-0">No contracted routes yet. Add a contract to assign routes and stops.</p>
+                            }
+                        </div>
+                    </div>
+
                     <div class="tab-pane fade @(activeTab == "contracts" ? "show active" : "")" id="tab-contracts" role="tabpanel">
                         <div class="crm-panel">
                             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -572,7 +788,7 @@
                                     @foreach (var contact in billingContacts)
                                     {
                                         <div>
-                                            <strong>@contact.Name</strong>
+                                            <strong>@contact.DisplayName</strong>
                                             @if (!string.IsNullOrWhiteSpace(contact.Email))
                                             {
                                                 <span class="text-muted">— @contact.Email</span>

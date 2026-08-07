@@ -34,7 +34,11 @@ public static class CustomerListNavigation
         {
             query = query.Where(c =>
                 c.CustomerName.Contains(search) ||
-                c.Contacts.Any(ct => ct.Name.Contains(search) || (ct.Email != null && ct.Email.Contains(search))));
+                c.Contacts.Any(ct =>
+                    ct.Name.Contains(search)
+                    || (ct.FirstName != null && ct.FirstName.Contains(search))
+                    || (ct.LastName != null && ct.LastName.Contains(search))
+                    || (ct.Email != null && ct.Email.Contains(search))));
         }
 
         if (status.HasValue)

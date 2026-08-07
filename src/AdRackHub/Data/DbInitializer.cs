@@ -9,19 +9,19 @@ public static class DbInitializer
     public const string DefaultAdminEmail = "jon@ad-rack.net";
     public static readonly string[] StandardRoutes =
     [
-        "Central OH",
-        "Northern Interstate",
-        "Cincinnati-NKY",
-        "I-65 & 24",
-        "I-75",
-        "Lex-Frankfort",
-        "Louisville",
-        "Mid-TN",
-        "Northeast OH",
-        "I-64 East of Lexington Rest Area",
-        "I-75 Rest Areas",
-        "I-64 West & I-71 Rest Area",
-        "I-65 Rest Areas"
+        "Exit - Central OH",
+        "Exit - Northern Interstate",
+        "Exit - Cincinnati-NKY",
+        "Exit - I-65 & 24",
+        "Exit - I-75",
+        "Exit - Lex-Frankfort",
+        "Exit - Louisville",
+        "Exit - Mid-TN",
+        "Exit - Northeast OH",
+        "Rest Area - I-64 East of Lexington",
+        "Rest Area - I-75",
+        "Rest Area - I-64 West & I-71",
+        "Rest Area - I-65"
     ];
 
     private static readonly string[] PlaceholderRoutes =

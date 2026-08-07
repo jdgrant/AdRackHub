@@ -1,6 +1,7 @@
 using AdRackHub.Data;
 using AdRackHub.Models;
 using Microsoft.EntityFrameworkCore;
+using PDFtoImage;
 
 namespace AdRackHub.Services;
 
@@ -22,6 +23,7 @@ public class BrochureScanService
     };
 
     public const long MaxFileSizeBytes = 20 * 1024 * 1024;
+    private const int PdfRenderDpi = 150;
 
     private readonly ApplicationDbContext _context;
     private readonly string _uploadRoot;
@@ -58,45 +60,42 @@ public class BrochureScanService
         if (!customerExists)
             throw new InvalidOperationException("Customer not found.");
 
-        var storedFileName = $"{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
-        var customerDirectory = Path.Combine(_uploadRoot, customerId.ToString());
+        var customerDirectory = EnsureCustomerDirectory(customerId);
+        var trimmedNotes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+        var originalFileName = Path.GetFileName(file.FileName);
 
-        try
+        if (extension.Equals(".pdf", StringComparison.OrdinalIgnoreCase))
         {
-            Directory.CreateDirectory(customerDirectory);
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException(
-                $"Could not create upload folder. Ensure the app can write to App_Data/Uploads on the server. ({ex.Message})");
+            var tempPdfPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.pdf");
+            try
+            {
+                await using (var stream = File.Create(tempPdfPath))
+                    await file.CopyToAsync(stream, cancellationToken);
+
+                var scans = await SavePdfAsPngsAsync(
+                    customerId,
+                    customerDirectory,
+                    tempPdfPath,
+                    originalFileName,
+                    trimmedNotes,
+                    cancellationToken);
+
+                return scans[0];
+            }
+            finally
+            {
+                TryDeleteFile(tempPdfPath);
+            }
         }
 
-        var fullPath = Path.Combine(customerDirectory, storedFileName);
-        try
-        {
-            await using (var stream = File.Create(fullPath))
-                await file.CopyToAsync(stream, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException(
-                $"Could not save the uploaded file. Check write permissions for App_Data/Uploads on the server. ({ex.Message})");
-        }
-
-        var scan = new CustomerBrochureScan
-        {
-            CustomerId = customerId,
-            OriginalFileName = Path.GetFileName(file.FileName),
-            StoredFileName = storedFileName,
-            ContentType = ContentTypes.GetValueOrDefault(extension, file.ContentType),
-            FileSizeBytes = file.Length,
-            Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim(),
-            UploadedAt = DateTime.UtcNow
-        };
-
-        _context.CustomerBrochureScans.Add(scan);
-        await _context.SaveChangesAsync(cancellationToken);
-        return scan;
+        return await SaveImageFileAsync(
+            customerId,
+            customerDirectory,
+            file,
+            extension,
+            originalFileName,
+            trimmedNotes,
+            cancellationToken);
     }
 
     public async Task<CustomerBrochureScan> SaveFromPathAsync(
@@ -123,10 +122,23 @@ public class BrochureScanService
         if (!customerExists)
             throw new InvalidOperationException("Customer not found.");
 
-        var storedFileName = $"{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
-        var customerDirectory = Path.Combine(_uploadRoot, customerId.ToString());
-        Directory.CreateDirectory(customerDirectory);
+        var customerDirectory = EnsureCustomerDirectory(customerId);
+        var trimmedNotes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+        var originalFileName = Path.GetFileName(sourceFilePath);
 
+        if (extension.Equals(".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            var scans = await SavePdfAsPngsAsync(
+                customerId,
+                customerDirectory,
+                sourceFilePath,
+                originalFileName,
+                trimmedNotes,
+                cancellationToken);
+            return scans[0];
+        }
+
+        var storedFileName = $"{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
         var fullPath = Path.Combine(customerDirectory, storedFileName);
         await using (var source = File.OpenRead(sourceFilePath))
         await using (var destination = File.Create(fullPath))
@@ -135,17 +147,159 @@ public class BrochureScanService
         var scan = new CustomerBrochureScan
         {
             CustomerId = customerId,
-            OriginalFileName = Path.GetFileName(sourceFilePath),
+            OriginalFileName = originalFileName,
             StoredFileName = storedFileName,
             ContentType = ContentTypes.GetValueOrDefault(extension, "application/octet-stream"),
             FileSizeBytes = fileInfo.Length,
-            Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim(),
+            Notes = trimmedNotes,
             UploadedAt = DateTime.UtcNow
         };
 
         _context.CustomerBrochureScans.Add(scan);
         await _context.SaveChangesAsync(cancellationToken);
         return scan;
+    }
+
+    private async Task<CustomerBrochureScan> SaveImageFileAsync(
+        int customerId,
+        string customerDirectory,
+        IFormFile file,
+        string extension,
+        string originalFileName,
+        string? notes,
+        CancellationToken cancellationToken)
+    {
+        var storedFileName = $"{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
+        var fullPath = Path.Combine(customerDirectory, storedFileName);
+        try
+        {
+            await using (var stream = File.Create(fullPath))
+                await file.CopyToAsync(stream, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Could not save the uploaded file. Check write permissions for App_Data/Uploads on the server. ({ex.Message})");
+        }
+
+        var scan = new CustomerBrochureScan
+        {
+            CustomerId = customerId,
+            OriginalFileName = originalFileName,
+            StoredFileName = storedFileName,
+            ContentType = ContentTypes.GetValueOrDefault(extension, file.ContentType),
+            FileSizeBytes = file.Length,
+            Notes = notes,
+            UploadedAt = DateTime.UtcNow
+        };
+
+        _context.CustomerBrochureScans.Add(scan);
+        await _context.SaveChangesAsync(cancellationToken);
+        return scan;
+    }
+
+    private async Task<IReadOnlyList<CustomerBrochureScan>> SavePdfAsPngsAsync(
+        int customerId,
+        string customerDirectory,
+        string pdfPath,
+        string originalPdfFileName,
+        string? notes,
+        CancellationToken cancellationToken)
+    {
+        List<(string StoredFileName, string OriginalFileName, long FileSizeBytes)> rendered;
+        try
+        {
+            rendered = RenderPdfToPngFiles(pdfPath, customerDirectory, originalPdfFileName);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Could not convert the PDF to PNG. ({ex.Message})", ex);
+        }
+
+        if (rendered.Count == 0)
+            throw new InvalidOperationException("The PDF has no pages to convert.");
+
+        var scans = new List<CustomerBrochureScan>(rendered.Count);
+        var uploadedAt = DateTime.UtcNow;
+        foreach (var page in rendered)
+        {
+            scans.Add(new CustomerBrochureScan
+            {
+                CustomerId = customerId,
+                OriginalFileName = page.OriginalFileName,
+                StoredFileName = page.StoredFileName,
+                ContentType = "image/png",
+                FileSizeBytes = page.FileSizeBytes,
+                Notes = notes,
+                UploadedAt = uploadedAt
+            });
+        }
+
+        _context.CustomerBrochureScans.AddRange(scans);
+        await _context.SaveChangesAsync(cancellationToken);
+        return scans;
+    }
+
+    private static List<(string StoredFileName, string OriginalFileName, long FileSizeBytes)> RenderPdfToPngFiles(
+        string pdfPath,
+        string customerDirectory,
+        string originalPdfFileName)
+    {
+        var baseName = Path.GetFileNameWithoutExtension(originalPdfFileName);
+        if (string.IsNullOrWhiteSpace(baseName))
+            baseName = "brochure";
+
+        var options = new RenderOptions(Dpi: PdfRenderDpi);
+        var results = new List<(string StoredFileName, string OriginalFileName, long FileSizeBytes)>();
+
+        using var pdfStream = File.OpenRead(pdfPath);
+        var pageCount = Conversion.GetPageCount(pdfStream, leaveOpen: true);
+
+        for (var pageIndex = 0; pageIndex < pageCount; pageIndex++)
+        {
+            pdfStream.Position = 0;
+            var storedFileName = $"{Guid.NewGuid():N}.png";
+            var fullPath = Path.Combine(customerDirectory, storedFileName);
+            Conversion.SavePng(fullPath, pdfStream, page: pageIndex, leaveOpen: true, options: options);
+
+            var originalName = pageCount == 1
+                ? $"{baseName}.png"
+                : $"{baseName}-page-{pageIndex + 1}.png";
+
+            results.Add((storedFileName, originalName, new FileInfo(fullPath).Length));
+        }
+
+        return results;
+    }
+
+    private string EnsureCustomerDirectory(int customerId)
+    {
+        var customerDirectory = Path.Combine(_uploadRoot, customerId.ToString());
+        try
+        {
+            Directory.CreateDirectory(customerDirectory);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Could not create upload folder. Ensure the app can write to App_Data/Uploads on the server. ({ex.Message})");
+        }
+
+        return customerDirectory;
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch
+        {
+            // best-effort cleanup of temp PDF
+        }
     }
 
     public async Task<CustomerBrochureScan?> GetAsync(int scanId, CancellationToken cancellationToken = default) =>

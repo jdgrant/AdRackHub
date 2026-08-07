@@ -1,7 +1,7 @@
 using AdRackHub.Data;
 using AdRackHub.Models;
-using AdRackHub.ViewModels;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace AdRackHub.Services;
 
@@ -10,15 +10,18 @@ public class MonthlyBillingService
     private readonly ApplicationDbContext _context;
     private readonly WaveApiService _waveApiService;
     private readonly WaveSyncService _waveSyncService;
+    private readonly ILogger<MonthlyBillingService> _logger;
 
     public MonthlyBillingService(
         ApplicationDbContext context,
         WaveApiService waveApiService,
-        WaveSyncService waveSyncService)
+        WaveSyncService waveSyncService,
+        ILogger<MonthlyBillingService> logger)
     {
         _context = context;
         _waveApiService = waveApiService;
         _waveSyncService = waveSyncService;
+        _logger = logger;
     }
 
     public Task<List<DueContractItem>> GetDueContractsAsync(int year, int month, CancellationToken cancellationToken = default) =>
@@ -26,6 +29,8 @@ public class MonthlyBillingService
 
     public async Task<List<DueContractItem>> GetDueBillingsAsync(int year, int month, CancellationToken cancellationToken = default)
     {
+        var billedContractIds = await GetBilledContractIdsForPeriodAsync(year, month, cancellationToken);
+
         var contracts = await _context.CustomerContracts
             .Include(c => c.Customer)
             .Include(c => c.ContractRoutes)
@@ -36,6 +41,7 @@ public class MonthlyBillingService
 
         return contracts
             .Where(c => BillingDueCalculator.IsContractDue(c, year, month))
+            .Where(c => !billedContractIds.Contains(c.Id))
             .SelectMany(c => c.ContractRoutes.Select(cr => new DueContractItem
             {
                 CustomerId = c.CustomerId,
@@ -56,6 +62,24 @@ public class MonthlyBillingService
             .ToList();
     }
 
+    private async Task<HashSet<int>> GetBilledContractIdsForPeriodAsync(
+        int year,
+        int month,
+        CancellationToken cancellationToken)
+    {
+        var ids = await _context.BillingRunInvoiceLines
+            .Where(l => l.BillingRunInvoice.BillingRun.Year == year
+                        && l.BillingRunInvoice.BillingRun.Month == month
+                        && (l.BillingRunInvoice.Status == BillingRunInvoiceStatus.Submitted
+                            || l.BillingRunInvoice.Status == BillingRunInvoiceStatus.Received
+                            || l.BillingRunInvoice.Status == BillingRunInvoiceStatus.Canceled))
+            .Select(l => l.CustomerContractId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        return ids.ToHashSet();
+    }
+
     public async Task<BillingRun?> GetRunAsync(int year, int month, CancellationToken cancellationToken = default) =>
         await _context.BillingRuns
             .Include(r => r.Invoices)
@@ -63,38 +87,6 @@ public class MonthlyBillingService
             .Include(r => r.Invoices)
                 .ThenInclude(i => i.Lines)
             .FirstOrDefaultAsync(r => r.Year == year && r.Month == month, cancellationToken);
-
-    public Task<List<ConfiguredContractRow>> GetAllConfiguredContractsAsync(int year, int month, CancellationToken cancellationToken = default) =>
-        GetAllConfiguredBillsAsync(year, month, cancellationToken);
-
-    public async Task<List<ConfiguredContractRow>> GetAllConfiguredBillsAsync(int year, int month, CancellationToken cancellationToken = default)
-    {
-        var contracts = await _context.CustomerContracts
-            .Include(c => c.Customer)
-            .Include(c => c.ContractRoutes)
-                .ThenInclude(cr => cr.Route)
-            .Where(c => c.Customer.Status == CustomerStatus.Active && c.Customer.Type == CustomerType.Customer)
-            .OrderBy(c => c.Customer.CustomerName)
-            .ThenBy(c => c.ContractName)
-            .ToListAsync(cancellationToken);
-
-        return contracts.Select(c => new ConfiguredContractRow
-        {
-            CustomerContractId = c.Id,
-            CustomerId = c.CustomerId,
-            CustomerName = c.Customer.CustomerName,
-            WaveCustomerId = c.Customer.WaveCustomerId,
-            ContractName = c.ContractName,
-            Term = c.Term,
-            BillingAnchorMonth = c.BillingAnchorMonth,
-            ServiceMonthMask = c.ServiceMonthMask,
-            ContractEndDate = c.ContractEndDate,
-            NextBillDate = c.NextBillDate,
-            RouteNames = c.ContractRoutes.Select(cr => cr.Route.RouteName).OrderBy(n => n).ToList(),
-            Total = c.ContractRoutes.Sum(AnnualBillingHelper.GetBillingAmount),
-            IsDueThisPeriod = c.ContractRoutes.Any() && BillingDueCalculator.IsContractDue(c, year, month)
-        }).ToList();
-    }
 
     public async Task<BillingRun> PrepareAndSubmitAsync(int year, int month, CancellationToken cancellationToken = default)
     {
@@ -217,6 +209,7 @@ public class MonthlyBillingService
             {
                 invoice.Status = BillingRunInvoiceStatus.Submitted;
                 invoice.WaveInvoiceId = result.WaveInvoiceId;
+                invoice.WaveInvoiceNumber = result.InvoiceNumber;
                 invoice.WaveInvoiceUrl = result.WaveInvoiceUrl;
                 invoice.ErrorMessage = null;
 
@@ -230,15 +223,276 @@ public class MonthlyBillingService
         }
 
         run.SubmittedAt = DateTime.UtcNow;
-        run.Status = run.Invoices.All(i => i.Status is BillingRunInvoiceStatus.Submitted or BillingRunInvoiceStatus.Skipped)
+        run.Status = run.Invoices.All(i => IsCompletedInvoiceStatus(i.Status))
             ? BillingRunStatus.Submitted
-            : run.Invoices.Any(i => i.Status == BillingRunInvoiceStatus.Submitted)
+            : run.Invoices.Any(i => IsCompletedInvoiceStatus(i.Status))
                 ? BillingRunStatus.PartiallySubmitted
                 : BillingRunStatus.Failed;
 
         await _context.SaveChangesAsync(cancellationToken);
         return run;
     }
+
+    /// <summary>
+    /// Creates an invoice for one contract, POSTs it to the Make/Zapier webhook, logs the invoice ID,
+    /// and advances NextBillDate by the contract term (1 month / 3 months / 1 year).
+    /// </summary>
+    public async Task<(bool Success, string Message, int? InvoiceId)> CreateOnSendAsync(
+        int year,
+        int month,
+        int customerContractId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_waveSyncService.IsCreateOnSendConfigured)
+            return (false, "Configure WaveSync:TestMakeWebhookUrl or WaveSync:TestZapierWebhookUrl first.", null);
+
+        var dueItems = (await GetDueContractsAsync(year, month, cancellationToken))
+            .Where(i => i.CustomerContractId == customerContractId)
+            .ToList();
+
+        if (dueItems.Count == 0)
+        {
+            // May already be billed this period (and therefore excluded from due).
+            var existing = await _context.BillingRunInvoices
+                .Include(i => i.Lines)
+                .Where(i => i.BillingRun.Year == year
+                            && i.BillingRun.Month == month
+                            && (i.Status == BillingRunInvoiceStatus.Submitted
+                                || i.Status == BillingRunInvoiceStatus.Received
+                                || i.Status == BillingRunInvoiceStatus.Canceled)
+                            && i.Lines.Any(l => l.CustomerContractId == customerContractId))
+                .OrderByDescending(i => i.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (existing != null)
+                return (true, $"Invoice already sent for this period. Invoice ID: {existing.Id}.", existing.Id);
+
+            return (false, "This contract is not due for the selected period.", null);
+        }
+
+        var customerId = dueItems.First().CustomerId;
+        var invoice = await EnsureContractInvoiceAsync(year, month, customerId, customerContractId, dueItems, cancellationToken);
+
+        if (invoice.Status == BillingRunInvoiceStatus.Submitted)
+        {
+            _logger.LogInformation(
+                "Create On Send skipped; invoice ID {InvoiceId} already submitted for contract {ContractId}.",
+                invoice.Id,
+                customerContractId);
+            return (true, $"Invoice already sent. Invoice ID: {invoice.Id}.", invoice.Id);
+        }
+
+        var (success, message, _) = await _waveSyncService.SendCreateOnSendInvoiceAsync(
+            year,
+            month,
+            customerId,
+            customerContractId,
+            invoice.Id,
+            cancellationToken);
+
+        if (!success)
+        {
+            invoice.Status = BillingRunInvoiceStatus.Failed;
+            invoice.ErrorMessage = message;
+            await UpdateRunStatusAsync(invoice.BillingRunId, cancellationToken);
+            return (false, message, invoice.Id);
+        }
+
+        invoice.Status = BillingRunInvoiceStatus.Submitted;
+        invoice.ErrorMessage = null;
+
+        await AdvanceContractBillDatesAsync(new[] { customerContractId }, cancellationToken);
+        await UpdateRunStatusAsync(invoice.BillingRunId, cancellationToken);
+
+        var contract = await _context.CustomerContracts.FindAsync(new object[] { customerContractId }, cancellationToken);
+        var nextBill = contract?.NextBillDate.ToString("MMM d, yyyy") ?? "updated";
+
+        _logger.LogInformation(
+            "Create On Send completed. Invoice ID {InvoiceId} for contract {ContractId} period {Period}; next bill {NextBillDate}.",
+            invoice.Id,
+            customerContractId,
+            BillingDueCalculator.PeriodLabel(year, month),
+            nextBill);
+
+        return (true, $"{message} Next bill date: {nextBill}.", invoice.Id);
+    }
+
+    private async Task<BillingRunInvoice> EnsureContractInvoiceAsync(
+        int year,
+        int month,
+        int customerId,
+        int customerContractId,
+        List<DueContractItem> dueItems,
+        CancellationToken cancellationToken)
+    {
+        var run = await GetRunAsync(year, month, cancellationToken);
+        if (run == null)
+        {
+            run = new BillingRun
+            {
+                Year = year,
+                Month = month,
+                Status = BillingRunStatus.Draft,
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.BillingRuns.Add(run);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // Reuse a pending/failed invoice for this contract in this period; otherwise create a new one
+        // so a contract can accumulate many invoices over time (and catch-up within a period).
+        var invoice = run.Invoices.FirstOrDefault(i =>
+            i.Status is BillingRunInvoiceStatus.Pending or BillingRunInvoiceStatus.Failed
+            && i.Lines.Any(l => l.CustomerContractId == customerContractId)
+            && i.Lines.All(l => l.CustomerContractId == customerContractId));
+
+        if (invoice != null)
+        {
+            invoice.TotalAmount = dueItems.Sum(i => i.Amount);
+            invoice.WaveCustomerId = dueItems.First().WaveCustomerId;
+            invoice.ErrorMessage = null;
+            invoice.Lines.Clear();
+            foreach (var item in dueItems)
+            {
+                invoice.Lines.Add(new BillingRunInvoiceLine
+                {
+                    CustomerContractId = item.CustomerContractId,
+                    ContractName = item.ContractName,
+                    Term = item.Term,
+                    RouteName = item.RouteName,
+                    Amount = item.Amount
+                });
+            }
+
+            await _context.SaveChangesAsync(cancellationToken);
+            return invoice;
+        }
+
+        invoice = new BillingRunInvoice
+        {
+            BillingRunId = run.Id,
+            CustomerId = customerId,
+            WaveCustomerId = dueItems.First().WaveCustomerId,
+            TotalAmount = dueItems.Sum(i => i.Amount),
+            Status = BillingRunInvoiceStatus.Pending,
+            Lines = dueItems.Select(item => new BillingRunInvoiceLine
+            {
+                CustomerContractId = item.CustomerContractId,
+                ContractName = item.ContractName,
+                Term = item.Term,
+                RouteName = item.RouteName,
+                Amount = item.Amount
+            }).ToList()
+        };
+
+        run.Invoices.Add(invoice);
+        await _context.SaveChangesAsync(cancellationToken);
+        return invoice;
+    }
+
+    private async Task UpdateRunStatusAsync(int billingRunId, CancellationToken cancellationToken)
+    {
+        var run = await _context.BillingRuns
+            .Include(r => r.Invoices)
+            .FirstOrDefaultAsync(r => r.Id == billingRunId, cancellationToken);
+        if (run == null)
+            return;
+
+        run.SubmittedAt = DateTime.UtcNow;
+        run.Status = run.Invoices.All(i => IsCompletedInvoiceStatus(i.Status))
+            ? BillingRunStatus.Submitted
+            : run.Invoices.Any(i => IsCompletedInvoiceStatus(i.Status))
+                ? BillingRunStatus.PartiallySubmitted
+                : run.Invoices.Any(i => i.Status == BillingRunInvoiceStatus.Failed)
+                    ? BillingRunStatus.Failed
+                    : BillingRunStatus.Draft;
+
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<(bool Success, string Message)> UpdateInvoiceWaveStatusAsync(
+        int invoiceId,
+        BillingRunInvoiceStatus status,
+        string? waveInvoiceNumber = null,
+        string? waveInvoiceId = null,
+        string? waveInvoiceUrl = null,
+        DateOnly? receivedDate = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!WaveInvoiceStatuses.IsWaveLifecycle(status))
+            return (false, "Status must be Submitted, Received, or Canceled.");
+
+        var invoice = await _context.BillingRunInvoices
+            .Include(i => i.Customer)
+            .FirstOrDefaultAsync(i => i.Id == invoiceId, cancellationToken);
+
+        if (invoice == null)
+            return (false, "Invoice not found.");
+
+        if (!string.IsNullOrWhiteSpace(waveInvoiceNumber))
+            invoice.WaveInvoiceNumber = waveInvoiceNumber.Trim();
+
+        if (!string.IsNullOrWhiteSpace(waveInvoiceId))
+            invoice.WaveInvoiceId = waveInvoiceId.Trim();
+
+        if (!string.IsNullOrWhiteSpace(waveInvoiceUrl))
+            invoice.WaveInvoiceUrl = waveInvoiceUrl.Trim();
+
+        invoice.Status = status;
+        invoice.ErrorMessage = null;
+
+        if (status == BillingRunInvoiceStatus.Received)
+            invoice.ReceivedDate = receivedDate ?? DateOnly.FromDateTime(DateTime.Today);
+        else if (status == BillingRunInvoiceStatus.Submitted)
+            invoice.ReceivedDate = null;
+
+        await UpdateRunStatusAsync(invoice.BillingRunId, cancellationToken);
+
+        _logger.LogInformation(
+            "Invoice {InvoiceId} status set to {Status} (Wave #{WaveInvoiceNumber}, received {ReceivedDate}).",
+            invoice.Id,
+            invoice.Status,
+            invoice.WaveInvoiceNumber ?? "—",
+            invoice.ReceivedDate?.ToString("yyyy-MM-dd") ?? "—");
+
+        var message = status == BillingRunInvoiceStatus.Received
+            ? $"Invoice {invoice.Id} marked Received on {invoice.ReceivedDate:MMM d, yyyy}."
+            : $"Invoice {invoice.Id} marked {status}.";
+        return (true, message);
+    }
+
+    public async Task<List<BillingRunInvoice>> GetSubmittedInvoicesAsync(
+        int? year = null,
+        int? month = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _context.BillingRunInvoices
+            .Include(i => i.Customer)
+            .Include(i => i.BillingRun)
+            .Include(i => i.Lines)
+            .Where(i => i.Status == BillingRunInvoiceStatus.Submitted
+                        || i.Status == BillingRunInvoiceStatus.Received
+                        || i.Status == BillingRunInvoiceStatus.Canceled);
+
+        if (year.HasValue)
+            query = query.Where(i => i.BillingRun.Year == year.Value);
+
+        if (month.HasValue)
+            query = query.Where(i => i.BillingRun.Month == month.Value);
+
+        return await query
+            .OrderByDescending(i => i.BillingRun.Year)
+            .ThenByDescending(i => i.BillingRun.Month)
+            .ThenBy(i => i.Customer.CustomerName)
+            .ThenByDescending(i => i.Id)
+            .ToListAsync(cancellationToken);
+    }
+
+    private static bool IsCompletedInvoiceStatus(BillingRunInvoiceStatus status) =>
+        status is BillingRunInvoiceStatus.Submitted
+            or BillingRunInvoiceStatus.Received
+            or BillingRunInvoiceStatus.Canceled
+            or BillingRunInvoiceStatus.Skipped;
 
     private async Task AdvanceContractBillDatesAsync(IEnumerable<int> contractIds, CancellationToken cancellationToken)
     {

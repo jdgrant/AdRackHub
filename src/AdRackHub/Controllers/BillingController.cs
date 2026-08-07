@@ -13,15 +13,18 @@ public class BillingController : Controller
     private readonly ApplicationDbContext _context;
     private readonly MonthlyBillingService _billingService;
     private readonly WaveApiService _waveApiService;
+    private readonly WaveSyncService _waveSyncService;
 
     public BillingController(
         ApplicationDbContext context,
         MonthlyBillingService billingService,
-        WaveApiService waveApiService)
+        WaveApiService waveApiService,
+        WaveSyncService waveSyncService)
     {
         _context = context;
         _billingService = billingService;
         _waveApiService = waveApiService;
+        _waveSyncService = waveSyncService;
     }
 
     public async Task<IActionResult> Index(int? year, int? month)
@@ -36,12 +39,79 @@ public class BillingController : Controller
             Month = selectedMonth,
             PeriodLabel = BillingDueCalculator.PeriodLabel(selectedYear, selectedMonth),
             DueContracts = await _billingService.GetDueContractsAsync(selectedYear, selectedMonth),
-            AllContracts = await _billingService.GetAllConfiguredContractsAsync(selectedYear, selectedMonth),
             Run = await _billingService.GetRunAsync(selectedYear, selectedMonth),
-            WaveConfigured = _waveApiService.IsConfigured
+            SubmittedInvoices = await _billingService.GetSubmittedInvoicesAsync(selectedYear, selectedMonth),
+            WaveConfigured = _waveApiService.IsConfigured,
+            CreateOnSendConfigured = _waveSyncService.IsCreateOnSendConfigured
         };
 
         return View(model);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateOnSend(int year, int month, int customerContractId)
+    {
+        var (success, message, _) = await _billingService.CreateOnSendAsync(year, month, customerContractId);
+        if (success)
+            TempData["Message"] = message;
+        else
+            TempData["Error"] = message;
+
+        return RedirectToAction(nameof(Index), new { year, month });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> MarkInvoiceReceived(
+        int year,
+        int month,
+        int invoiceId,
+        DateOnly? receivedDate,
+        string? waveInvoiceNumber)
+    {
+        var (success, message) = await _billingService.UpdateInvoiceWaveStatusAsync(
+            invoiceId,
+            BillingRunInvoiceStatus.Received,
+            waveInvoiceNumber,
+            receivedDate: receivedDate ?? DateOnly.FromDateTime(DateTime.Today));
+
+        if (success)
+            TempData["Message"] = message;
+        else
+            TempData["Error"] = message;
+
+        return RedirectToAction(nameof(Index), new { year, month });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateInvoiceStatus(
+        int year,
+        int month,
+        int invoiceId,
+        string status,
+        string? waveInvoiceNumber,
+        DateOnly? receivedDate)
+    {
+        if (!WaveInvoiceStatuses.TryParse(status, out var parsed))
+        {
+            TempData["Error"] = "Status must be Submitted, Received, or Canceled.";
+            return RedirectToAction(nameof(Index), new { year, month });
+        }
+
+        var (success, message) = await _billingService.UpdateInvoiceWaveStatusAsync(
+            invoiceId,
+            parsed,
+            waveInvoiceNumber,
+            receivedDate: receivedDate);
+
+        if (success)
+            TempData["Message"] = message;
+        else
+            TempData["Error"] = message;
+
+        return RedirectToAction(nameof(Index), new { year, month });
     }
 
     [HttpPost]

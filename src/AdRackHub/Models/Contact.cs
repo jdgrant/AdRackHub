@@ -13,8 +13,16 @@ public class Contact
 
     [Required]
     [StringLength(200)]
-    [Display(Name = "Name")]
+    [Display(Name = "Business Name")]
     public string Name { get; set; } = string.Empty;
+
+    [StringLength(100)]
+    [Display(Name = "First Name")]
+    public string? FirstName { get; set; }
+
+    [StringLength(100)]
+    [Display(Name = "Last Name")]
+    public string? LastName { get; set; }
 
     [EmailAddress]
     [StringLength(200)]
@@ -22,7 +30,13 @@ public class Contact
 
     [Phone]
     [StringLength(50)]
+    [Display(Name = "Telephone")]
     public string? Phone { get; set; }
+
+    [Phone]
+    [StringLength(50)]
+    [Display(Name = "Cell Phone")]
+    public string? CellPhone { get; set; }
 
     [StringLength(300)]
     public string? Address { get; set; }
@@ -44,8 +58,17 @@ public class Contact
     [Display(Name = "Role")]
     public ContactRole Role { get; set; } = ContactRole.Primary;
 
+    [Display(Name = "Send Invoice")]
+    public bool SendInvoice { get; set; }
+
     // Not posted from the Add Contact modal — only CustomerId is. Must stay optional
     // so ASP.NET does not treat the navigation as required ("The Customer field is required.").
     [ValidateNever]
     public Customer? Customer { get; set; }
+
+    public string PersonName =>
+        string.Join(" ", new[] { FirstName, LastName }.Where(s => !string.IsNullOrWhiteSpace(s))).Trim();
+
+    public string DisplayName =>
+        string.IsNullOrWhiteSpace(PersonName) ? Name : $"{Name} ({PersonName})";
 }

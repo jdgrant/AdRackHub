@@ -19,11 +19,11 @@ public static class BillingDueCalculator
         if (contract.ContractEndDate.HasValue && contract.ContractEndDate.Value < periodStart)
             return false;
 
-        if (contract.NextBillDate > periodEnd)
+        // Due only when NextBillDate falls in the selected billing period (date picker).
+        if (contract.NextBillDate < periodStart || contract.NextBillDate > periodEnd)
             return false;
 
-        var billDate = contract.NextBillDate <= periodEnd ? contract.NextBillDate : periodEnd;
-        if (!HasServiceForBillingPeriod(contract.ServiceMonthMask, contract.Term, billDate))
+        if (!HasServiceForBillingPeriod(contract.ServiceMonthMask, contract.Term, contract.NextBillDate))
             return false;
 
         return true;

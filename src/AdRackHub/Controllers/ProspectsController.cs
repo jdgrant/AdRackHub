@@ -43,6 +43,8 @@ public class ProspectsController : Controller
                 || (c.WebUrl != null && c.WebUrl.Contains(search))
                 || c.Contacts.Any(ct =>
                     ct.Name.Contains(search)
+                    || (ct.FirstName != null && ct.FirstName.Contains(search))
+                    || (ct.LastName != null && ct.LastName.Contains(search))
                     || (ct.Email != null && ct.Email.Contains(search))
                     || (ct.Phone != null && ct.Phone.Contains(search))
                     || (ct.City != null && ct.City.Contains(search))

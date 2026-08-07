@@ -3,8 +3,13 @@
 <div class="col-md-8">
     <div class="mb-3">
         <label asp-for="RouteName" class="form-label"></label>
-        <input asp-for="RouteName" class="form-control" />
+        <input asp-for="RouteName" class="form-control" id="routeNameInput" />
         <span asp-validation-for="RouteName" class="text-danger"></span>
+        <div class="form-text">
+            Product:
+            <strong id="routeProductLabel">@RouteProductHelper.Label(Model?.Product ?? RouteProduct.Exits)</strong>
+            <span class="text-muted">(“Rest Area - …” → Rest Area; “Exit - …” / others → Exits)</span>
+        </div>
     </div>
     <div class="mb-3">
         <label asp-for="Description" class="form-label"></label>
@@ -22,4 +27,23 @@
         <label asp-for="Status" class="form-label"></label>
         <select asp-for="Status" class="form-select" asp-items="Html.GetEnumSelectList<RouteStatus>()"></select>
     </div>
+    <div class="mb-3">
+        <label asp-for="WaveProductId" class="form-label"></label>
+        <input asp-for="WaveProductId" class="form-control" placeholder="Wave product ID for Zapier / invoices" />
+        <span asp-validation-for="WaveProductId" class="text-danger"></span>
+    </div>
 </div>
+
+<script>
+    (function () {
+        const input = document.getElementById('routeNameInput');
+        const label = document.getElementById('routeProductLabel');
+        if (!input || !label) return;
+        const update = () => {
+            const name = input.value || '';
+            label.textContent = /rest area/i.test(name) ? 'Rest Area' : 'Exits';
+        };
+        input.addEventListener('input', update);
+        update();
+    })();
+</script>

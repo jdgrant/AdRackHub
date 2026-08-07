@@ -25,11 +25,20 @@ public class BillingRunInvoice
     [StringLength(100)]
     public string? WaveInvoiceId { get; set; }
 
+    /// <summary>Human-readable Wave invoice number (e.g. from Wave or Make callback).</summary>
+    [StringLength(50)]
+    public string? WaveInvoiceNumber { get; set; }
+
     [StringLength(500)]
     public string? WaveInvoiceUrl { get; set; }
 
     [StringLength(2000)]
     public string? ErrorMessage { get; set; }
+
+    /// <summary>Date payment/invoice was marked Received.</summary>
+    public DateOnly? ReceivedDate { get; set; }
+
+    public bool HasWaveInvoiceNumber => !string.IsNullOrWhiteSpace(WaveInvoiceNumber);
 
     public BillingRun BillingRun { get; set; } = null!;
     public Customer Customer { get; set; } = null!;

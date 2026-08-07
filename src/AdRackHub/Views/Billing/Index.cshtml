@@ -1,3 +1,4 @@
+@using AdRackHub.Models
 @using AdRackHub.Services
 @model BillingPageViewModel
 @{
@@ -5,11 +6,12 @@
     var monthOptions = Enumerable.Range(1, 12)
         .Select(m => new { Value = m, Label = new DateOnly(2000, m, 1).ToString("MMMM") })
         .ToList();
+    var today = DateOnly.FromDateTime(DateTime.Today);
 }
 
 <div class="page-header">
     <h1 class="h2 mb-0">Billing</h1>
-    <div>
+    <div class="d-flex flex-wrap gap-2">
         @if (Model.CanSendToWave)
         {
             <form asp-action="SendToWave" method="post" class="d-inline">
@@ -29,28 +31,21 @@
     </div>
 </div>
 
-@if (!Model.WaveConfigured)
-{
-    <div class="alert alert-warning">
-        Wave API is not configured. Set <code>Wave:AccessToken</code> and <code>Wave:BusinessId</code> to send invoices.
-    </div>
-}
-else
-{
-    <div class="alert alert-info py-2">
-        Sending to Wave will create customers (if needed) and draft invoices via the Wave API.
-        Customer details are taken from billing/primary contacts.
-    </div>
-}
-
-<form method="get" class="row g-2 align-items-end mb-4">
+<form method="get" asp-action="Index" class="row g-2 align-items-end mb-4">
     <div class="col-auto">
         <label class="form-label">Billing period</label>
         <div class="input-group">
-            <select name="month" class="form-select">
+            <select name="month" class="form-select" onchange="this.form.submit()">
                 @foreach (var option in monthOptions)
                 {
-                    <option value="@option.Value" selected="@(option.Value == Model.Month)">@option.Label</option>
+                    if (option.Value == Model.Month)
+                    {
+                        <option value="@option.Value" selected>@option.Label</option>
+                    }
+                    else
+                    {
+                        <option value="@option.Value">@option.Label</option>
+                    }
                 }
             </select>
             <input type="number" name="year" class="form-control" value="@Model.Year" min="2020" max="2100" style="max-width: 6rem;" />
@@ -117,159 +112,138 @@ else
     </div>
 }
 
-
-<h2 class="h5">Due this period</h2>
+<h2 class="h5">Due this period — @Model.PeriodLabel</h2>
 @if (Model.DueContracts.Any())
 {
-    @if (Model.Run?.Invoices.Any() == true)
-    {
-        @foreach (var invoice in Model.Run.Invoices.OrderBy(i => i.Customer.CustomerName))
+    <table class="table table-sm table-hover">
+        <thead>
+            <tr>
+                <th>Customer</th>
+                <th>Contract</th>
+                <th>Term</th>
+                <th>Routes</th>
+                <th>Products</th>
+                <th class="text-end">Amount</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var item in Model.DueContractSummaries)
         {
-            <div class="card mb-3">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <div>
-                        <a asp-controller="Customers" asp-action="Details" asp-route-id="@invoice.CustomerId">
-                            <strong>@invoice.Customer.CustomerName</strong>
-                        </a>
-                        <span class="badge @(invoice.Status switch {
-                            BillingRunInvoiceStatus.Submitted => "bg-success",
-                            BillingRunInvoiceStatus.Failed => "bg-danger",
-                            BillingRunInvoiceStatus.Skipped => "bg-warning text-dark",
-                            _ => "bg-secondary"
-                        }) ms-2">@invoice.Status</span>
-                    </div>
-                    <div class="fw-semibold">@invoice.TotalAmount.ToString("C")</div>
-                </div>
-                <div class="card-body p-0">
-                    @if (!string.IsNullOrWhiteSpace(invoice.ErrorMessage))
+            <tr>
+                <td>
+                    <a asp-controller="Customers" asp-action="Details" asp-route-id="@item.CustomerId">@item.CustomerName</a>
+                </td>
+                <td>@item.ContractName</td>
+                <td>@BillingTermDisplay.Label(item.Term)</td>
+                <td>@string.Join(", ", item.RouteNames)</td>
+                <td>@string.Join(", ", item.Products)</td>
+                <td class="text-end">@item.Amount.ToString("C")</td>
+                <td>
+                    @if (Model.CreateOnSendConfigured)
                     {
-                        <div class="alert alert-warning m-3 mb-0">@invoice.ErrorMessage</div>
+                        <form asp-action="CreateOnSend" method="post" class="d-inline">
+                            <input type="hidden" name="year" value="@Model.Year" />
+                            <input type="hidden" name="month" value="@Model.Month" />
+                            <input type="hidden" name="customerContractId" value="@item.CustomerContractId" />
+                            <button type="submit" class="btn btn-sm btn-outline-primary"
+                                    onclick="return confirm('Send invoice for @item.ContractName (@item.CustomerName) and advance the next bill date?');">
+                                Create On Send
+                            </button>
+                        </form>
                     }
-                    @if (!string.IsNullOrWhiteSpace(invoice.WaveInvoiceUrl))
-                    {
-                        <div class="px-3 pt-3">
-                            <a href="@invoice.WaveInvoiceUrl" target="_blank" rel="noopener">View in Wave</a>
-                        </div>
-                    }
-                    <table class="table table-sm mb-0">
-                        <thead>
-                            <tr>
-                                <th>Contract</th>
-                                <th>Term</th>
-                                <th>Route</th>
-                                <th class="text-end">Amount</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                        @foreach (var line in invoice.Lines.OrderBy(l => l.ContractName).ThenBy(l => l.RouteName))
-                        {
-                            <tr>
-                                <td>@line.ContractName</td>
-                                <td>@BillingTermDisplay.Label(line.Term)</td>
-                                <td>@line.RouteName</td>
-                                <td class="text-end">@line.Amount.ToString("C")</td>
-                            </tr>
-                        }
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+                </td>
+            </tr>
         }
-    }
-    else
-    {
-        <table class="table table-sm table-hover">
-            <thead>
-                <tr>
-                    <th>Customer</th>
-                    <th>Contract</th>
-                    <th>Term</th>
-                    <th>Route</th>
-                    <th class="text-end">Amount</th>
-                    <th>Wave</th>
-                </tr>
-            </thead>
-            <tbody>
-            @foreach (var item in Model.DueContracts)
-            {
-                <tr>
-                    <td>
-                        <a asp-controller="Customers" asp-action="Details" asp-route-id="@item.CustomerId">@item.CustomerName</a>
-                    </td>
-                    <td>@item.ContractName</td>
-                    <td>@BillingTermDisplay.Label(item.Term)</td>
-                    <td>@item.RouteName</td>
-                    <td class="text-end">@item.Amount.ToString("C")</td>
-                    <td>
-                        @if (WaveApiService.IsLikelyWaveCustomerId(item.WaveCustomerId))
-                        {
-                            <span class="text-muted small">Linked</span>
-                        }
-                        else
-                        {
-                            <span class="text-muted small">Create on send</span>
-                        }
-                    </td>
-                </tr>
-            }
-            </tbody>
-            <tfoot class="table-light fw-semibold">
-                <tr>
-                    <td colspan="4" class="text-end">Total</td>
-                    <td class="text-end">@Model.DueTotal.ToString("C")</td>
-                    <td></td>
-                </tr>
-            </tfoot>
-        </table>
-        <p class="text-muted small">Prepare invoices to group by customer before sending to Wave.</p>
-    }
+        </tbody>
+        <tfoot class="table-light fw-semibold">
+            <tr>
+                <td colspan="5" class="text-end">Total</td>
+                <td class="text-end">@Model.DueTotal.ToString("C")</td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
 }
 else
 {
     <p class="text-muted">No contracts are due for @Model.PeriodLabel.</p>
 }
 
-<h2 class="h5 mt-4">All configured contracts</h2>
-<p class="text-muted small">Every customer contract in the system. Highlighted rows are due in @Model.PeriodLabel.</p>
-@if (Model.AllContracts.Any())
+<h2 class="h5 mt-4">Submitted invoices — @Model.PeriodLabel</h2>
+@if (Model.SubmittedInvoices.Any())
 {
-    <table class="table table-sm">
+    <table class="table table-sm table-hover align-middle">
         <thead>
             <tr>
+                <th>Period</th>
                 <th>Customer</th>
-                <th>Contract</th>
-                <th>Term</th>
-                <th>Months</th>
-                <th>Routes</th>
-                <th>Next Bill</th>
-                <th>Ends</th>
+                <th>Invoice</th>
+                <th>Wave #</th>
+                <th>Contracts</th>
                 <th class="text-end">Amount</th>
-                <th>Due</th>
+                <th>Status</th>
+                <th>Received</th>
+                <th style="min-width: 18rem;">Actions</th>
             </tr>
         </thead>
         <tbody>
-        @foreach (var bill in Model.AllContracts)
+        @foreach (var invoice in Model.SubmittedInvoices)
         {
-            <tr class="@(bill.IsDueThisPeriod ? "table-primary" : "")">
+            var periodLabel = BillingDueCalculator.PeriodLabel(invoice.BillingRun.Year, invoice.BillingRun.Month);
+            var contractNames = string.Join(", ", invoice.Lines.Select(l => l.ContractName).Distinct().OrderBy(n => n));
+            <tr>
+                <td>@periodLabel</td>
                 <td>
-                    <a asp-controller="Customers" asp-action="Details" asp-route-id="@bill.CustomerId">@bill.CustomerName</a>
+                    <a asp-controller="Customers" asp-action="Details" asp-route-id="@invoice.CustomerId">@invoice.Customer.CustomerName</a>
                 </td>
-                <td>@bill.ContractName</td>
-                <td>@BillingTermDisplay.Label(bill.Term)</td>
-                <td>@SubscribedMonths.Format(bill.ServiceMonthMask)</td>
-                <td>@string.Join(", ", bill.RouteNames)</td>
-                <td>@bill.NextBillDate.ToString("MMM d, yyyy")</td>
-                <td>@BillingDueCalculator.FormatContractEndDate(bill.ContractEndDate)</td>
-                <td class="text-end">@bill.Total.ToString("C")</td>
+                <td>#@invoice.Id</td>
+                <td>@(invoice.WaveInvoiceNumber ?? "—")</td>
+                <td class="small">@contractNames</td>
+                <td class="text-end">@invoice.TotalAmount.ToString("C")</td>
                 <td>
-                    @if (bill.IsDueThisPeriod)
-                    {
-                        <span class="badge bg-primary">Due</span>
-                    }
-                    else
-                    {
-                        <span class="text-muted">—</span>
-                    }
+                    <span class="badge @(invoice.Status switch {
+                        BillingRunInvoiceStatus.Submitted => "bg-primary",
+                        BillingRunInvoiceStatus.Received => "bg-success",
+                        BillingRunInvoiceStatus.Canceled => "bg-dark",
+                        _ => "bg-secondary"
+                    })">@invoice.Status</span>
+                </td>
+                <td>
+                    @(invoice.ReceivedDate?.ToString("MMM d, yyyy") ?? "—")
+                </td>
+                <td>
+                    <div class="d-flex flex-column gap-2">
+                        @if (invoice.Status != BillingRunInvoiceStatus.Received)
+                        {
+                            <form asp-action="MarkInvoiceReceived" method="post" class="d-flex flex-wrap gap-1 align-items-center">
+                                <input type="hidden" name="year" value="@Model.Year" />
+                                <input type="hidden" name="month" value="@Model.Month" />
+                                <input type="hidden" name="invoiceId" value="@invoice.Id" />
+                                <input type="hidden" name="waveInvoiceNumber" value="@invoice.WaveInvoiceNumber" />
+                                <input type="date" name="receivedDate" class="form-control form-control-sm"
+                                       value="@today.ToString("yyyy-MM-dd")" style="width: 9.5rem;" />
+                                <button type="submit" class="btn btn-sm btn-success">Receive</button>
+                            </form>
+                        }
+                        <form asp-action="UpdateInvoiceStatus" method="post" class="d-flex flex-wrap gap-1 align-items-center">
+                            <input type="hidden" name="year" value="@Model.Year" />
+                            <input type="hidden" name="month" value="@Model.Month" />
+                            <input type="hidden" name="invoiceId" value="@invoice.Id" />
+                            <input type="text" name="waveInvoiceNumber" class="form-control form-control-sm"
+                                   value="@invoice.WaveInvoiceNumber" placeholder="Wave #" style="width: 6.5rem;" />
+                            <select name="status" class="form-select form-select-sm" style="width: 7.5rem;">
+                                @foreach (var s in WaveInvoiceStatuses.All)
+                                {
+                                    <option value="@s" selected="@(invoice.Status == s)">@s</option>
+                                }
+                            </select>
+                            <input type="date" name="receivedDate" class="form-control form-control-sm"
+                                   value="@(invoice.ReceivedDate ?? today).ToString("yyyy-MM-dd")" style="width: 9.5rem;"
+                                   title="Used when status is Received" />
+                            <button type="submit" class="btn btn-sm btn-outline-secondary">Update</button>
+                        </form>
+                    </div>
                 </td>
             </tr>
         }
@@ -278,5 +252,5 @@ else
 }
 else
 {
-    <p class="text-muted">No contracts configured yet. Add a contract on a customer details page.</p>
+    <p class="text-muted">No submitted invoices yet. Use Create On Send on a due contract to create one.</p>
 }

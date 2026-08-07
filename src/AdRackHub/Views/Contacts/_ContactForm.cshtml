@@ -10,18 +10,43 @@
             <input asp-for="Name" class="form-control" />
             <span asp-validation-for="Name" class="text-danger"></span>
         </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label asp-for="FirstName" class="form-label"></label>
+                <input asp-for="FirstName" class="form-control" />
+                <span asp-validation-for="FirstName" class="text-danger"></span>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label asp-for="LastName" class="form-label"></label>
+                <input asp-for="LastName" class="form-control" />
+                <span asp-validation-for="LastName" class="text-danger"></span>
+            </div>
+        </div>
         <div class="mb-3">
             <label asp-for="Role" class="form-label"></label>
             <select asp-for="Role" class="form-select" asp-items="Html.GetEnumSelectList<ContactRole>()"></select>
+        </div>
+        <div class="mb-3">
+            <div class="form-check form-switch">
+                <input asp-for="SendInvoice" class="form-check-input" role="switch" />
+                <label asp-for="SendInvoice" class="form-check-label"></label>
+            </div>
+            <div class="form-text">Include this contact when sending invoices (multiple contacts can be enabled).</div>
         </div>
         <div class="mb-3">
             <label asp-for="Email" class="form-label"></label>
             <input asp-for="Email" class="form-control" />
             <span asp-validation-for="Email" class="text-danger"></span>
         </div>
-        <div class="mb-3">
-            <label asp-for="Phone" class="form-label">Telephone</label>
-            <input asp-for="Phone" class="form-control" />
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label asp-for="Phone" class="form-label"></label>
+                <input asp-for="Phone" class="form-control" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label asp-for="CellPhone" class="form-label"></label>
+                <input asp-for="CellPhone" class="form-control" />
+            </div>
         </div>
         <div class="mb-3">
             <label asp-for="WebUrl" class="form-label"></label>

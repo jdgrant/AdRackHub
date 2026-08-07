@@ -53,6 +53,25 @@ public class WaveSyncWebhookController : ControllerBase
     }
 
     /// <summary>
+    /// Optional callback for Zapier/Make to report Wave invoice number and status
+    /// (Submitted, Received, or Canceled) after creating an invoice.
+    /// </summary>
+    [HttpPost("invoices/callback")]
+    public async Task<ActionResult<WaveSyncWebhookResponse>> InvoiceCallback(
+        [FromBody] InboundWaveInvoiceCallbackRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!IsAuthorized())
+            return Unauthorized(WaveSyncWebhookResponse.Fail("Invalid webhook secret."));
+
+        if (!ModelState.IsValid)
+            return BadRequest(WaveSyncWebhookResponse.Fail("Invalid invoice callback payload."));
+
+        var result = await _syncService.RecordInvoiceCallbackAsync(request, cancellationToken);
+        return result.Success ? Ok(result) : BadRequest(result);
+    }
+
+    /// <summary>
     /// Optional callback for Zapier to report the Wave recurring invoice ID after creating it.
     /// </summary>
     [HttpPost("billing/callback")]

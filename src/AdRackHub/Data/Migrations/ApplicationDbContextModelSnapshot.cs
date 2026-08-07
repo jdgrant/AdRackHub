@@ -145,6 +145,9 @@ namespace AdRackHub.Data.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<DateOnly?>("ReceivedDate")
+                        .HasColumnType("date");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -161,6 +164,10 @@ namespace AdRackHub.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("WaveInvoiceNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<string>("WaveInvoiceUrl")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -169,8 +176,7 @@ namespace AdRackHub.Data.Migrations
 
                     b.HasIndex("CustomerId");
 
-                    b.HasIndex("BillingRunId", "CustomerId")
-                        .IsUnique();
+                    b.HasIndex("BillingRunId", "CustomerId");
 
                     b.ToTable("BillingRunInvoices");
                 });
@@ -230,12 +236,24 @@ namespace AdRackHub.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("CellPhone")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<int>("CustomerId")
                         .HasColumnType("int");
 
                     b.Property<string>("Email")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("FirstName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("LastName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -249,6 +267,9 @@ namespace AdRackHub.Data.Migrations
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("SendInvoice")
+                        .HasColumnType("bit");
 
                     b.Property<string>("State")
                         .HasMaxLength(50)
@@ -669,6 +690,10 @@ namespace AdRackHub.Data.Migrations
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("WaveProductId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.HasKey("Id");
 

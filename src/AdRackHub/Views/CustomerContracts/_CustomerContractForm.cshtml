@@ -132,15 +132,39 @@
 
             const allSelected = allStopsCheck.checked;
             stopChecks.forEach(function (checkbox) {
-                checkbox.checked = allSelected;
+                // Only force-check when "all locations" is on. When it's off, keep the
+                // existing selection (server-rendered or user-chosen). The old code set
+                // checked=false whenever allSelected was false, which wiped partial
+                // selections on page load and caused "0/N" after save.
                 checkbox.disabled = allSelected;
+                if (allSelected) {
+                    checkbox.checked = true;
+                }
             });
+        }
+
+        function updateLocationButton(routeIndex) {
+            const allStopsCheck = document.querySelector(`.all-stops-check[data-route-index="${routeIndex}"]`);
+            const stopChecks = document.querySelectorAll(`.route-stop-checkbox[data-route-index="${routeIndex}"]`);
+            const block = allStopsCheck?.closest('.route-block');
+            const button = block?.querySelector('[data-bs-toggle="collapse"]');
+            if (!button || !stopChecks.length) return;
+
+            const total = stopChecks.length;
+            const selected = Array.from(stopChecks).filter(function (cb) { return cb.checked; }).length;
+            button.textContent = allStopsCheck.checked
+                ? `Locations (${selected})`
+                : `Locations (${selected}/${total})`;
         }
 
         document.querySelectorAll('.all-stops-check').forEach(function (checkbox) {
             const routeIndex = checkbox.dataset.routeIndex;
-            checkbox.addEventListener('change', function () { syncAllStops(routeIndex); });
+            checkbox.addEventListener('change', function () {
+                syncAllStops(routeIndex);
+                updateLocationButton(routeIndex);
+            });
             syncAllStops(routeIndex);
+            updateLocationButton(routeIndex);
         });
 
         document.querySelectorAll('.route-stop-checkbox').forEach(function (checkbox) {
@@ -152,6 +176,7 @@
 
                 const anySelected = Array.from(stopChecks).some(function (cb) { return cb.checked; });
                 if (!anySelected) checkbox.checked = true;
+                updateLocationButton(routeIndex);
             });
         });
 

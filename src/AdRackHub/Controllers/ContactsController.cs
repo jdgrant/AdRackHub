@@ -39,25 +39,46 @@ public class ContactsController : Controller
         {
             _context.Add(contact);
             await _context.SaveChangesAsync();
-            TempData["Message"] = $"Contact {contact.Name} added.";
-            return RedirectToAction("Details", "Customers", new { id = contact.CustomerId });
+            TempData["Message"] = $"Contact {contact.DisplayName} added.";
+            return RedirectToAction("Details", "Customers", new { id = contact.CustomerId, tab = "contacts" });
         }
 
         TempData["ShowContactModal"] = true;
         TempData["ContactName"] = contact.Name;
+        TempData["ContactFirstName"] = contact.FirstName;
+        TempData["ContactLastName"] = contact.LastName;
         TempData["ContactEmail"] = contact.Email;
         TempData["ContactPhone"] = contact.Phone;
+        TempData["ContactCellPhone"] = contact.CellPhone;
         TempData["ContactAddress"] = contact.Address;
         TempData["ContactCity"] = contact.City;
         TempData["ContactState"] = contact.State;
         TempData["ContactZip"] = contact.Zip;
         TempData["ContactWebUrl"] = contact.WebUrl;
         TempData["ContactRole"] = contact.Role.ToString();
+        TempData["ContactSendInvoice"] = contact.SendInvoice ? "true" : "false";
         TempData["ContactError"] = string.Join(" ", ModelState.Values
             .SelectMany(v => v.Errors)
             .Select(e => e.ErrorMessage)
             .Where(m => !string.IsNullOrWhiteSpace(m)));
         return RedirectToAction("Details", "Customers", new { id = contact.CustomerId > 0 ? contact.CustomerId : 0 });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ToggleSendInvoice(int id, bool sendInvoice)
+    {
+        var contact = await _context.Contacts.FindAsync(id);
+        if (contact == null)
+            return NotFound();
+
+        contact.SendInvoice = sendInvoice;
+        await _context.SaveChangesAsync();
+        TempData["Message"] = sendInvoice
+            ? $"{contact.DisplayName} will receive invoices."
+            : $"{contact.DisplayName} will not receive invoices.";
+
+        return RedirectToAction("Details", "Customers", new { id = contact.CustomerId, tab = "contacts" });
     }
 
     public async Task<IActionResult> Edit(int? id)

@@ -18,6 +18,12 @@ public enum RouteStatus
     Inactive
 }
 
+public enum RouteProduct
+{
+    Exits,
+    RestArea
+}
+
 public enum StopType
 {
     Hotel,
@@ -81,6 +87,49 @@ public enum BillingRunInvoiceStatus
 {
     Pending,
     Submitted,
+    Received,
+    Canceled,
     Skipped,
     Failed
+}
+
+/// <summary>Statuses allowed once an invoice has a Wave invoice number.</summary>
+public static class WaveInvoiceStatuses
+{
+    public static readonly BillingRunInvoiceStatus[] All =
+    {
+        BillingRunInvoiceStatus.Submitted,
+        BillingRunInvoiceStatus.Received,
+        BillingRunInvoiceStatus.Canceled
+    };
+
+    public static bool IsWaveLifecycle(BillingRunInvoiceStatus status) =>
+        status is BillingRunInvoiceStatus.Submitted
+            or BillingRunInvoiceStatus.Received
+            or BillingRunInvoiceStatus.Canceled;
+
+    public static bool TryParse(string? value, out BillingRunInvoiceStatus status)
+    {
+        status = BillingRunInvoiceStatus.Submitted;
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        if (!Enum.TryParse(value.Trim(), ignoreCase: true, out BillingRunInvoiceStatus parsed))
+        {
+            // Accept British spelling from integrations.
+            if (string.Equals(value.Trim(), "cancelled", StringComparison.OrdinalIgnoreCase))
+            {
+                status = BillingRunInvoiceStatus.Canceled;
+                return true;
+            }
+
+            return false;
+        }
+
+        if (!IsWaveLifecycle(parsed))
+            return false;
+
+        status = parsed;
+        return true;
+    }
 }
