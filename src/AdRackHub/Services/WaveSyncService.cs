@@ -209,11 +209,7 @@ public class WaveSyncService
 
     public async Task PushBillingToWaveAsync(int customerContractId, CancellationToken cancellationToken = default)
     {
-        var contract = await _context.CustomerContracts
-            .Include(c => c.Customer)
-                .ThenInclude(c => c.Contacts)
-            .Include(c => c.ContractRoutes)
-                .ThenInclude(cr => cr.Route)
+        var contract = await InvoiceSyncQuery(track: true)
             .FirstOrDefaultAsync(c => c.Id == customerContractId, cancellationToken);
 
         if (contract == null)
@@ -277,18 +273,7 @@ public class WaveSyncService
             Status = customer.Status.ToString(),
             PrimaryContact = contact == null
                 ? null
-                : new WaveOutboundContactPayload
-                {
-                    Name = contact.Name,
-                    FirstName = contact.FirstName,
-                    LastName = contact.LastName,
-                    Email = contact.Email,
-                    Phone = contact.Phone,
-                    Address = contact.Address,
-                    City = contact.City,
-                    State = contact.State,
-                    Zip = contact.Zip
-                }
+                : BuildContactPayload(contact, customer)
         };
     }
 
@@ -296,15 +281,7 @@ public class WaveSyncService
     {
         var lines = contract.ContractRoutes
             .OrderBy(cr => cr.Route.RouteName)
-            .Select(cr => new WaveOutboundBillingLinePayload
-            {
-                Description = $"{contract.ContractName} ({BillingTermDisplay.Label(contract.Term)}) — {cr.Route.RouteName}",
-                Quantity = 1,
-                UnitPrice = AnnualBillingHelper.GetBillingAmount(cr),
-                RouteName = cr.Route.RouteName,
-                Product = RouteProductHelper.Label(cr.Route.Product),
-                WaveProductId = cr.Route.WaveProductId
-            })
+            .Select(cr => BuildInvoiceLine(contract, cr.Route, AnnualBillingHelper.GetBillingAmount(cr), contract.Customer))
             .ToList();
 
         return new WaveOutboundBillingPayload
@@ -314,19 +291,19 @@ public class WaveSyncService
             CustomerName = contract.Customer.CustomerName,
             WaveCustomerId = contract.Customer.WaveCustomerId,
             ContractName = contract.ContractName,
-            Term = BillingTermDisplay.Label(contract.Term),
+            Term = BillingTermDisplay.Label(contract),
             BillingAnchorMonth = contract.BillingAnchorMonth,
             NextBillDate = contract.NextBillDate,
             ServiceMonthMask = contract.ServiceMonthMask,
             ContractEndDate = contract.ContractEndDate,
             TotalAmount = lines.Sum(l => l.UnitPrice * l.Quantity),
             LineItems = lines,
-            Schedule = WaveRecurringScheduleMapper.Map(contract.Term, contract.BillingAnchorMonth)
+            Schedule = WaveRecurringScheduleMapper.Map(AnnualBillingHelper.BillingMonths(contract), contract.BillingAnchorMonth)
         };
     }
 
     /// <summary>
-    /// Sends one contract's due invoice to Make (preferred) or Zapier, including the local invoice ID.
+    /// Sends one contract's due invoice to Zapier (preferred) or Make, including the local invoice ID.
     /// </summary>
     public async Task<(bool Success, string Message, string? RemoteInvoiceId)> SendCreateOnSendInvoiceAsync(
         int year,
@@ -339,21 +316,21 @@ public class WaveSyncService
         string destination;
         string? configuredUrl;
         string configKey;
-        if (IsTestMakeConfigured)
-        {
-            destination = "Make";
-            configuredUrl = _options.TestMakeWebhookUrl;
-            configKey = "WaveSync:TestMakeWebhookUrl";
-        }
-        else if (IsTestZapierConfigured)
+        if (IsTestZapierConfigured)
         {
             destination = "Zapier";
             configuredUrl = _options.TestZapierWebhookUrl;
             configKey = "WaveSync:TestZapierWebhookUrl";
         }
+        else if (IsTestMakeConfigured)
+        {
+            destination = "Make";
+            configuredUrl = _options.TestMakeWebhookUrl;
+            configKey = "WaveSync:TestMakeWebhookUrl";
+        }
         else
         {
-            return (false, "Configure WaveSync:TestMakeWebhookUrl or WaveSync:TestZapierWebhookUrl for Create On Send.", null);
+            return (false, "Configure WaveSync:TestZapierWebhookUrl or WaveSync:TestMakeWebhookUrl for Create On Send.", null);
         }
 
         var (success, message) = await SendDueInvoicesWebhookAsync(
@@ -398,15 +375,16 @@ public class WaveSyncService
         if (string.IsNullOrWhiteSpace(url))
             return (false, $"{configKey} is not configured.");
 
-        var contracts = await _context.CustomerContracts
-            .Include(c => c.Customer)
-                .ThenInclude(c => c.Contacts)
-            .Include(c => c.ContractRoutes)
-                .ThenInclude(cr => cr.Route)
-            .Where(c => c.Customer.Status == CustomerStatus.Active && c.Customer.Type == CustomerType.Customer)
+        var query = InvoiceSyncQuery(track: false)
+            .Where(c => c.Customer.Status == CustomerStatus.Active && c.Customer.Type == CustomerType.Customer);
+
+        if (customerContractId.HasValue)
+            query = query.Where(c => c.Id == customerContractId.Value);
+        else if (customerId.HasValue)
+            query = query.Where(c => c.CustomerId == customerId.Value);
+
+        var contracts = await query
             .Where(c => c.ContractRoutes.Any())
-            .Where(c => customerId == null || c.CustomerId == customerId.Value)
-            .Where(c => customerContractId == null || c.Id == customerContractId.Value)
             .ToListAsync(cancellationToken);
 
         var dueItems = contracts
@@ -440,21 +418,14 @@ public class WaveSyncService
             var lineItems = group
                 .OrderBy(i => i.Contract.ContractName)
                 .ThenBy(i => i.Route.RouteName)
-                .Select(i => new WaveOutboundBillingLinePayload
-                {
-                    Description = $"{i.Contract.ContractName} ({BillingTermDisplay.Label(i.Contract.Term)}) — {i.Route.RouteName}",
-                    Quantity = 1,
-                    UnitPrice = i.Amount,
-                    RouteName = i.Route.RouteName,
-                    Product = RouteProductHelper.Label(i.Route.Product),
-                    WaveProductId = i.Route.WaveProductId
-                })
+                .Select(i => BuildInvoiceLine(i.Contract, i.Route, i.Amount, i.Customer))
                 .ToList();
 
             int? invoiceId = null;
             if (invoiceIdByCustomer != null && invoiceIdByCustomer.TryGetValue(customer.Id, out var mappedId))
                 invoiceId = mappedId;
 
+            var address = ResolveAddressParts(customer, contact);
             var payload = new WaveZapierTestInvoicePayload
             {
                 Event = "invoice.due",
@@ -474,16 +445,28 @@ public class WaveSyncService
                 ContactRole = contact?.Role.ToString(),
                 Phone = FirstNonEmpty(contact?.Phone, customer.Phone),
                 CellPhone = contact?.CellPhone,
-                Address = FirstNonEmpty(contact?.Address, customer.Address),
-                City = FirstNonEmpty(contact?.City, customer.City),
-                State = FirstNonEmpty(contact?.State, customer.State),
-                Zip = FirstNonEmpty(contact?.Zip, customer.Zip),
+                Address = address.Address,
+                City = address.City,
+                State = address.State,
+                StateCode = address.StateCode,
+                StateName = address.StateName,
+                Region = address.Region,
+                Province = address.Province,
+                ProvinceCode = address.ProvinceCode,
+                Country = address.Country,
+                CountryCode = address.CountryCode,
+                Zip = address.Zip,
                 InvoiceRecipients = invoiceRecipients,
-                InvoiceTitle = $"{customer.CustomerName} — {periodLabel}",
-                InvoiceMemo = $"AdRackHub billing for {periodLabel}",
+                InvoiceTitle = $"{customer.CustomerName} — {lineItems.FirstOrDefault()?.ServiceStartDate:MMM d, yyyy}–{lineItems.FirstOrDefault()?.ServiceEndDate:MMM d, yyyy}",
+                InvoiceMemo = lineItems.Count == 0
+                    ? $"AdRackHub billing for {periodLabel}. Amounts are period totals, not monthly rates."
+                    : $"AdRackHub billing {lineItems.Min(l => l.ServiceStartDate):MMM d, yyyy}–{lineItems.Max(l => l.ServiceEndDate):MMM d, yyyy}. Amounts are period totals, not monthly rates.",
                 Currency = "USD",
                 InvoiceDate = today,
                 DueDate = today.AddDays(30),
+                ServiceStartDate = lineItems.Count == 0 ? null : lineItems.Min(l => l.ServiceStartDate),
+                ServiceEndDate = lineItems.Count == 0 ? null : lineItems.Max(l => l.ServiceEndDate),
+                PriceNote = "Line item amounts are period totals, not monthly rates.",
                 TotalAmount = lineItems.Sum(l => l.UnitPrice * l.Quantity),
                 LineItems = lineItems
             };
@@ -533,6 +516,23 @@ public class WaveSyncService
         return (true, summary);
     }
 
+    private IQueryable<CustomerContract> InvoiceSyncQuery(bool track)
+    {
+        IQueryable<CustomerContract> query = _context.CustomerContracts
+            .AsSplitQuery()
+            .Include(c => c.Customer)
+                .ThenInclude(c => c.Contacts)
+            .Include(c => c.Customer)
+                .ThenInclude(c => c.CustomerRoutes)
+                    .ThenInclude(cr => cr.CustomerRouteStops)
+                        .ThenInclude(crs => crs.Stop)
+            .Include(c => c.ContractRoutes)
+                .ThenInclude(cr => cr.Route)
+                    .ThenInclude(r => r.Stops);
+
+        return track ? query : query.AsNoTracking();
+    }
+
     /// <summary>
     /// Accepts full https URLs or Make-style "id@hook.us2.make.com" values.
     /// </summary>
@@ -570,26 +570,7 @@ public class WaveSyncService
             .Where(c => c.SendInvoice)
             .OrderBy(c => c.Role == ContactRole.Billing ? 0 : c.Role == ContactRole.Primary ? 1 : 2)
             .ThenBy(c => c.Name)
-            .Select(c =>
-            {
-                var (firstName, lastName) = ResolvePersonName(c);
-                return new WaveOutboundContactPayload
-                {
-                    ContactId = c.Id,
-                    Name = FirstNonEmpty(c.PersonName, c.Name),
-                    FirstName = firstName,
-                    LastName = lastName,
-                    Email = c.Email,
-                    Phone = c.Phone,
-                    CellPhone = c.CellPhone,
-                    Role = c.Role.ToString(),
-                    SendInvoice = true,
-                    Address = c.Address,
-                    City = c.City,
-                    State = c.State,
-                    Zip = c.Zip
-                };
-            })
+            .Select(c => BuildContactPayload(c, customer, sendInvoice: true))
             .ToList();
 
         // Fall back to billing/primary contact so invoices still have a recipient.
@@ -597,28 +578,45 @@ public class WaveSyncService
         {
             var fallback = ResolveBillingOrDefaultContact(customer);
             if (fallback != null)
-            {
-                var (firstName, lastName) = ResolvePersonName(fallback);
-                recipients.Add(new WaveOutboundContactPayload
-                {
-                    ContactId = fallback.Id,
-                    Name = FirstNonEmpty(fallback.PersonName, fallback.Name),
-                    FirstName = firstName,
-                    LastName = lastName,
-                    Email = fallback.Email,
-                    Phone = fallback.Phone,
-                    CellPhone = fallback.CellPhone,
-                    Role = fallback.Role.ToString(),
-                    SendInvoice = false,
-                    Address = fallback.Address,
-                    City = fallback.City,
-                    State = fallback.State,
-                    Zip = fallback.Zip
-                });
-            }
+                recipients.Add(BuildContactPayload(fallback, customer, sendInvoice: false));
         }
 
         return recipients;
+    }
+
+    private static WaveOutboundBillingLinePayload BuildInvoiceLine(
+        CustomerContract contract,
+        Models.Route route,
+        decimal amount,
+        Customer customer)
+    {
+        var content = InvoiceLineFormatter.Build(
+            route.RouteName,
+            contract.NextBillDate,
+            AnnualBillingHelper.BillingMonths(contract),
+            amount,
+            customer,
+            route);
+
+        return new WaveOutboundBillingLinePayload
+        {
+            Description = content.Description,
+            Quantity = 1,
+            UnitPrice = amount,
+            RouteName = route.RouteName,
+            Product = RouteProductHelper.Label(route.Product),
+            WaveProductId = route.WaveProductId,
+            ServiceStartDate = content.ServiceStartDate,
+            ServiceEndDate = content.ServiceEndDate,
+            SpaceCount = content.SpaceCount,
+            Locations = content.Locations,
+            LocationNames = content.LocationNames,
+            PeriodMonthCount = content.PeriodMonthCount,
+            PeriodAmount = content.PeriodAmount,
+            MonthlyRate = content.MonthlyRate,
+            PriceIsPeriodTotal = true,
+            PriceLabel = content.PriceLabel
+        };
     }
 
     private static (string? FirstName, string? LastName) ResolvePersonName(Contact? contact)
@@ -669,6 +667,69 @@ public class WaveSyncService
         string.IsNullOrEmpty(value) || value.Length <= maxLength
             ? value
             : value[..maxLength] + "…";
+
+    private static WaveOutboundContactPayload BuildContactPayload(
+        Contact contact,
+        Customer customer,
+        bool? sendInvoice = null)
+    {
+        var (firstName, lastName) = ResolvePersonName(contact);
+        var address = ResolveAddressParts(customer, contact);
+        return new WaveOutboundContactPayload
+        {
+            ContactId = contact.Id,
+            Name = FirstNonEmpty(contact.PersonName, contact.Name),
+            FirstName = firstName,
+            LastName = lastName,
+            Email = contact.Email,
+            Phone = contact.Phone,
+            CellPhone = contact.CellPhone,
+            Role = contact.Role.ToString(),
+            SendInvoice = sendInvoice ?? contact.SendInvoice,
+            Address = address.Address,
+            City = address.City,
+            State = address.State,
+            StateCode = address.StateCode,
+            StateName = address.StateName,
+            Region = address.Region,
+            Province = address.Province,
+            ProvinceCode = address.ProvinceCode,
+            Country = address.Country,
+            CountryCode = address.CountryCode,
+            Zip = address.Zip
+        };
+    }
+
+    private static AddressParts ResolveAddressParts(Customer customer, Contact? contact)
+    {
+        var rawState = FirstNonEmpty(contact?.State, customer.State);
+        var parsed = UsState.Parse(rawState);
+        return new AddressParts(
+            FirstNonEmpty(contact?.Address, customer.Address),
+            FirstNonEmpty(contact?.City, customer.City),
+            parsed?.Abbreviation ?? rawState ?? string.Empty,
+            parsed?.Abbreviation ?? string.Empty,
+            parsed?.Name ?? string.Empty,
+            parsed?.Slug ?? string.Empty,
+            parsed?.Slug ?? string.Empty,
+            parsed?.ProvinceCode ?? string.Empty,
+            "United States",
+            "US",
+            FirstNonEmpty(contact?.Zip, customer.Zip));
+    }
+
+    private readonly record struct AddressParts(
+        string? Address,
+        string? City,
+        string State,
+        string StateCode,
+        string StateName,
+        string Region,
+        string Province,
+        string ProvinceCode,
+        string Country,
+        string CountryCode,
+        string? Zip);
 
     private static string? FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v))?.Trim();

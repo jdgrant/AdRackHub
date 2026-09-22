@@ -119,13 +119,15 @@ public class CustomerImportService
                     cancellationToken);
                 if (!hasAssignment)
                 {
-                    _context.CustomerRoutes.Add(new CustomerRoute
+                    var customerRoute = new CustomerRoute
                     {
                         CustomerId = customer.Id,
                         RouteId = route.Id,
                         AllStops = true,
                         Status = CustomerRouteStatus.Active
-                    });
+                    };
+                    AnnualBillingHelper.ApplyBillingMonths(customerRoute, AnnualBillingHelper.MonthsInTerm(row.Term));
+                    _context.CustomerRoutes.Add(customerRoute);
                 }
             }
 
@@ -135,6 +137,7 @@ public class CustomerImportService
                 CustomerId = customer.Id,
                 ContractName = billName,
                 Term = row.Term,
+                BillingMonthCount = AnnualBillingHelper.MonthsInTerm(row.Term),
                 BillingAnchorMonth = row.AnchorMonth
             };
             _context.CustomerContracts.Add(billing);
@@ -290,6 +293,8 @@ public class CustomerImportService
     {
         "M" or "MONTHLY" => BillingFrequency.Monthly,
         "Y" or "YEARLY" or "ANNUAL" => BillingFrequency.Annual,
+        "4" or "EVERY4MONTHS" or "EVERY 4 MONTHS" or "EVERY FOUR MONTHS" or "4 MONTHS"
+            => BillingFrequency.EveryFourMonths,
         _ => BillingFrequency.Quarterly
     };
 

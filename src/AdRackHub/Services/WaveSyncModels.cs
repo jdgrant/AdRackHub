@@ -120,6 +120,16 @@ public sealed class WaveOutboundBillingLinePayload
     public string RouteName { get; init; } = string.Empty;
     public string Product { get; init; } = string.Empty;
     public string? WaveProductId { get; init; }
+    public DateOnly? ServiceStartDate { get; init; }
+    public DateOnly? ServiceEndDate { get; init; }
+    public int SpaceCount { get; init; }
+    public string Locations { get; init; } = string.Empty;
+    public IReadOnlyList<string> LocationNames { get; init; } = Array.Empty<string>();
+    public int PeriodMonthCount { get; init; }
+    public decimal PeriodAmount { get; init; }
+    public decimal MonthlyRate { get; init; }
+    public bool PriceIsPeriodTotal { get; init; } = true;
+    public string PriceLabel { get; init; } = string.Empty;
 }
 
 public sealed class WaveOutboundContactPayload
@@ -136,6 +146,14 @@ public sealed class WaveOutboundContactPayload
     public string? Address { get; init; }
     public string? City { get; init; }
     public string? State { get; init; }
+    public string? StateCode { get; init; }
+    public string? StateName { get; init; }
+    /// <summary>Wave Zapier Province / State/Region custom value (e.g. kentucky).</summary>
+    public string? Region { get; init; }
+    public string? Province { get; init; }
+    public string? ProvinceCode { get; init; }
+    public string? Country { get; init; }
+    public string? CountryCode { get; init; }
     public string? Zip { get; init; }
 }
 
@@ -173,6 +191,14 @@ public sealed class WaveZapierTestInvoicePayload
     public string? Address { get; init; }
     public string? City { get; init; }
     public string? State { get; init; }
+    public string? StateCode { get; init; }
+    public string? StateName { get; init; }
+    /// <summary>Wave Zapier Province / State/Region custom value (e.g. kentucky).</summary>
+    public string? Region { get; init; }
+    public string? Province { get; init; }
+    public string? ProvinceCode { get; init; }
+    public string? Country { get; init; }
+    public string? CountryCode { get; init; }
     public string? Zip { get; init; }
     /// <summary>All contacts with Send Invoice enabled (for CC / multi-recipient delivery).</summary>
     public IReadOnlyList<WaveOutboundContactPayload> InvoiceRecipients { get; init; } = Array.Empty<WaveOutboundContactPayload>();
@@ -181,22 +207,29 @@ public sealed class WaveZapierTestInvoicePayload
     public string Currency { get; init; } = "USD";
     public DateOnly InvoiceDate { get; init; }
     public DateOnly DueDate { get; init; }
+    public DateOnly? ServiceStartDate { get; init; }
+    public DateOnly? ServiceEndDate { get; init; }
+    public string PriceNote { get; init; } = "Line item amounts are period totals, not monthly rates.";
     public decimal TotalAmount { get; init; }
     public IReadOnlyList<WaveOutboundBillingLinePayload> LineItems { get; init; } = Array.Empty<WaveOutboundBillingLinePayload>();
 }
 
 public static class WaveRecurringScheduleMapper
 {
-    public static WaveRecurringSchedulePayload Map(BillingFrequency term, int anchorMonth) => new()
+    public static WaveRecurringSchedulePayload Map(int months, int anchorMonth) => new()
     {
-        Frequency = term switch
+        Frequency = months switch
         {
-            BillingFrequency.Monthly => "MONTHLY",
-            BillingFrequency.Quarterly => "QUARTERLY",
-            BillingFrequency.Annual => "YEARLY",
-            _ => term.ToString().ToUpperInvariant()
+            1 => "MONTHLY",
+            3 => "QUARTERLY",
+            4 => "EVERY_4_MONTHS",
+            12 => "YEARLY",
+            _ => "MONTHLY"
         },
         StartMonth = anchorMonth,
         StartMonthName = new DateOnly(2000, Math.Clamp(anchorMonth, 1, 12), 1).ToString("MMMM")
     };
+
+    public static WaveRecurringSchedulePayload Map(BillingFrequency term, int anchorMonth) =>
+        Map(AnnualBillingHelper.MonthsInTerm(term), anchorMonth);
 }

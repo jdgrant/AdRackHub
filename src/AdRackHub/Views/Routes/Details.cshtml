@@ -5,6 +5,7 @@
     var totalBrochures = Model.CustomerRoutes.Count(cr => cr.Status == CustomerRouteStatus.Active);
     var stopCount = Model.Stops.Count;
     var totalBrochuresOnStops = brochureCounts.Values.Sum();
+    var mappableStopCount = Model.Stops.Count(StopAddressHelper.HasMappableLocation);
 }
 
 <div class="page-header">
@@ -17,6 +18,10 @@
             </form>
         }
         <a asp-action="Import" asp-route-id="@Model.Id" class="btn btn-outline-primary">Import Stops</a>
+        @if (mappableStopCount > 0)
+        {
+            <a asp-action="Map" asp-route-id="@Model.Id" class="btn btn-outline-primary">Map</a>
+        }
         @if (Model.Stops.Any(s => s.Status == StopStatus.Active))
         {
             <form asp-action="LogAllStops" asp-route-id="@Model.Id" method="post" class="d-inline">
@@ -141,7 +146,7 @@ else
                 : cr.CustomerRouteStops.Select(crs => crs.Stop.StopName).OrderBy(n => n).ToList();
             <tr>
                 <td><a asp-controller="Customers" asp-action="Details" asp-route-id="@cr.CustomerId">@cr.Customer.CustomerName</a></td>
-                <td>@BillingTermDisplay.Label(cr.BillingTerm)</td>
+                <td>@BillingTermDisplay.Label(cr)</td>
                 <td>@SubscribedMonths.Format(cr.SubscribedMonthMask)</td>
                 <td>@cr.RatePerMonth.ToString("C")</td>
                 <td>

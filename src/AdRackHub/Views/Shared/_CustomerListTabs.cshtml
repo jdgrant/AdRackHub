@@ -1,0 +1,30 @@
+@model CustomerType
+@{
+    var search = ViewBag.Search as string;
+    var status = ViewBag.Status as CustomerStatus?;
+}
+
+<ul class="nav nav-tabs mb-4">
+    <li class="nav-item">
+        <a class="nav-link @(Model == CustomerType.Customer ? "active" : null)"
+           asp-controller="Customers"
+           asp-action="Index"
+           asp-route-search="@search"
+           asp-route-status="@status">Customers</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link @(Model == CustomerType.Prospect ? "active" : null)"
+           asp-controller="Prospects"
+           asp-action="Index"
+           asp-route-search="@search"
+           asp-route-status="@status">Prospects</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link @(Model == CustomerType.ExpandedProspect ? "active" : null)"
+           asp-controller="ExpandedProspects"
+           asp-action="Index"
+           asp-route-search="@search"
+           asp-route-status="@status"
+           asp-route-routeId="@ViewBag.RouteId">Expanded Prospects</a>
+    </li>
+</ul>

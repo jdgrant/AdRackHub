@@ -1,8 +1,8 @@
 using AdRackHub.Data;
 using AdRackHub.Models;
+using AdRackHub.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 
 namespace AdRackHub.Controllers;
@@ -11,10 +11,17 @@ namespace AdRackHub.Controllers;
 public class ContactsController : Controller
 {
     private readonly ApplicationDbContext _context;
+    private readonly CustomerGeocodeService _geocodeService;
+    private readonly CustomerNeedsMoreInfoService _needsMoreInfoService;
 
-    public ContactsController(ApplicationDbContext context)
+    public ContactsController(
+        ApplicationDbContext context,
+        CustomerGeocodeService geocodeService,
+        CustomerNeedsMoreInfoService needsMoreInfoService)
     {
         _context = context;
+        _geocodeService = geocodeService;
+        _needsMoreInfoService = needsMoreInfoService;
     }
 
     public async Task<IActionResult> Create(int customerId)
@@ -39,6 +46,10 @@ public class ContactsController : Controller
         {
             _context.Add(contact);
             await _context.SaveChangesAsync();
+            await SetReceiptBothIfSendInvoiceEmailAsync(contact.CustomerId);
+            if (CustomerAddressHelper.HasAnyAddressPart(contact.Address, contact.City, contact.State, contact.Zip))
+                await _geocodeService.UpdateCoordinatesOnlyAsync(contact.CustomerId);
+            await _needsMoreInfoService.RefreshAsync(contact.CustomerId);
             TempData["Message"] = $"Contact {contact.DisplayName} added.";
             return RedirectToAction("Details", "Customers", new { id = contact.CustomerId, tab = "contacts" });
         }
@@ -74,6 +85,7 @@ public class ContactsController : Controller
 
         contact.SendInvoice = sendInvoice;
         await _context.SaveChangesAsync();
+        await SetReceiptBothIfSendInvoiceEmailAsync(contact.CustomerId);
         TempData["Message"] = sendInvoice
             ? $"{contact.DisplayName} will receive invoices."
             : $"{contact.DisplayName} will not receive invoices.";
@@ -101,10 +113,17 @@ public class ContactsController : Controller
 
         if (ModelState.IsValid)
         {
+            var existing = await _context.Contacts.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id);
+            if (existing == null)
+                return NotFound();
+
+            var addressChanged = CustomerAddressHelper.AddressChanged(existing, contact);
+
             try
             {
                 _context.Update(contact);
                 await _context.SaveChangesAsync();
+                await SetReceiptBothIfSendInvoiceEmailAsync(contact.CustomerId);
             }
             catch (DbUpdateConcurrencyException)
             {
@@ -112,6 +131,10 @@ public class ContactsController : Controller
                     return NotFound();
                 throw;
             }
+
+            if (addressChanged)
+                await _geocodeService.UpdateCoordinatesOnlyAsync(contact.CustomerId);
+            await _needsMoreInfoService.RefreshAsync(contact.CustomerId);
             return RedirectToAction("Details", "Customers", new { id = contact.CustomerId });
         }
 
@@ -138,8 +161,27 @@ public class ContactsController : Controller
             var customerId = contact.CustomerId;
             _context.Contacts.Remove(contact);
             await _context.SaveChangesAsync();
+            await _needsMoreInfoService.RefreshAsync(customerId);
             return RedirectToAction("Details", "Customers", new { id = customerId });
         }
         return RedirectToAction("Index", "Customers");
+    }
+
+    private async Task SetReceiptBothIfSendInvoiceEmailAsync(int customerId)
+    {
+        var hasSendInvoiceEmail = await _context.Contacts.AnyAsync(ct =>
+            ct.CustomerId == customerId
+            && ct.SendInvoice
+            && ct.Email != null
+            && ct.Email.Trim() != "");
+        if (!hasSendInvoiceEmail)
+            return;
+
+        var customer = await _context.Customers.FindAsync(customerId);
+        if (customer == null || customer.InvoiceReceiptMethod == InvoiceReceiptMethod.Both)
+            return;
+
+        customer.InvoiceReceiptMethod = InvoiceReceiptMethod.Both;
+        await _context.SaveChangesAsync();
     }
 }

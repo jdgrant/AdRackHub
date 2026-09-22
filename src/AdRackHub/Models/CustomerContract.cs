@@ -23,6 +23,10 @@ public class CustomerContract
     [Display(Name = "Billing Term")]
     public BillingFrequency Term { get; set; } = BillingFrequency.Quarterly;
 
+    [Range(1, 36)]
+    [Display(Name = "Number of Months")]
+    public int BillingMonthCount { get; set; } = 3;
+
     [Range(1, 12)]
     [Display(Name = "Billing Start Month")]
     public int BillingAnchorMonth { get; set; } = 1;
@@ -42,7 +46,23 @@ public class CustomerContract
 
     [Display(Name = "Wave Recurring Invoice ID")]
     [StringLength(100)]
+    [BindNever]
     public string? WaveRecurringInvoiceId { get; set; }
+
+    [Display(Name = "Wave Invoice Number")]
+    [StringLength(50)]
+    [BindNever]
+    public string? WaveInvoiceNumber { get; set; }
+
+    [StringLength(200)]
+    [BindNever]
+    public string? WaveInvoiceId { get; set; }
+
+    [StringLength(255)]
+    [BindNever]
+    public string? WaveInvoicePdfPath { get; set; }
+
+    public bool HasWaveInvoicePdf => !string.IsNullOrWhiteSpace(WaveInvoicePdfPath);
 
     [ValidateNever]
     public Customer Customer { get; set; } = null!;

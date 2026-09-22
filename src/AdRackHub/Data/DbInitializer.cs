@@ -96,30 +96,38 @@ public static class DbInitializer
             await context.SaveChangesAsync();
         }
 
-        var existingNames = await context.Routes.Select(r => r.RouteName).ToListAsync();
+        var existing = await context.Routes.ToListAsync();
         foreach (var name in StandardRoutes)
         {
-            if (existingNames.Contains(name))
-                continue;
-
-            context.Routes.Add(new Models.Route
+            var match = existing.FirstOrDefault(r => RouteNaming.NamesMatch(r.RouteName, name));
+            if (match == null)
             {
-                RouteName = name,
-                Price = 0,
-                BillingFrequency = BillingFrequency.Quarterly,
-                Status = RouteStatus.Active
-            });
+                var created = new Models.Route
+                {
+                    RouteName = name,
+                    Price = 0,
+                    BillingFrequency = BillingFrequency.Quarterly,
+                    Status = RouteStatus.Active
+                };
+                context.Routes.Add(created);
+                existing.Add(created);
+                continue;
+            }
+
+            // Keep the same row and all contract links. A rename is not a new route.
+            if (!string.Equals(match.RouteName, name, StringComparison.Ordinal))
+                match.RouteName = name;
         }
 
         await context.SaveChangesAsync();
-        await DeleteInactiveRoutesAsync(context);
     }
 
     public static async Task<int> DeleteInactiveRoutesAsync(ApplicationDbContext context)
     {
-        var routes = await context.Routes
-            .Where(r => r.Status == RouteStatus.Inactive || !StandardRoutes.Contains(r.RouteName))
-            .ToListAsync();
+        var routes = (await context.Routes.ToListAsync())
+            .Where(r => r.Status == RouteStatus.Inactive
+                        || StandardRoutes.All(name => !RouteNaming.NamesMatch(name, r.RouteName)))
+            .ToList();
 
         if (routes.Count == 0)
             return 0;

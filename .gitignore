@@ -23,5 +23,7 @@ google-service-account.json
 ## Uploaded customer files
 src/AdRackHub/Data/Uploads/
 src/AdRackHub/App_Data/Uploads/
+src/AdRackHub/App_Data/wave-poc-oauth.json
+src/AdRackHub/Data/Scans/Batch-*/
 Data/Uploads/
 Data/Scans/

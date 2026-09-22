@@ -23,37 +23,49 @@ public static class BillingDueCalculator
         if (contract.NextBillDate < periodStart || contract.NextBillDate > periodEnd)
             return false;
 
-        if (!HasServiceForBillingPeriod(contract.ServiceMonthMask, contract.Term, contract.NextBillDate))
+        if (!HasServiceForBillingPeriod(contract.ServiceMonthMask, AnnualBillingHelper.BillingMonths(contract), contract.NextBillDate))
             return false;
 
         return true;
     }
 
-    public static bool HasServiceForBillingPeriod(int serviceMonthMask, BillingFrequency term, DateOnly billDate)
+    public static bool HasServiceForBillingPeriod(int serviceMonthMask, int monthCount, DateOnly billDate)
     {
-        var months = GetBillingPeriodMonths(term, billDate);
+        var months = GetBillingPeriodMonths(monthCount, billDate);
         return months.Any(m => IsMonthInService(serviceMonthMask, m));
     }
 
+    public static bool HasServiceForBillingPeriod(int serviceMonthMask, BillingFrequency term, DateOnly billDate) =>
+        HasServiceForBillingPeriod(serviceMonthMask, AnnualBillingHelper.MonthsInTerm(term), billDate);
+
+    public static IEnumerable<int> GetBillingPeriodMonths(int monthCount, DateOnly billDate) =>
+        Enumerable.Range(0, Math.Max(monthCount, 1)).Select(i => ((billDate.Month - 1 + i) % 12) + 1);
+
     public static IEnumerable<int> GetBillingPeriodMonths(BillingFrequency term, DateOnly billDate) =>
-        term switch
-        {
-            BillingFrequency.Monthly => new[] { billDate.Month },
-            BillingFrequency.Quarterly => Enumerable.Range(0, 3).Select(i => ((billDate.Month - 1 + i) % 12) + 1),
-            BillingFrequency.Annual => Enumerable.Range(0, 12).Select(i => ((billDate.Month - 1 + i) % 12) + 1),
-            _ => Array.Empty<int>()
-        };
+        GetBillingPeriodMonths(AnnualBillingHelper.MonthsInTerm(term), billDate);
 
     public static bool IsMonthInService(int serviceMonthMask, int month) =>
         month is >= 1 and <= 12 && (serviceMonthMask & (1 << (month - 1))) != 0;
 
-    public static DateOnly AdvanceNextBillDate(DateOnly current, BillingFrequency term) => term switch
+    public static DateOnly AdvanceNextBillDate(DateOnly current, int monthCount) =>
+        current.AddMonths(Math.Max(monthCount, 1));
+
+    public static DateOnly AdvanceNextBillDate(DateOnly current, BillingFrequency term) =>
+        AdvanceNextBillDate(current, AnnualBillingHelper.MonthsInTerm(term));
+
+    public static DateOnly AdvanceNextBillDate(DateOnly current, CustomerContract contract) =>
+        AdvanceNextBillDate(current, AnnualBillingHelper.BillingMonths(contract));
+
+    public static DateOnly RewindNextBillDate(DateOnly current, int monthCount) =>
+        current.AddMonths(-Math.Max(monthCount, 1));
+
+    public static int InclusiveMonthCount(DateOnly start, DateOnly end)
     {
-        BillingFrequency.Monthly => current.AddMonths(1),
-        BillingFrequency.Quarterly => current.AddMonths(3),
-        BillingFrequency.Annual => current.AddYears(1),
-        _ => current.AddMonths(1)
-    };
+        if (end < start)
+            return 0;
+
+        return (end.Year - start.Year) * 12 + (end.Month - start.Month) + 1;
+    }
 
     public static bool IsActiveContract(CustomerContract contract, DateOnly? asOf = null)
     {

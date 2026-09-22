@@ -1,0 +1,180 @@
+@model ExpandedProspectsIndexViewModel
+@{
+    ViewData["Title"] = "Expanded Prospects";
+    var selectedRouteId = Model.SelectedRouteId;
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Expanded Prospects</h1>
+    <a asp-controller="ExpandedProspects"
+       asp-action="Create"
+       asp-route-routeId="@selectedRouteId"
+       class="btn btn-primary">Add Expanded Prospect</a>
+</div>
+
+<partial name="_CustomerListTabs" model="CustomerType.ExpandedProspect" />
+
+<p class="text-muted mb-4">
+    Attraction targets to find in the field that are not already on a route.
+    Pick a route to search the grid, or leave <strong>All routes</strong> to see each route’s cards.
+</p>
+
+@if (TempData["Message"] is string message)
+{
+    <div class="alert alert-success">@message</div>
+}
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">@(selectedRouteId.HasValue ? "On this route" : "Expanded prospects")</div>
+                <div class="display-6">@Model.TotalCount</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Routes with targets</div>
+                <div class="display-6">@Model.RouteCountWithProspects</div>
+            </div>
+        </div>
+    </div>
+    @if (!selectedRouteId.HasValue)
+    {
+        <div class="col-md-3">
+            <div class="card stat-card info h-100">
+                <div class="card-body">
+                    <div class="text-muted small">No route assigned</div>
+                    <div class="display-6">@Model.UnassignedCount</div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<form method="get" asp-action="Index" class="row g-2 mb-4 align-items-end">
+    <div class="col-md-4">
+        <label class="form-label" for="routeId">Route</label>
+        <select name="routeId" id="routeId" class="form-select" onchange="this.form.submit()">
+            <option value="">All routes</option>
+            @foreach (var route in Model.Routes)
+            {
+                <option value="@route.Id" selected="@(selectedRouteId == route.Id)">@route.Name</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-4">
+        <label class="form-label" for="search">Search</label>
+        <input type="text" name="search" id="search" value="@ViewBag.Search" class="form-control" placeholder="Name, city, phone..." />
+    </div>
+    <div class="col-md-3">
+        <label class="form-label" for="status">Status</label>
+        <select name="status" id="status" class="form-select" asp-items="Html.GetEnumSelectList<CustomerStatus>()">
+            <option value="">All statuses</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-outline-secondary">Search</button>
+    </div>
+</form>
+
+@if (Model.Groups.Count == 0)
+{
+    <p class="text-muted">No active routes to group expanded prospects.</p>
+}
+else
+{
+    @foreach (var group in Model.Groups)
+    {
+        <section class="expanded-route-section" id="route-@(group.RouteId?.ToString() ?? "none")">
+            <div class="expanded-route-section-header">
+                <h2 class="h5 mb-0">
+                    @group.RouteName
+                    <span class="text-muted fw-normal">(@group.Prospects.Count)</span>
+                </h2>
+                @if (group.RouteId.HasValue)
+                {
+                    <a asp-controller="ExpandedProspects"
+                       asp-action="Create"
+                       asp-route-routeId="@group.RouteId"
+                       class="btn btn-sm btn-outline-primary">Add to this route</a>
+                }
+            </div>
+
+            @if (group.Prospects.Any())
+            {
+                <div class="row g-3">
+                @foreach (var item in group.Prospects)
+                {
+                    var previewScan = item.BrochureScans
+                        .OrderByDescending(s => s.UploadedAt)
+                        .FirstOrDefault(s => s.IsImage)
+                        ?? item.BrochureScans.OrderByDescending(s => s.UploadedAt).FirstOrDefault();
+
+                    <div class="col-sm-6 col-md-4 col-lg-3 col-xl-2">
+                        <div class="card customer-card h-100">
+                            <a asp-controller="Customers" asp-action="Details" asp-route-id="@item.Id"
+                               asp-route-search="@ViewBag.Search" asp-route-status="@ViewBag.Status"
+                               class="customer-card-link text-decoration-none text-body">
+                                <div class="customer-card-thumb">
+                                    @if (previewScan?.IsImage == true)
+                                    {
+                                        <img src="@Url.Action("ViewBrochureScan", "Customers", new { id = previewScan.Id })"
+                                             class="customer-card-image"
+                                             alt="@item.CustomerName brochure" />
+                                    }
+                                    else if (previewScan != null)
+                                    {
+                                        <div class="customer-card-placeholder customer-card-placeholder-pdf">
+                                            <span class="fw-semibold text-danger">PDF</span>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="customer-card-placeholder">
+                                            <span class="text-muted small">No photo</span>
+                                        </div>
+                                    }
+                                </div>
+                                <div class="card-body p-2">
+                                    <div class="d-flex align-items-center gap-1 min-w-0">
+                                        @{ ViewData["IconSize"] = "sm"; }
+                                        <partial name="_FlagIcons" model="item" />
+                                        <div class="customer-card-name fw-semibold text-truncate" title="@item.CustomerName">@item.CustomerName</div>
+                                    </div>
+                                    @if (!string.IsNullOrWhiteSpace(item.City) || !string.IsNullOrWhiteSpace(item.State))
+                                    {
+                                        <div class="small text-muted text-truncate mt-1" title="@item.City @item.State">
+                                            @item.City@(string.IsNullOrWhiteSpace(item.City) || string.IsNullOrWhiteSpace(item.State) ? "" : ", ")@item.State
+                                        </div>
+                                    }
+                                    <div class="d-flex justify-content-between align-items-center mt-1">
+                                        <span class="badge @(item.Status == CustomerStatus.Active ? "bg-success" : "bg-secondary")">@item.Status</span>
+                                    </div>
+                                </div>
+                            </a>
+                            <div class="card-footer bg-transparent border-top-0 pt-0 px-2 pb-2">
+                                <div class="d-grid gap-1">
+                                    <form asp-controller="Customers" asp-action="ToggleType" method="post">
+                                        <input type="hidden" name="id" value="@item.Id" />
+                                        <input type="hidden" name="toType" value="@CustomerType.Prospect" />
+                                        <input type="hidden" name="returnTo" value="list" />
+                                        <button type="submit" class="btn btn-sm btn-outline-info w-100">Make Prospect</button>
+                                    </form>
+                                    <a asp-controller="Customers" asp-action="Details" asp-route-id="@item.Id" class="btn btn-sm btn-outline-primary">Details</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+                </div>
+            }
+            else
+            {
+                <p class="text-muted mb-0">No attraction targets on this route yet.</p>
+            }
+        </section>
+    }
+}

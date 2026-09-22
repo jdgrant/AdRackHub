@@ -10,40 +10,62 @@
             <input asp-for="Contract.ContractName" class="form-control" />
             <span asp-validation-for="Contract.ContractName" class="text-danger"></span>
         </div>
-        <div class="mb-3">
-            <label asp-for="Contract.Term" class="form-label"></label>
-            <select asp-for="Contract.Term" class="form-select">
-                <option value="@BillingFrequency.Monthly">Monthly</option>
-                <option value="@BillingFrequency.Quarterly">Quarterly</option>
-                <option value="@BillingFrequency.Annual">Yearly</option>
-            </select>
-            <span asp-validation-for="Contract.Term" class="text-danger"></span>
-        </div>
+        <input type="hidden" asp-for="Contract.Term" />
         <div class="mb-3">
             <label asp-for="Contract.NextBillDate" class="form-label"></label>
-            <input asp-for="Contract.NextBillDate" class="form-control" type="date" />
-            <div class="form-text">The contract issues the next bill on this date, then every billing term after that.</div>
+            <input asp-for="Contract.NextBillDate" class="form-control" type="date" id="contractNextBillDate" />
+            <div class="form-text">The contract issues the next bill on this date, then every N months after that.</div>
             <span asp-validation-for="Contract.NextBillDate" class="text-danger"></span>
         </div>
         <div class="mb-3">
             <label asp-for="Contract.ContractEndDate" class="form-label"></label>
-            <input asp-for="Contract.ContractEndDate" class="form-control" type="date" />
+            <input asp-for="Contract.ContractEndDate" class="form-control" type="date" id="contractEndDate" />
             <div class="form-text">Leave blank if the contract does not expire.</div>
             <span asp-validation-for="Contract.ContractEndDate" class="text-danger"></span>
         </div>
+        @{
+            var billingTermPicker = new BillingTermPickerViewModel
+            {
+                MonthCountInputName = "Contract.BillingMonthCount",
+                MonthCountInputId = "contractBillingMonthCount",
+                MonthCount = Model.Contract.BillingMonthCount,
+                ShowUseDates = true
+            };
+        }
+        <partial name="_BillingTermPicker" model="billingTermPicker" />
+        <span asp-validation-for="Contract.BillingMonthCount" class="text-danger"></span>
         <div class="mb-3">
             <label class="form-label">Months of Service</label>
             <partial name="_SubscribedMonthsCheckboxes" model="Model.SelectedMonthNumbers" />
-            <div class="form-text">By default all 12 months. Uncheck months when service is not provided.</div>
+            <div class="form-text">
+                Choose the specific months this customer receives service.
+                Bills only generate when the billing period overlaps a selected month. Default is all 12 months.
+            </div>
         </div>
         <div class="mb-3">
             <label asp-for="Contract.Notes" class="form-label"></label>
             <textarea asp-for="Contract.Notes" class="form-control" rows="3"></textarea>
         </div>
+        @if (!string.IsNullOrWhiteSpace(Model.Contract.WaveInvoiceNumber) || Model.Contract.HasWaveInvoicePdf)
+        {
+            <div class="mb-3">
+                <label class="form-label">Wave invoice</label>
+                <div>
+                    @if (!string.IsNullOrWhiteSpace(Model.Contract.WaveInvoiceNumber))
+                    {
+                        <span>@Model.Contract.WaveInvoiceNumber</span>
+                    }
+                    @if (Model.Contract.HasWaveInvoicePdf)
+                    {
+                        <a asp-action="InvoicePdf" asp-route-id="@Model.Contract.Id" class="ms-2">Invoice PDF</a>
+                    }
+                </div>
+            </div>
+        }
     </div>
     <div class="col-lg-7">
         <label class="form-label">Routes on this contract</label>
-        <p class="text-muted small">Select routes and set the monthly rate per route. The bill amount is calculated from the contract billing term.</p>
+        <p class="text-muted small">Select routes and set the monthly rate per route. The bill amount is monthly rate × number of months.</p>
         <div style="max-height: 520px; overflow-y: auto;">
             @if (Model.AvailableRoutes.Any())
             {
@@ -198,6 +220,30 @@
                         stopList.querySelectorAll('input').forEach(function (el) { el.disabled = true; });
                     }
                 });
+            });
+        }
+
+        function inclusiveMonthCount(startStr, endStr) {
+            if (!startStr || !endStr) return null;
+            const start = new Date(startStr + 'T00:00:00');
+            const end = new Date(endStr + 'T00:00:00');
+            if (isNaN(start) || isNaN(end) || end < start) return null;
+            return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1;
+        }
+
+        const nextBillInput = document.getElementById('contractNextBillDate');
+        const endDateInput = document.getElementById('contractEndDate');
+        const matchDatesButton = document.getElementById('matchMonthsFromDates');
+        if (matchDatesButton && nextBillInput && endDateInput) {
+            matchDatesButton.addEventListener('click', function () {
+                const months = inclusiveMonthCount(nextBillInput.value, endDateInput.value);
+                if (!months || months < 1 || months > 36) {
+                    alert('Set a next bill date and an end date first. Number of months is the inclusive span between those dates.');
+                    return;
+                }
+                if (window.AdRackBillingTerm) {
+                    window.AdRackBillingTerm.setMonths(months);
+                }
             });
         }
     });

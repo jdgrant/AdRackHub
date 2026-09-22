@@ -46,6 +46,19 @@ public class Stop
     [StringLength(1000)]
     public string? Notes { get; set; }
 
+    [Display(Name = "Latitude")]
+    public double? Latitude { get; set; }
+
+    [Display(Name = "Longitude")]
+    public double? Longitude { get; set; }
+
+    [StringLength(255)]
+    [Display(Name = "Place ID")]
+    public string? PlaceId { get; set; }
+
+    [Display(Name = "High Value Target")]
+    public bool IsHighValueTarget { get; set; }
+
     [Required]
     public StopStatus Status { get; set; } = StopStatus.Active;
 

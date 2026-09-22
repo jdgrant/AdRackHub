@@ -28,7 +28,8 @@ public class CustomerRoutesController : Controller
             CustomerId = customerId,
             AllStops = true,
             Status = CustomerRouteStatus.Active,
-            BillingTerm = BillingFrequency.Quarterly
+            BillingTerm = BillingFrequency.Quarterly,
+            BillingMonthCount = 3
         });
 
         ViewBag.CustomerName = customer.CustomerName;
@@ -47,6 +48,7 @@ public class CustomerRoutesController : Controller
 
         if (ModelState.IsValid)
         {
+            AnnualBillingHelper.ApplyBillingMonths(vm.CustomerRoute, vm.CustomerRoute.BillingMonthCount);
             vm.CustomerRoute.SubscribedMonthMask = SubscribedMonths.BuildMask(vm.SelectedMonthNumbers);
             _context.Add(vm.CustomerRoute);
             await _context.SaveChangesAsync();
@@ -93,6 +95,7 @@ public class CustomerRoutesController : Controller
 
         if (ModelState.IsValid)
         {
+            AnnualBillingHelper.ApplyBillingMonths(vm.CustomerRoute, vm.CustomerRoute.BillingMonthCount);
             vm.CustomerRoute.SubscribedMonthMask = SubscribedMonths.BuildMask(vm.SelectedMonthNumbers);
             try
             {
@@ -155,6 +158,7 @@ public class CustomerRoutesController : Controller
         {
             ratePerMonth = SubscribedMonths.DefaultRatePerMonth(route),
             billingFrequency = route.BillingFrequency.ToString(),
+            billingMonths = AnnualBillingHelper.MonthsInTerm(route.BillingFrequency),
             routePrice = route.Price
         });
     }

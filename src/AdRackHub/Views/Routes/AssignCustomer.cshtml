@@ -26,14 +26,17 @@
                 <label asp-for="Status" class="form-label"></label>
                 <select asp-for="Status" class="form-select" asp-items="Html.GetEnumSelectList<CustomerRouteStatus>()"></select>
             </div>
-            <div class="mb-3">
-                <label asp-for="BillingTerm" class="form-label"></label>
-                <select asp-for="BillingTerm" class="form-select">
-                    <option value="@BillingFrequency.Monthly">Monthly</option>
-                    <option value="@BillingFrequency.Quarterly">Quarterly</option>
-                    <option value="@BillingFrequency.Annual">Yearly</option>
-                </select>
-            </div>
+            <input type="hidden" asp-for="BillingTerm" />
+            @{
+                var billingTermPicker = new BillingTermPickerViewModel
+                {
+                    MonthCountInputName = "BillingMonthCount",
+                    MonthCountInputId = "assignCustomerBillingMonthCount",
+                    MonthCount = Model.BillingMonthCount
+                };
+            }
+            <partial name="_BillingTermPicker" model="billingTermPicker" />
+            <span asp-validation-for="BillingMonthCount" class="text-danger"></span>
             <div class="mb-3">
                 <label asp-for="RatePerMonth" class="form-label"></label>
                 <div class="input-group">

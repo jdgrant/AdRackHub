@@ -3,12 +3,40 @@
     var isProspect = Model.ListType == CustomerType.Prospect;
     ViewData["Title"] = isProspect ? "Prospects" : "Customers";
     var addLabel = isProspect ? "Add Prospect" : "Add Customer";
-    var emptyMessage = isProspect ? "No prospects match your filters." : "No customers match your filters.";
+    var highValueFilter = ViewBag.HighValue as bool? == true;
+    var needsMoreInfoFilter = ViewBag.NeedsMoreInfo as bool? == true;
+    string ProspectFilterUrl(bool highValue = false, bool needsMoreInfo = false)
+    {
+        var qs = new List<string>();
+        if (ViewBag.Search is string search && !string.IsNullOrWhiteSpace(search))
+            qs.Add("search=" + Uri.EscapeDataString(search));
+        if (ViewBag.Status is CustomerStatus status)
+            qs.Add("status=" + Uri.EscapeDataString(status.ToString()));
+        if (highValue)
+            qs.Add("highValue=true");
+        if (needsMoreInfo)
+            qs.Add("needsMoreInfo=true");
+        var path = Url.Content("~/Prospects");
+        return qs.Count == 0 ? path : path + "?" + string.Join("&", qs);
+    }
+    var emptyMessage = isProspect
+        ? (highValueFilter
+            ? "No high value prospects match your filters."
+            : needsMoreInfoFilter
+                ? "No prospects that need more info match your filters."
+                : "No prospects match your filters.")
+        : "No customers match your filters.";
 }
 
 <div class="page-header">
     <h1 class="h2 mb-0">@(isProspect ? "Prospects" : "Customers")</h1>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+        @if (!isProspect && Model.ContractedCustomersByRoute.Count > 0)
+        {
+            <div class="contracted-customer-jump-wrap">
+                <partial name="_ContractedCustomerJump" model="Model.ContractedCustomersByRoute" />
+            </div>
+        }
         @if (!isProspect)
         {
             <a asp-controller="Customers" asp-action="ImportMatrix" class="btn btn-outline-primary">Import Route Matrix</a>
@@ -17,22 +45,7 @@
     </div>
 </div>
 
-<ul class="nav nav-tabs mb-4">
-    <li class="nav-item">
-        <a class="nav-link @(isProspect ? "" : "active")"
-           asp-controller="Customers"
-           asp-action="Index"
-           asp-route-search="@ViewBag.Search"
-           asp-route-status="@ViewBag.Status">Customers</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link @(isProspect ? "active" : "")"
-           asp-controller="Prospects"
-           asp-action="Index"
-           asp-route-search="@ViewBag.Search"
-           asp-route-status="@ViewBag.Status">Prospects</a>
-    </li>
-</ul>
+<partial name="_CustomerListTabs" model="Model.ListType" />
 
 @if (TempData["Message"] is string message)
 {
@@ -43,12 +56,34 @@
 {
     <div class="row g-3 mb-4">
         <div class="col-md-3">
-            <div class="card stat-card h-100">
-                <div class="card-body">
-                    <div class="text-muted small">Prospects</div>
-                    <div class="display-6">@Model.Summary.ClientCount</div>
+            <a href="@ProspectFilterUrl()" class="stat-card-link">
+                <div class="card stat-card h-100 @(highValueFilter || needsMoreInfoFilter ? "" : "stat-card-current")">
+                    <div class="card-body">
+                        <div class="text-muted small">Prospects</div>
+                        <div class="display-6">@Model.Summary.ClientCount</div>
+                    </div>
                 </div>
-            </div>
+            </a>
+        </div>
+        <div class="col-md-3">
+            <a href="@ProspectFilterUrl(highValue: true)" class="stat-card-link">
+                <div class="card stat-card warning h-100 @(highValueFilter ? "stat-card-current" : "")">
+                    <div class="card-body">
+                        <div class="text-muted small">High Value Targets</div>
+                        <div class="display-6">@Model.Summary.HighValueCount</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-3">
+            <a href="@ProspectFilterUrl(needsMoreInfo: true)" class="stat-card-link">
+                <div class="card stat-card info h-100 @(needsMoreInfoFilter ? "stat-card-current" : "")">
+                    <div class="card-body">
+                        <div class="text-muted small">Needs More Info</div>
+                        <div class="display-6">@Model.Summary.NeedsMoreInfoCount</div>
+                    </div>
+                </div>
+            </a>
         </div>
     </div>
 }
@@ -74,7 +109,7 @@ else
         <div class="col-md-3">
             <div class="card stat-card h-100">
                 <div class="card-body">
-                    <div class="text-muted small">Total Revenue</div>
+                    <div class="text-muted small">Total Annual Revenue</div>
                     <div class="display-6">@Model.Summary.TotalRevenue.ToString("C0")</div>
                 </div>
             </div>
@@ -82,7 +117,7 @@ else
         <div class="col-md-3">
             <div class="card stat-card h-100">
                 <div class="card-body">
-                    <div class="text-muted small">Avg Revenue / Client</div>
+                    <div class="text-muted small">Avg Annual / Contracted Client</div>
                     <div class="display-6">@Model.Summary.AverageRevenuePerClient.ToString("C0")</div>
                 </div>
             </div>
@@ -94,6 +129,14 @@ else
     @if (!isProspect)
     {
         <input type="hidden" name="type" value="@Model.ListType" />
+    }
+    @if (isProspect && highValueFilter)
+    {
+        <input type="hidden" name="highValue" value="true" />
+    }
+    @if (isProspect && needsMoreInfoFilter)
+    {
+        <input type="hidden" name="needsMoreInfo" value="true" />
     }
     <div class="col-md-4">
         <input type="text" name="search" value="@ViewBag.Search" class="form-control" placeholder="Search by name or contact..." />
@@ -107,6 +150,14 @@ else
         <button type="submit" class="btn btn-outline-secondary">Filter</button>
     </div>
 </form>
+
+@if (isProspect && (highValueFilter || needsMoreInfoFilter))
+{
+    <p class="text-muted mb-3">
+        Showing @Model.Customers.Count @(highValueFilter ? "high value prospects" : "prospects that need more info").
+        <a href="@ProspectFilterUrl()">Show all</a>
+    </p>
+}
 
 @if (Model.Customers.Any())
 {
@@ -123,6 +174,8 @@ else
             <div class="card customer-card h-100">
                 <a asp-controller="Customers" asp-action="Details" asp-route-id="@item.Id"
                    asp-route-search="@ViewBag.Search" asp-route-status="@ViewBag.Status"
+                   asp-route-highValue="@(highValueFilter ? "true" : "")"
+                   asp-route-needsMoreInfo="@(needsMoreInfoFilter ? "true" : "")"
                    class="customer-card-link text-decoration-none text-body">
                     <div class="customer-card-thumb">
                         @if (previewScan?.IsImage == true)

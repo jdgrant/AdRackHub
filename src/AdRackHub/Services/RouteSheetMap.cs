@@ -44,4 +44,23 @@ public static class RouteSheetMap
             RouteNaming.RestAreaPrefix + bare
         ];
     }
+
+    /// <summary>
+    /// Resolves a CSV/sheet route onto the matching database row.
+    /// Prefers an exact name, then the same product (Exit vs Rest Area).
+    /// Do not treat "Exit - I-75" and "Rest Area - I-75" as the same route.
+    /// </summary>
+    public static Models.Route? FindImportRoute(IEnumerable<Models.Route> routes, string configuredName)
+    {
+        var list = routes as IList<Models.Route> ?? routes.ToList();
+        var exact = list.FirstOrDefault(r =>
+            r.RouteName.Equals(configuredName, StringComparison.OrdinalIgnoreCase));
+        if (exact != null)
+            return exact;
+
+        var product = RouteProductHelper.FromRouteName(configuredName);
+        return list.FirstOrDefault(r =>
+            RouteNaming.NamesMatch(r.RouteName, configuredName)
+            && RouteProductHelper.FromRouteName(r.RouteName) == product);
+    }
 }

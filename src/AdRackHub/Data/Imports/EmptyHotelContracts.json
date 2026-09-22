@@ -1,0 +1,792 @@
+{
+  "source": "hotel_customers_by_route.xlsx + AdRack_Combined_Revenue.xlsx 2026 Hotel",
+  "contracts": [
+    {
+      "customerId": 126,
+      "contractId": 40,
+      "customerName": "AFRICAN SAFARI WILDLIFE PARK",
+      "sheetName": "AFRICAN SAFARI WILDLIFE PARK",
+      "annualHotel": 2620.0,
+      "routes": [
+        {
+          "routeName": "Exit - Central OH",
+          "sheetRoute": "Central Ohio",
+          "months": [
+            5,
+            6,
+            7,
+            8
+          ],
+          "schedule": "5-8'2026"
+        },
+        {
+          "routeName": "Exit - Cincinnati-NKY",
+          "sheetRoute": "Cincinnati",
+          "months": [
+            5,
+            6,
+            7,
+            8
+          ],
+          "schedule": "5-8'2026"
+        },
+        {
+          "routeName": "Exit - Northeast OH",
+          "sheetRoute": "Northeast Ohio",
+          "months": [
+            5,
+            6,
+            7,
+            8
+          ],
+          "schedule": "5-8'2026"
+        },
+        {
+          "routeName": "Exit - Northern Interstate",
+          "sheetRoute": "Northern Interstate",
+          "months": [
+            5,
+            6,
+            7,
+            8
+          ],
+          "schedule": "5-8'2026"
+        }
+      ]
+    },
+    {
+      "customerId": 128,
+      "contractId": 42,
+      "customerName": "ARK ENCOUNTER",
+      "sheetName": "ARK ENCOUNTER",
+      "annualHotel": 8400.0,
+      "routes": [
+        {
+          "routeName": "Exit - Central OH",
+          "sheetRoute": "Central Ohio",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        },
+        {
+          "routeName": "Exit - Cincinnati-NKY",
+          "sheetRoute": "Cincinnati",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        },
+        {
+          "routeName": "Exit - I-65 & 24",
+          "sheetRoute": "I-65",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        },
+        {
+          "routeName": "Exit - I-75",
+          "sheetRoute": "I-75",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        },
+        {
+          "routeName": "Exit - Lex-Frankfort",
+          "sheetRoute": "Lexington",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        },
+        {
+          "routeName": "Exit - Louisville",
+          "sheetRoute": "Louisville",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        },
+        {
+          "routeName": "Exit - Northeast OH",
+          "sheetRoute": "Northeast Ohio",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        },
+        {
+          "routeName": "Exit - Northern Interstate",
+          "sheetRoute": "Northern Interstate",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        }
+      ]
+    },
+    {
+      "customerId": 129,
+      "contractId": 43,
+      "customerName": "ARMSTRONG AIR AND SPACE MUSEUM",
+      "sheetName": "ARMSTRONG AIR AND SPACE MUSEUM",
+      "annualHotel": 2100.0,
+      "routes": [
+        {
+          "routeName": "Exit - Northern Interstate",
+          "sheetRoute": "Northern Interstate",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        }
+      ]
+    },
+    {
+      "customerId": 127,
+      "contractId": 41,
+      "customerName": "American Cave Museum/Hidden River",
+      "sheetName": "HIDDEN RIVER CAVE & MUSEUM",
+      "annualHotel": 2280.0,
+      "routes": [
+        {
+          "routeName": "Exit - I-65 & 24",
+          "sheetRoute": "I-65",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12 (S.1/2 NoRT)"
+        },
+        {
+          "routeName": "Exit - Northern Interstate",
+          "sheetRoute": "Northern Interstate",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12 (S.1/2 NoRT)"
+        }
+      ]
+    },
+    {
+      "customerId": 133,
+      "contractId": 61,
+      "customerName": "BB Riverboats",
+      "sheetName": "BB RIVERBOATS",
+      "annualHotel": 5040.0,
+      "routes": [
+        {
+          "routeName": "Exit - Central OH",
+          "sheetRoute": "Central Ohio",
+          "months": [
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+          ],
+          "schedule": "5-10'2026"
+        },
+        {
+          "routeName": "Exit - Cincinnati-NKY",
+          "sheetRoute": "Cincinnati",
+          "months": [
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+          ],
+          "schedule": "5-10'2026"
+        },
+        {
+          "routeName": "Exit - I-75",
+          "sheetRoute": "I-75",
+          "months": [
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+          ],
+          "schedule": "5-10'2026"
+        },
+        {
+          "routeName": "Exit - Lex-Frankfort",
+          "sheetRoute": "Lexington",
+          "months": [
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+          ],
+          "schedule": "5-10'2026"
+        },
+        {
+          "routeName": "Exit - Northern Interstate",
+          "sheetRoute": "Northern Interstate",
+          "months": [
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+          ],
+          "schedule": "5-10'2026"
+        }
+      ]
+    },
+    {
+      "customerId": 135,
+      "contractId": 63,
+      "customerName": "BEREA",
+      "sheetName": "BEREA RECREATION T & C",
+      "annualHotel": 4680.0,
+      "routes": [
+        {
+          "routeName": "Exit - Cincinnati-NKY",
+          "sheetRoute": "Cincinnati",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        },
+        {
+          "routeName": "Exit - I-75",
+          "sheetRoute": "I-75",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        },
+        {
+          "routeName": "Exit - Louisville",
+          "sheetRoute": "Louisville",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        }
+      ]
+    },
+    {
+      "customerId": 140,
+      "contractId": 50,
+      "customerName": "BUTLER COUNTY VISITORS BUREAU (magazine)",
+      "sheetName": "BUTLER COUNTY VB MAGAZINE",
+      "annualHotel": 5460.0,
+      "routes": [
+        {
+          "routeName": "Exit - Central OH",
+          "sheetRoute": "Central Ohio",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12 DBL (S.1/2 NoRT)"
+        },
+        {
+          "routeName": "Exit - Cincinnati-NKY",
+          "sheetRoute": "Cincinnati",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12 DBL (S.1/2 NoRT)"
+        },
+        {
+          "routeName": "Exit - Northern Interstate",
+          "sheetRoute": "Northern Interstate",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12 DBL (S.1/2 NoRT)"
+        }
+      ]
+    },
+    {
+      "customerId": 138,
+      "contractId": 67,
+      "customerName": "Bowling Green Area CVB",
+      "sheetName": "BOWLING GREEN AREA VISITORS GUIDE -KY",
+      "annualHotel": 6240.0,
+      "routes": [
+        {
+          "routeName": "Exit - Central OH",
+          "sheetRoute": "Central Ohio",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        },
+        {
+          "routeName": "Exit - I-65 & 24",
+          "sheetRoute": "I-65",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        },
+        {
+          "routeName": "Exit - I-75",
+          "sheetRoute": "I-75",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        },
+        {
+          "routeName": "Exit - Northern Interstate",
+          "sheetRoute": "Northern Interstate",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        }
+      ]
+    },
+    {
+      "customerId": 142,
+      "contractId": 52,
+      "customerName": "CAMBRIDGE/GUERNSEY COUNTY VISITORS & CONVENTION BUREAU (magazine)",
+      "sheetName": "CAMBRIDGE/GUERNSEY COUNTY",
+      "annualHotel": 4260.0,
+      "routes": [
+        {
+          "routeName": "Exit - Central OH",
+          "sheetRoute": "Central Ohio",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12 DOUBLE"
+        },
+        {
+          "routeName": "Exit - Northeast OH",
+          "sheetRoute": "Northeast Ohio",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12 DOUBLE"
+        }
+      ]
+    },
+    {
+      "customerId": 143,
+      "contractId": 53,
+      "customerName": "CARROLL COUNTY OHIO CONVENTION & VISITORS BUREAU",
+      "sheetName": "CARROLL COUNTY CVB (OHIO)",
+      "annualHotel": 3000.0,
+      "routes": [
+        {
+          "routeName": "Exit - Central OH",
+          "sheetRoute": "Central Ohio",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        },
+        {
+          "routeName": "Exit - Northeast OH",
+          "sheetRoute": "Northeast Ohio",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        }
+      ]
+    },
+    {
+      "customerId": 148,
+      "contractId": 60,
+      "customerName": "CORBIN TOURIST COMMISSION",
+      "sheetName": "CORBIN T & C COMMISSION",
+      "annualHotel": 4200.0,
+      "routes": [
+        {
+          "routeName": "Exit - Central OH",
+          "sheetRoute": "Central Ohio",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        },
+        {
+          "routeName": "Exit - I-65 & 24",
+          "sheetRoute": "I-65",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        },
+        {
+          "routeName": "Exit - I-75",
+          "sheetRoute": "I-75",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        },
+        {
+          "routeName": "Exit - Mid-TN",
+          "sheetRoute": "Mid-TN",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        }
+      ]
+    },
+    {
+      "customerId": 132,
+      "contractId": 44,
+      "customerName": "b.a. SWEETIE CANDY CO.",
+      "sheetName": "b.a. SWEETIE CANDY COMPANY",
+      "annualHotel": 660.0,
+      "routes": [
+        {
+          "routeName": "Exit - Northeast OH",
+          "sheetRoute": "Northeast Ohio",
+          "months": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12
+          ],
+          "schedule": "1-12"
+        }
+      ]
+    }
+  ]
+}

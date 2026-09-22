@@ -32,7 +32,7 @@
             toggleStopsDisabled();
         }
 
-        async function loadRouteDefaults() {
+        async function loadRouteDefaults(updateBillingTerm) {
             const routeId = routeSelect.value;
             if (!routeId) {
                 routePriceHint.textContent = '';
@@ -47,6 +47,9 @@
             if (ratePerMonthInput && document.activeElement !== ratePerMonthInput) {
                 ratePerMonthInput.value = Number(data.ratePerMonth).toFixed(2);
             }
+            if (updateBillingTerm && window.AdRackBillingTerm && data.billingMonths) {
+                window.AdRackBillingTerm.setMonths(data.billingMonths);
+            }
             routePriceHint.textContent = `Route price ${Number(data.routePrice).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`;
         }
 
@@ -57,7 +60,7 @@
                 routePriceHint.textContent = '';
                 return;
             }
-            await loadRouteDefaults();
+            await loadRouteDefaults(true);
             const params = new URLSearchParams({ routeId });
             if (customerRouteId) params.append('customerRouteId', customerRouteId);
             const res = await fetch(`/CustomerRoutes/GetStopsForRoute?${params}`);

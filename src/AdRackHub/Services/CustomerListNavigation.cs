@@ -10,6 +10,9 @@ public class CustomerListNavState
     public CustomerType Type { get; set; }
     public string? Search { get; set; }
     public CustomerStatus? Status { get; set; }
+    public bool HighValue { get; set; }
+    public bool NeedsMoreInfo { get; set; }
+    public int? RouteId { get; set; }
     public List<int> Ids { get; set; } = new();
 }
 
@@ -26,7 +29,10 @@ public static class CustomerListNavigation
         IQueryable<Customer> query,
         CustomerType type,
         string? search,
-        CustomerStatus? status)
+        CustomerStatus? status,
+        bool highValue = false,
+        bool needsMoreInfo = false,
+        int? routeId = null)
     {
         query = query.Where(c => c.Type == type);
 
@@ -44,7 +50,18 @@ public static class CustomerListNavigation
         if (status.HasValue)
             query = query.Where(c => c.Status == status.Value);
 
-        return query.OrderBy(c => c.CustomerName);
+        if (highValue)
+            query = query.Where(c => c.IsHighValueProspect);
+
+        if (needsMoreInfo)
+            query = query.Where(c => c.NeedsMoreInfo);
+
+        if (routeId.HasValue)
+            query = query.Where(c => c.ExpandedProspectRouteId == routeId.Value);
+
+        return query
+            .OrderBy(c => c.ExpandedProspectRoute != null ? c.ExpandedProspectRoute.RouteName : "zzz")
+            .ThenBy(c => c.CustomerName);
     }
 
     public static async Task<List<int>> GetOrderedIdsAsync(
@@ -52,9 +69,12 @@ public static class CustomerListNavigation
         CustomerType type,
         string? search,
         CustomerStatus? status,
+        bool highValue = false,
+        bool needsMoreInfo = false,
+        int? routeId = null,
         CancellationToken cancellationToken = default)
     {
-        var query = ApplyListFilters(context.Set<Customer>().AsQueryable(), type, search, status);
+        var query = ApplyListFilters(context.Set<Customer>().AsQueryable(), type, search, status, highValue, needsMoreInfo, routeId);
         return await query.Select(c => c.Id).ToListAsync(cancellationToken);
     }
 

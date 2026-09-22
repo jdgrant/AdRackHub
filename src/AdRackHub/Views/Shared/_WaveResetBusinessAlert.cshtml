@@ -1,0 +1,9 @@
+<div class="alert alert-warning alert-dismissible fade show" role="alert">
+    <strong>Your Wave session expired.</strong>
+    The contract was not sent. Reset the business, then send it again.
+    <form asp-controller="Admin" asp-action="WaveOAuthResetBusiness" method="post" class="d-inline ms-2">
+        @Html.AntiForgeryToken()
+        <button type="submit" class="btn btn-sm btn-warning">Reset business</button>
+    </form>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>

@@ -26,6 +26,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<CustomerBrochureScan> CustomerBrochureScans => Set<CustomerBrochureScan>();
     public DbSet<CustomerBrochureInventory> CustomerBrochureInventories => Set<CustomerBrochureInventory>();
     public DbSet<CustomerNote> CustomerNotes => Set<CustomerNote>();
+    public DbSet<CustomerNoteSubNote> CustomerNoteSubNotes => Set<CustomerNoteSubNote>();
     public DbSet<CustomerTask> CustomerTasks => Set<CustomerTask>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -37,10 +38,18 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             e.HasIndex(c => c.CustomerName);
             e.Property(c => c.Status).HasConversion<string>();
             e.Property(c => c.Type).HasConversion<string>();
+            e.Property(c => c.InvoiceReceiptMethod)
+                .HasConversion<string>()
+                .HasMaxLength(20);
             e.HasOne(c => c.AccountManager)
                 .WithMany()
                 .HasForeignKey(c => c.AccountManagerId)
                 .OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(c => c.ExpandedProspectRoute)
+                .WithMany()
+                .HasForeignKey(c => c.ExpandedProspectRouteId)
+                .OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(c => c.ExpandedProspectRouteId);
         });
 
         modelBuilder.Entity<Contact>(e =>
@@ -73,10 +82,21 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         modelBuilder.Entity<CustomerNote>(e =>
         {
             e.Property(n => n.Kind).HasConversion<string>().HasMaxLength(50);
+            e.Property(n => n.Status).HasConversion<string>().HasMaxLength(50);
             e.HasIndex(n => new { n.CustomerId, n.CreatedAt });
+            e.HasIndex(n => new { n.Status, n.DueDate });
             e.HasOne(n => n.Customer)
                 .WithMany(c => c.Notes)
                 .HasForeignKey(n => n.CustomerId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CustomerNoteSubNote>(e =>
+        {
+            e.HasIndex(s => new { s.CustomerNoteId, s.CreatedAt });
+            e.HasOne(s => s.CustomerNote)
+                .WithMany(n => n.SubNotes)
+                .HasForeignKey(s => s.CustomerNoteId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -102,6 +122,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             e.Property(s => s.StopType).HasConversion<string>();
             e.Property(s => s.Status).HasConversion<string>();
             e.HasIndex(s => new { s.RouteId, s.StepNumber });
+            e.HasIndex(s => s.PlaceId);
             e.HasOne(s => s.Route)
                 .WithMany(r => r.Stops)
                 .HasForeignKey(s => s.RouteId)

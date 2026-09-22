@@ -11,7 +11,7 @@ public static class CustomerRevenue
                 contract.ContractRoutes.Sum(cr =>
                     AnnualBillingHelper.ToAnnualPrice(
                         AnnualBillingHelper.GetBillingAmount(cr),
-                        contract.Term)));
+                        contract)));
         }
 
         return customer.CustomerRoutes

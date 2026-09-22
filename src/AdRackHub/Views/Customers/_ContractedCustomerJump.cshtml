@@ -1,0 +1,30 @@
+@model List<ContractedRouteCustomerGroup>
+@{
+    var selectedCustomerId = ViewData["SelectedContractedCustomerId"] as int?;
+    var detailsBase = Url.Action("Details", "Customers") ?? "/Customers/Details";
+}
+@if (Model.Count > 0)
+{
+    <select class="form-select contracted-customer-jump"
+            aria-label="Customers contracted to a route"
+            onchange="if (this.value) window.location.href = this.dataset.detailsBase.replace(/\/$/, '') + '/' + this.value;"
+            data-details-base="@detailsBase">
+        <option value="">Select contracted customer...</option>
+        @foreach (var group in Model)
+        {
+            <optgroup label="@group.RouteName">
+                @foreach (var customer in group.Customers)
+                {
+                    if (selectedCustomerId == customer.CustomerId)
+                    {
+                        <option value="@customer.CustomerId" selected>@customer.CustomerName</option>
+                    }
+                    else
+                    {
+                        <option value="@customer.CustomerId">@customer.CustomerName</option>
+                    }
+                }
+            </optgroup>
+        }
+    </select>
+}

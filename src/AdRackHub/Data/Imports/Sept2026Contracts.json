@@ -1,0 +1,389 @@
+{
+  "nextBillDate": "2026-09-01",
+  "contractEndDate": "2026-12-31",
+  "contracts": [
+    {
+      "billName": "CREATION MUSEUM",
+      "customerId": 149,
+      "expectedCustomerName": "Creation Museum",
+      "product": "RestArea",
+      "contractName": "Creation Museum 2026 Rest Area",
+      "term": "EveryFourMonths",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "expectedTotal": 1560.00,
+      "routes": [
+        { "routeId": 32, "routeName": "Rest Area - I-64 East of Lexington", "amount": 600.00, "stopIds": [603, 604, 605, 606, 607], "locations": [1, 5, 7, 8, 9] },
+        { "routeId": 34, "routeName": "Rest Area - I-64 West & I-71", "amount": 240.00, "stopIds": [612, 613], "locations": [3, 4] },
+        { "routeId": 35, "routeName": "Rest Area - I-65", "amount": 240.00, "stopIds": [616, 617], "locations": [15, 16] },
+        { "routeId": 33, "routeName": "Rest Area - I-75", "amount": 480.00, "stopIds": [608, 609, 610, 611], "locations": [22, 23, 24, 25] }
+      ]
+    },
+    {
+      "billName": "KENTUCKY ARTISAN CENTER AT BEREA",
+      "customerId": 183,
+      "expectedCustomerName": "Kentucky Artisan Center at Berea",
+      "product": "RestArea",
+      "contractName": "Kentucky Artisan Center at Berea 2026 Rest Area",
+      "term": "EveryFourMonths",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "expectedTotal": 444.00,
+      "routes": [
+        { "routeId": 34, "routeName": "Rest Area - I-64 West & I-71", "amount": 148.00, "stopIds": [612], "locations": [3] },
+        { "routeId": 33, "routeName": "Rest Area - I-75", "amount": 296.00, "stopIds": [609, 611], "locations": [23, 25] }
+      ]
+    },
+    {
+      "billName": "DINOSAUR WORLD",
+      "customerId": 154,
+      "expectedCustomerName": "Dinosaur World",
+      "product": "RestArea",
+      "contractName": "Dinosaur World 2026 Rest Area",
+      "term": "EveryFourMonths",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "expectedTotal": 420.00,
+      "routes": [
+        { "routeId": 34, "routeName": "Rest Area - I-64 West & I-71", "amount": 210.00, "stopIds": [613], "locations": [4] },
+        { "routeId": 33, "routeName": "Rest Area - I-75", "amount": 210.00, "stopIds": [611], "locations": [25] }
+      ]
+    },
+    {
+      "billName": "MT. STERLING",
+      "customerId": 212,
+      "expectedCustomerName": "MT STERLING/MONTGOMERY CO",
+      "product": "RestArea",
+      "contractName": "MT STERLING/MONTGOMERY CO 2026 Rest Area",
+      "term": "EveryFourMonths",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "expectedTotal": 640.00,
+      "routes": [
+        { "routeId": 32, "routeName": "Rest Area - I-64 East of Lexington", "amount": 320.00, "stopIds": [603, 606], "locations": [1, 8] },
+        { "routeId": 34, "routeName": "Rest Area - I-64 West & I-71", "amount": 160.00, "stopIds": [612], "locations": [3] },
+        { "routeId": 33, "routeName": "Rest Area - I-75", "amount": 160.00, "stopIds": [609], "locations": [23] }
+      ]
+    },
+    {
+      "billName": "PAINTSVILLE - COUNTRY MUSIC HIGHWAY",
+      "customerId": 226,
+      "expectedCustomerName": "PAINTSVILLETOURISM",
+      "product": "RestArea",
+      "contractName": "PAINTSVILLETOURISM 2026 Rest Area",
+      "term": "EveryFourMonths",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "expectedTotal": 600.00,
+      "routes": [
+        { "routeId": 32, "routeName": "Rest Area - I-64 East of Lexington", "amount": 360.00, "stopIds": [603, 605, 607], "locations": [1, 7, 9] },
+        { "routeId": 33, "routeName": "Rest Area - I-75", "amount": 240.00, "stopIds": [609, 611], "locations": [23, 25] }
+      ]
+    },
+    {
+      "billName": "KENTUCKY WATERWAYS AND ADVENTURE TRAILS",
+      "customerId": 188,
+      "expectedCustomerName": "KY Waterways & Adventure Trails",
+      "product": "RestArea",
+      "contractName": "KY Waterways & Adventure Trails 2026 Rest Area",
+      "term": "Quarterly",
+      "months": [3, 4, 5, 6, 7, 8, 9, 10, 11],
+      "expectedTotal": 525.00,
+      "routes": [
+        { "routeId": 32, "routeName": "Rest Area - I-64 East of Lexington", "amount": 105.00, "stopIds": [606], "locations": [8] },
+        { "routeId": 34, "routeName": "Rest Area - I-64 West & I-71", "amount": 105.00, "stopIds": [612], "locations": [3] },
+        { "routeId": 35, "routeName": "Rest Area - I-65", "amount": 105.00, "stopIds": [616], "locations": [15] },
+        { "routeId": 33, "routeName": "Rest Area - I-75", "amount": 210.00, "stopIds": [609, 611], "locations": [23, 25] }
+      ]
+    },
+    {
+      "billName": "PIKEVILLE - HATFIELD CARD OR THICK BROCHURE",
+      "customerId": 228,
+      "expectedCustomerName": "PIKEVILLE-PIKECOTOURISM",
+      "product": "RestArea",
+      "contractName": "PIKEVILLE-PIKECOTOURISM 2026 Rest Area",
+      "term": "EveryFourMonths",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "expectedTotal": 444.00,
+      "routes": [
+        { "routeId": 32, "routeName": "Rest Area - I-64 East of Lexington", "amount": 148.00, "stopIds": [603], "locations": [1] },
+        { "routeId": 34, "routeName": "Rest Area - I-64 West & I-71", "amount": 148.00, "stopIds": [612], "locations": [3] },
+        { "routeId": 33, "routeName": "Rest Area - I-75", "amount": 148.00, "stopIds": [609], "locations": [23] }
+      ]
+    },
+    {
+      "billName": "HENDERSON KY",
+      "customerId": 173,
+      "expectedCustomerName": "HENDERSONTOURISM",
+      "product": "RestArea",
+      "contractName": "HENDERSONTOURISM 2026 Rest Area",
+      "term": "EveryFourMonths",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "expectedTotal": 320.00,
+      "routes": [
+        { "routeId": 33, "routeName": "Rest Area - I-75", "amount": 320.00, "stopIds": [611], "locations": [25] }
+      ]
+    },
+    {
+      "billName": "LONDON/LAUREL C & V",
+      "customerId": 195,
+      "expectedCustomerName": "LONDON-LAUREL CO TOURISM",
+      "product": "RestArea",
+      "contractName": "LONDON-LAUREL CO TOURISM 2026 Rest Area",
+      "term": "EveryFourMonths",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "expectedTotal": 296.00,
+      "routes": [
+        { "routeId": 34, "routeName": "Rest Area - I-64 West & I-71", "amount": 148.00, "stopIds": [612], "locations": [3] },
+        { "routeId": 33, "routeName": "Rest Area - I-75", "amount": 148.00, "stopIds": [609], "locations": [23] }
+      ]
+    },
+    {
+      "billName": "RICHMOND",
+      "customerId": 237,
+      "expectedCustomerName": "RICHMOND TOURISM",
+      "product": "RestArea",
+      "contractName": "RICHMOND TOURISM 2026 Rest Area",
+      "term": "EveryFourMonths",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "expectedTotal": 296.00,
+      "routes": [
+        { "routeId": 34, "routeName": "Rest Area - I-64 West & I-71", "amount": 148.00, "stopIds": [612], "locations": [3] },
+        { "routeId": 33, "routeName": "Rest Area - I-75", "amount": 148.00, "stopIds": [609], "locations": [23] }
+      ]
+    },
+    {
+      "billName": "KENTUCKY'S CAVELAND - WAS MAMMOTH FUN",
+      "customerId": 145,
+      "expectedCustomerName": "Caveland Marketing Association",
+      "product": "RestArea",
+      "contractName": "Caveland Marketing Association 2026 Rest Area",
+      "term": "EveryFourMonths",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "expectedTotal": 160.00,
+      "routes": [
+        { "routeId": 33, "routeName": "Rest Area - I-75", "amount": 160.00, "stopIds": [611], "locations": [25] }
+      ]
+    },
+    {
+      "billName": "BATTLE OF LEATHERWOOD",
+      "customerId": 189,
+      "expectedCustomerName": "LEATHERWOODREENACTMENT",
+      "product": "RestArea",
+      "contractName": "LEATHERWOODREENACTMENT 2026 Rest Area",
+      "term": "EveryFourMonths",
+      "months": [9, 10],
+      "notes": "Spreadsheet term was Other. Sep–Oct only so the $80 September invoice is not due again in January.",
+      "expectedTotal": 80.00,
+      "routes": [
+        { "routeId": 32, "routeName": "Rest Area - I-64 East of Lexington", "amount": 80.00, "stopIds": [603], "locations": [1] }
+      ]
+    },
+    {
+      "billName": "DINOSAUR WORLD",
+      "customerId": 154,
+      "expectedCustomerName": "Dinosaur World",
+      "product": "Exits",
+      "contractName": "Dinosaur World 2026 Exits",
+      "term": "Quarterly",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "expectedTotal": 1350.00,
+      "routes": [
+        { "routeId": 9, "routeName": "Exit - Cincinnati-NKY", "amount": 337.50 },
+        { "routeId": 37, "routeName": "Exit - I-65 & 24", "amount": 337.50 },
+        { "routeId": 12, "routeName": "Exit - Lex-Frankfort", "amount": 337.50 },
+        { "routeId": 13, "routeName": "Exit - Louisville", "amount": 337.50 }
+      ]
+    },
+    {
+      "billName": "PADUCAH EXPERIENCE GUIDE",
+      "customerId": 225,
+      "expectedCustomerName": "Paducah CVB",
+      "product": "Exits",
+      "contractName": "Paducah CVB 2026 Exits",
+      "term": "Quarterly",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "notes": "Spreadsheet term was Other with no next-bill date. Loaded as quarterly $1,000 on 9/1.",
+      "expectedTotal": 1000.00,
+      "routes": [
+        { "routeId": 13, "routeName": "Exit - Louisville", "amount": 1000.00 }
+      ]
+    },
+    {
+      "billName": "NOBLE COUNTY OHIO VG MAG-",
+      "customerId": 218,
+      "expectedCustomerName": "NOBLE COUNTY CVB",
+      "product": "Exits",
+      "contractName": "NOBLE COUNTY CVB 2026 Exits",
+      "term": "Quarterly",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "expectedTotal": 765.00,
+      "routes": [
+        { "routeId": 7, "routeName": "Exit - Central OH", "amount": 765.00 }
+      ]
+    },
+    {
+      "billName": "HEAVEN HILL BOURBON HERITAGE CENTER",
+      "customerId": 172,
+      "expectedCustomerName": "Heaven Hill Brands",
+      "product": "Exits",
+      "contractName": "Heaven Hill Brands 2026 Exits",
+      "term": "Quarterly",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "expectedTotal": 688.50,
+      "routes": [
+        { "routeId": 12, "routeName": "Exit - Lex-Frankfort", "amount": 688.50 }
+      ]
+    },
+    {
+      "billName": "HOLIDAY WORLD",
+      "customerId": 175,
+      "expectedCustomerName": "Holiday World",
+      "product": "Exits",
+      "contractName": "Holiday World 2026 Exits",
+      "term": "EveryFourMonths",
+      "months": [3, 4, 5, 6, 7, 8, 9, 10],
+      "notes": "Month mask is the union of route seasons. I-65: Apr-Sep, Lexington: Apr-Sep, Louisville: Mar-Oct.",
+      "expectedTotal": 680.00,
+      "routes": [
+        { "routeId": 37, "routeName": "Exit - I-65 & 24", "amount": 226.66 },
+        { "routeId": 12, "routeName": "Exit - Lex-Frankfort", "amount": 226.67 },
+        { "routeId": 13, "routeName": "Exit - Louisville", "amount": 226.67 }
+      ]
+    },
+    {
+      "billName": "WINCHESTER TOUR. COMM.",
+      "customerId": 259,
+      "expectedCustomerName": "WINCHESTER TOURISM",
+      "product": "Exits",
+      "contractName": "WINCHESTER TOURISM 2026 Exits",
+      "term": "Quarterly",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "expectedTotal": 660.00,
+      "routes": [
+        { "routeId": 11, "routeName": "Exit - I-75", "amount": 330.00 },
+        { "routeId": 12, "routeName": "Exit - Lex-Frankfort", "amount": 330.00 }
+      ]
+    },
+    {
+      "billName": "KART KOUNTRY",
+      "customerId": 182,
+      "expectedCustomerName": "Kart Kountry",
+      "product": "Exits",
+      "contractName": "Kart Kountry 2026 Exits",
+      "term": "Quarterly",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "expectedTotal": 630.00,
+      "routes": [
+        { "routeId": 37, "routeName": "Exit - I-65 & 24", "amount": 315.00 },
+        { "routeId": 13, "routeName": "Exit - Louisville", "amount": 315.00 }
+      ]
+    },
+    {
+      "billName": "NANTAHALA OUTDOOR CENTER & RAFTING",
+      "customerId": 215,
+      "expectedCustomerName": "Nantahala Outdoor Center",
+      "product": "Exits",
+      "contractName": "Nantahala Outdoor Center 2026 Exits",
+      "term": "Quarterly",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "expectedTotal": 600.00,
+      "routes": [
+        { "routeId": 37, "routeName": "Exit - I-65 & 24", "amount": 300.00 },
+        { "routeId": 11, "routeName": "Exit - I-75", "amount": 300.00 }
+      ]
+    },
+    {
+      "billName": "SEE ROCK CITY",
+      "customerId": 239,
+      "expectedCustomerName": "See Rock City",
+      "product": "Exits",
+      "contractName": "See Rock City 2026 Exits",
+      "term": "Quarterly",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "expectedTotal": 525.00,
+      "routes": [
+        { "routeId": 37, "routeName": "Exit - I-65 & 24", "amount": 262.50 },
+        { "routeId": 11, "routeName": "Exit - I-75", "amount": 262.50 }
+      ]
+    },
+    {
+      "billName": "LOST RIVER CAVE & UNDERGROUND BOAT TOURS",
+      "customerId": 197,
+      "expectedCustomerName": "Lost River Cave",
+      "product": "Exits",
+      "contractName": "Lost River Cave 2026 Exits",
+      "term": "Quarterly",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "notes": "Month mask is the union of route seasons. I-65: Jan-Dec, Louisville: Mar-Sep.",
+      "expectedTotal": 460.00,
+      "routes": [
+        { "routeId": 37, "routeName": "Exit - I-65 & 24", "amount": 230.00 },
+        { "routeId": 13, "routeName": "Exit - Louisville", "amount": 230.00 }
+      ]
+    },
+    {
+      "billName": "GRANT COUNTY",
+      "customerId": 167,
+      "expectedCustomerName": "Grant County Tourism",
+      "product": "Exits",
+      "contractName": "Grant County Tourism 2026 Exits",
+      "term": "Quarterly",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "expectedTotal": 450.00,
+      "routes": [
+        { "routeId": 37, "routeName": "Exit - I-65 & 24", "amount": 225.00 },
+        { "routeId": 11, "routeName": "Exit - I-75", "amount": 225.00 }
+      ]
+    },
+    {
+      "billName": "FRAZIER HISTORY MUSEUM",
+      "customerId": 161,
+      "expectedCustomerName": "FRAZIER HISTORY MUSEUM",
+      "product": "Exits",
+      "contractName": "FRAZIER HISTORY MUSEUM 2026 Exits",
+      "term": "Quarterly",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "expectedTotal": 405.00,
+      "routes": [
+        { "routeId": 13, "routeName": "Exit - Louisville", "amount": 405.00 }
+      ]
+    },
+    {
+      "billName": "WHISPERING WOODS RIDING STABLE",
+      "customerId": 257,
+      "expectedCustomerName": "WHISPERING WOOD STABLES",
+      "product": "Exits",
+      "contractName": "WHISPERING WOOD STABLES 2026 Exits",
+      "term": "Quarterly",
+      "months": [3, 4, 5, 6, 7, 8, 9, 10],
+      "expectedTotal": 390.00,
+      "routes": [
+        { "routeId": 12, "routeName": "Exit - Lex-Frankfort", "amount": 390.00 }
+      ]
+    },
+    {
+      "billName": "KENTUCKY ARTISAN CENTER AT BEREA",
+      "customerId": 183,
+      "expectedCustomerName": "Kentucky Artisan Center at Berea",
+      "product": "Exits",
+      "contractName": "Kentucky Artisan Center at Berea 2026 Exits",
+      "term": "Monthly",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "expectedTotal": 350.00,
+      "routes": [
+        { "routeId": 9, "routeName": "Exit - Cincinnati-NKY", "amount": 116.67 },
+        { "routeId": 11, "routeName": "Exit - I-75", "amount": 116.67 },
+        { "routeId": 12, "routeName": "Exit - Lex-Frankfort", "amount": 116.66 }
+      ]
+    },
+    {
+      "billName": "LEHMANS HARDWARE",
+      "customerId": 191,
+      "expectedCustomerName": "LEHMAN HARDWARE",
+      "product": "Exits",
+      "contractName": "LEHMAN HARDWARE 2026 Exits",
+      "term": "Quarterly",
+      "months": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      "expectedTotal": 330.00,
+      "routes": [
+        { "routeId": 15, "routeName": "Exit - Northeast OH", "amount": 330.00 }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,253 @@
+@model WaveProofViewModel
+@{
+    ViewData["Title"] = "Wave Invoice Proof of Concept";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Wave Invoice Proof of Concept</h1>
+    <a asp-action="Index" class="btn btn-outline-secondary">Back</a>
+</div>
+
+<p class="text-muted">
+    Creates a Wave customer (if missing), a draft invoice, then automatically approves it through the Wave GraphQL API,
+    emails it from <strong>invoices@ad-rack.net</strong> using the Wave invoice message template
+    when the customer invoice receipt method is <strong>Email</strong> or <strong>Both</strong>
+    (every contact with an email),
+    and saves an Ad-Rack invoice PDF (Wave-style layout with the mailing address at the top).
+    Due date is <strong>30 days</strong> after the invoice date.
+    Zapier and Make webhooks are not called.
+    Billing run invoices and next bill dates are not changed.
+    Each invoice line uses that route's <strong>Wave Product ID</strong>.
+</p>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="h5">OAuth redirect URI</h2>
+        <p class="mb-2">
+            In the Wave application settings, add this exact Redirect URI (login redirect hook):
+        </p>
+        <p class="mb-2"><code>@Model.RedirectUri</code></p>
+        <p class="small text-muted mb-3">
+            For local development also register <code>@Model.LocalRedirectUri</code>.
+            Host and port must match exactly. Wave requires the callback path to sit under a registered URI.
+        </p>
+        <form asp-action="WaveOAuthSaveCredentials" method="post" class="row g-2 align-items-end mb-3">
+            @Html.AntiForgeryToken()
+            <div class="col-md-5">
+                <label class="form-label" for="clientId">Client ID</label>
+                <input class="form-control" id="clientId" name="clientId" value="@Model.ClientId" autocomplete="off" required />
+            </div>
+            <div class="col-md-5">
+                <label class="form-label" for="clientSecret">Client Secret</label>
+                <input class="form-control" id="clientSecret" name="clientSecret" type="password" value="" autocomplete="off" required
+                       placeholder="@(Model.OAuthConfigured ? "Saved for this session — paste again to replace" : "Paste from the Wave application")" />
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-outline-primary w-100">Save</button>
+            </div>
+        </form>
+        <p class="small text-muted">
+            After you Connect to Wave once, this server keeps the login (including a refresh token) so it survives app restarts.
+            Access tokens still expire; they are refreshed automatically. If a send fails because the session expired, reset the business and Connect to Wave again.
+            Emailing invoices needs Wave's <code>invoice:send</code> permission — Disconnect and Connect again if send fails after this update.
+        </p>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            @if (Model.NeedsBusinessReset)
+            {
+                <span class="badge bg-warning text-dark">Session expired</span>
+                <form asp-action="WaveOAuthResetBusiness" method="post" class="d-inline">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-warning"
+                            onclick="return confirm('Your Wave session expired. Reset the business now?');">Reset business</button>
+                </form>
+            }
+            else if (Model.Connected)
+            {
+                <span class="badge bg-success">Connected@(string.IsNullOrWhiteSpace(Model.BusinessName) ? "" : $" — {Model.BusinessName}")</span>
+                <form asp-action="WaveOAuthDisconnect" method="post" class="d-inline">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-sm btn-outline-secondary">Disconnect</button>
+                </form>
+            }
+            else
+            {
+                <span class="badge bg-secondary">Not connected</span>
+            }
+            <a asp-action="WaveOAuthStart" class="btn btn-primary">Connect to Wave</a>
+            @if (!Model.OAuthConfigured)
+            {
+                <span class="text-muted small">Save Client ID and Client Secret first.</span>
+            }
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="h5">Contract</h2>
+        <form asp-action="WaveProof" method="get" class="row g-2 align-items-end">
+            <div class="col-auto">
+                <label class="form-label" for="contractId">Contract ID</label>
+                <input class="form-control" type="number" min="1" id="contractId" name="contractId" value="@Model.ContractId" required />
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-outline-primary">Preview</button>
+            </div>
+        </form>
+
+        @if (Model.ContractId is > 0 && !string.IsNullOrWhiteSpace(Model.ContractName))
+        {
+            <dl class="row mt-4 mb-0">
+                <dt class="col-sm-3">Customer</dt>
+                <dd class="col-sm-9">@Model.CustomerName</dd>
+                <dt class="col-sm-3">Contract</dt>
+                <dd class="col-sm-9">@Model.ContractName</dd>
+                <dt class="col-sm-3">Wave customer</dt>
+                <dd class="col-sm-9">@(string.IsNullOrWhiteSpace(Model.ExistingWaveCustomerId) ? "Will create if you run this proof" : Model.ExistingWaveCustomerId)</dd>
+                @if (Model.InvoiceDate.HasValue)
+                {
+                    <dt class="col-sm-3">Invoice date</dt>
+                    <dd class="col-sm-9">@Model.InvoiceDate.Value.ToString("MMM d, yyyy")</dd>
+                }
+                @if (Model.DueDate.HasValue)
+                {
+                    <dt class="col-sm-3">Due date</dt>
+                    <dd class="col-sm-9">@Model.DueDate.Value.ToString("MMM d, yyyy") (30 days)</dd>
+                }
+                <dt class="col-sm-3">Invoice receipt</dt>
+                <dd class="col-sm-9">@Model.InvoiceReceiptMethod.Name()</dd>
+                <dt class="col-sm-3">Email to</dt>
+                <dd class="col-sm-9">
+                    @if (!Model.WillEmailInvoice)
+                    {
+                        <span class="text-muted">Mail only — the invoice will not be emailed.</span>
+                    }
+                    else if (Model.InvoiceRecipients.Count > 0)
+                    {
+                        <ul class="mb-0 ps-3">
+                            @foreach (var recipient in Model.InvoiceRecipients)
+                            {
+                                <li>@recipient</li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <span class="text-muted">No contacts have an email — the invoice will not be emailed.</span>
+                    }
+                </dd>
+                @if (!string.IsNullOrWhiteSpace(Model.WaveInvoiceNumber) || Model.HasSavedInvoicePdf)
+                {
+                    <dt class="col-sm-3">Saved Wave invoice</dt>
+                    <dd class="col-sm-9">
+                        @if (!string.IsNullOrWhiteSpace(Model.WaveInvoiceNumber))
+                        {
+                            <span>@Model.WaveInvoiceNumber</span>
+                        }
+                        @if (Model.HasSavedInvoicePdf && Model.ContractId is > 0)
+                        {
+                            <a asp-controller="CustomerContracts" asp-action="InvoicePdf" asp-route-id="@Model.ContractId" class="ms-2">Invoice PDF</a>
+                        }
+                    </dd>
+                }
+            </dl>
+            @if (Model.LineSummaries.Count > 0)
+            {
+                <h3 class="h6 mt-3">Invoice lines</h3>
+                <ul>
+                    @foreach (var line in Model.LineSummaries)
+                    {
+                        <li>@line</li>
+                    }
+                </ul>
+            }
+            @if (Model.NeedsBusinessReset)
+            {
+                <form asp-action="WaveOAuthResetBusiness" method="post" class="mt-3">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-warning"
+                            onclick="return confirm('Your Wave session expired. Reset the business now?');">Reset business</button>
+                </form>
+            }
+            else
+            {
+                <form asp-action="WaveProofRun" method="post" class="mt-3">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="contractId" value="@Model.ContractId" />
+                    <button type="submit" class="btn btn-success" @(Model.CanCreateInvoice ? null : "disabled")>Create and approve Wave invoice</button>
+                </form>
+            }
+        }
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(Model.ResultMessage) || !string.IsNullOrWhiteSpace(Model.WaveInvoiceId))
+{
+    <div class="alert @(Model.Success ? "alert-success" : "alert-warning")">
+        @if (!string.IsNullOrWhiteSpace(Model.ResultMessage))
+        {
+            @Model.ResultMessage
+        }
+        @if (!string.IsNullOrWhiteSpace(Model.WaveInvoiceId))
+        {
+            <ul class="mb-0 mt-2">
+                @if (!string.IsNullOrWhiteSpace(Model.WaveInvoiceNumber))
+                {
+                    <li>Invoice number: @Model.WaveInvoiceNumber</li>
+                }
+                @if (Model.DueDate.HasValue)
+                {
+                    <li>Due date: @Model.DueDate.Value.ToString("MMM d, yyyy")</li>
+                }
+                <li>Wave invoice id: <code>@Model.WaveInvoiceId</code></li>
+                @if (!string.IsNullOrWhiteSpace(Model.WaveInvoiceUrl))
+                {
+                    <li><a href="@Model.WaveInvoiceUrl" target="_blank" rel="noopener">Open in Wave</a></li>
+                }
+                @if (Model.HasSavedInvoicePdf && Model.ContractId is > 0)
+                {
+                    <li>
+                        <a asp-controller="CustomerContracts" asp-action="InvoicePdf" asp-route-id="@Model.ContractId">Open saved PDF</a>
+                    </li>
+                }
+            </ul>
+        }
+        @if (Model.HasSavedInvoicePdf && Model.ContractId is > 0)
+        {
+            <a id="wave-pdf-download"
+               asp-controller="CustomerContracts"
+               asp-action="InvoicePdf"
+               asp-route-id="@Model.ContractId"
+               asp-route-download="true"
+               class="btn btn-primary mt-3">Download PDF</a>
+        }
+        else if (Model.InvoiceApproved && !string.IsNullOrWhiteSpace(Model.WaveInvoiceId))
+        {
+            <a id="wave-pdf-download"
+               asp-action="WaveProofPdf"
+               asp-route-invoiceId="@Model.WaveInvoiceId"
+               asp-route-invoiceNumber="@Model.WaveInvoiceNumber"
+               class="btn btn-primary mt-3">Download PDF</a>
+        }
+        @if (Model.CanApproveInvoice)
+        {
+            <form asp-action="WaveProofApprove" method="post" class="mt-3 mb-0">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="contractId" value="@Model.ContractId" />
+                <input type="hidden" name="waveInvoiceId" value="@Model.WaveInvoiceId" />
+                <input type="hidden" name="waveInvoiceNumber" value="@Model.WaveInvoiceNumber" />
+                <input type="hidden" name="waveInvoiceUrl" value="@Model.WaveInvoiceUrl" />
+                <button type="submit" class="btn btn-primary">Retry approve invoice</button>
+            </form>
+        }
+    </div>
+}
+
+@section Scripts {
+    @if (Model.InvoiceApproved && !string.IsNullOrWhiteSpace(Model.WaveInvoiceId))
+    {
+        <script>
+            document.getElementById('wave-pdf-download')?.click();
+        </script>
+    }
+}

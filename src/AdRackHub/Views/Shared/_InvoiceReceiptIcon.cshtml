@@ -1,0 +1,26 @@
+@model InvoiceReceiptMethod
+@{
+    var label = Model.Name();
+    var title = Model switch
+    {
+        InvoiceReceiptMethod.Email => "Invoice by email",
+        InvoiceReceiptMethod.Both => "Invoice by mail and email",
+        _ => "Invoice by mail"
+    };
+}
+<span class="invoice-receipt-icon" title="@title" aria-label="@title">
+    @if (Model.IncludesMail())
+    {
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M4 4a3 3 0 0 0-3 3v6h6V7a3 3 0 0 0-3-3m0-1h8a4 4 0 0 1 4 4v6a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V7a4 4 0 0 1 4-4"/>
+            <path d="M6 5.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-5a.5.5 0 0 1-.5-.5z"/>
+        </svg>
+    }
+    @if (Model.IncludesEmail())
+    {
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M.05 3.555A2 2 0 0 1 2 2h12a2 2 0 0 1 1.95 1.555L8 8.414zM0 4.697v7.104l5.803-3.558zM6.761 8.83l-6.57 4.026A2 2 0 0 0 2 14h12a2 2 0 0 0 1.808-1.144l-6.57-4.026L8 9.586zM16 11.801V4.697l-5.803 3.546z"/>
+        </svg>
+    }
+    <span>@label</span>
+</span>

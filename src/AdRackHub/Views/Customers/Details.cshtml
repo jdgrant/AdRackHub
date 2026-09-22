@@ -1,10 +1,21 @@
 @model Customer
+@using AdRackHub.Services
 @{
     ViewData["Title"] = Model.CustomerName;
-    var isProspect = Model.Type == CustomerType.Prospect;
+    var isProspectLike = CustomerTypeLabels.IsProspectLike(Model.Type);
+    var listController = CustomerTypeLabels.Controller(Model.Type);
+    var listTitle = CustomerTypeLabels.Plural(Model.Type);
     var activeTab = (ViewBag.ActiveTab as string) ?? "activity";
     var listSearch = ViewBag.ListSearch as string;
     var listStatus = ViewBag.ListStatus as CustomerStatus?;
+    var listHighValue = ViewBag.ListHighValue as bool? == true;
+    var listNeedsMoreInfo = ViewBag.ListNeedsMoreInfo as bool? == true;
+    string NoteStatusBadge(CustomerNoteStatus status) => status switch
+    {
+        CustomerNoteStatus.Working => "bg-warning text-dark",
+        CustomerNoteStatus.Done => "bg-success",
+        _ => "bg-primary"
+    };
     var previousId = ViewBag.PreviousCustomerId as int?;
     var nextId = ViewBag.NextCustomerId as int?;
     var navPosition = ViewBag.NavPosition as int? ?? 0;
@@ -77,20 +88,14 @@
         })
         .OrderBy(x => x.Route.RouteName)
         .ToList();
-    var openTasks = Model.Tasks
-        .Where(t => t.Status == CustomerTaskStatus.Open)
-        .OrderBy(t => t.DueDate.HasValue ? 0 : 1)
-        .ThenBy(t => t.DueDate)
-        .ThenBy(t => t.CreatedAt)
-        .ToList();
-    var completedTasks = Model.Tasks
-        .Where(t => t.Status == CustomerTaskStatus.Completed)
-        .OrderByDescending(t => t.CompletedAt ?? t.CreatedAt)
-        .ToList();
-    var overdueCount = openTasks.Count(t => t.IsOverdue);
     var latestBrochure = Model.BrochureScans
         .OrderByDescending(s => s.UploadedAt)
         .FirstOrDefault();
+}
+
+@section Styles {
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
 }
 
 <div class="crm-record">
@@ -98,11 +103,13 @@
         <div class="d-flex gap-3 align-items-start flex-grow-1 min-w-0">
             <div class="min-w-0">
                 <div class="text-muted small mb-1">
-                    <a asp-controller="@(isProspect ? "Prospects" : "Customers")"
+                    <a asp-controller="@listController"
                        asp-action="Index"
                        asp-route-search="@listSearch"
                        asp-route-status="@listStatus"
-                       class="text-decoration-none">@(isProspect ? "Prospects" : "Customers")</a>
+                       asp-route-highValue="@(listHighValue ? "true" : "")"
+                       asp-route-needsMoreInfo="@(listNeedsMoreInfo ? "true" : "")"
+                       class="text-decoration-none">@listTitle</a>
                     <span class="mx-1">/</span>
                     <span>Record</span>
                 </div>
@@ -113,28 +120,31 @@
                     </span>
                 </h1>
                 <div class="d-flex flex-wrap gap-2 align-items-center">
-                    <span class="badge @(isProspect ? "bg-info" : "bg-primary")">@Model.Type</span>
+                    <span class="badge @CustomerTypeLabels.BadgeClass(Model.Type)">@CustomerTypeLabels.Singular(Model.Type)</span>
                     <span class="badge @(Model.Status == CustomerStatus.Active ? "bg-success" : "bg-secondary")">@Model.Status</span>
                     @if (!string.IsNullOrWhiteSpace(Model.Phone))
                     {
                         <a href="tel:@Model.Phone" class="text-decoration-none small">@Model.Phone</a>
                     }
-                    @if (isProspect && Model.IsHighValueProspect)
+                    @if (isProspectLike && Model.IsHighValueProspect)
                     {
                         <span class="badge crm-badge-high-value">★ High Value</span>
                     }
-                    @if (openTasks.Count > 0)
+                    @if (Model.NeedsMoreInfo)
                     {
-                        <span class="badge bg-warning text-dark">@openTasks.Count open task@(openTasks.Count == 1 ? "" : "s")</span>
-                    }
-                    @if (overdueCount > 0)
-                    {
-                        <span class="badge bg-danger">@overdueCount overdue</span>
+                        <span class="badge crm-badge-needs-info">Needs More Info</span>
                     }
                 </div>
             </div>
         </div>
-        <div class="d-flex flex-wrap gap-2">
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            @if (!isProspectLike && ViewBag.ContractedCustomersByRoute is List<ContractedRouteCustomerGroup> contractedGroups && contractedGroups.Count > 0)
+            {
+                ViewData["SelectedContractedCustomerId"] = Model.Id;
+                <div class="contracted-customer-jump-wrap">
+                    <partial name="_ContractedCustomerJump" model="contractedGroups" />
+                </div>
+            }
             <div class="dropdown">
                 <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                     Edit
@@ -144,7 +154,7 @@
                         <a class="dropdown-item" asp-action="Edit" asp-route-id="@Model.Id">Edit details</a>
                     </li>
                     <li><hr class="dropdown-divider" /></li>
-                    @if (isProspect)
+                    @if (isProspectLike)
                     {
                         <li>
                             <form asp-action="ToggleHighValue" method="post">
@@ -166,14 +176,36 @@
                             </form>
                         </li>
                     }
-                    <li>
-                        <form asp-action="ToggleType" method="post">
-                            <input type="hidden" name="id" value="@Model.Id" />
-                            <button type="submit" class="dropdown-item">
-                                @(isProspect ? "Make Customer" : "Make Prospect")
-                            </button>
-                        </form>
-                    </li>
+                    @if (Model.Type != CustomerType.Customer)
+                    {
+                        <li>
+                            <form asp-action="ToggleType" method="post">
+                                <input type="hidden" name="id" value="@Model.Id" />
+                                <input type="hidden" name="toType" value="@CustomerType.Customer" />
+                                <button type="submit" class="dropdown-item">Make Customer</button>
+                            </form>
+                        </li>
+                    }
+                    @if (Model.Type != CustomerType.Prospect)
+                    {
+                        <li>
+                            <form asp-action="ToggleType" method="post">
+                                <input type="hidden" name="id" value="@Model.Id" />
+                                <input type="hidden" name="toType" value="@CustomerType.Prospect" />
+                                <button type="submit" class="dropdown-item">Make Prospect</button>
+                            </form>
+                        </li>
+                    }
+                    @if (Model.Type != CustomerType.ExpandedProspect)
+                    {
+                        <li>
+                            <form asp-action="ToggleType" method="post">
+                                <input type="hidden" name="id" value="@Model.Id" />
+                                <input type="hidden" name="toType" value="@CustomerType.ExpandedProspect" />
+                                <button type="submit" class="dropdown-item">Make Expanded Prospect</button>
+                            </form>
+                        </li>
+                    }
                 </ul>
             </div>
             <div class="btn-group" role="group" aria-label="Record navigation">
@@ -183,6 +215,8 @@
                        asp-route-id="@previousId.Value"
                        asp-route-search="@listSearch"
                        asp-route-status="@listStatus"
+                       asp-route-highValue="@(listHighValue ? "true" : "")"
+                       asp-route-needsMoreInfo="@(listNeedsMoreInfo ? "true" : "")"
                        class="btn btn-outline-secondary"
                        title="Previous in list">&lt;</a>
                 }
@@ -196,6 +230,8 @@
                        asp-route-id="@nextId.Value"
                        asp-route-search="@listSearch"
                        asp-route-status="@listStatus"
+                       asp-route-highValue="@(listHighValue ? "true" : "")"
+                       asp-route-needsMoreInfo="@(listNeedsMoreInfo ? "true" : "")"
                        class="btn btn-outline-secondary"
                        title="Next in list">&gt;</a>
                 }
@@ -208,10 +244,12 @@
             {
                 <span class="align-self-center text-muted small text-nowrap">@navPosition of @navTotal</span>
             }
-            <a asp-controller="@(isProspect ? "Prospects" : "Customers")"
+            <a asp-controller="@listController"
                asp-action="Index"
                asp-route-search="@listSearch"
                asp-route-status="@listStatus"
+               asp-route-highValue="@(listHighValue ? "true" : "")"
+               asp-route-needsMoreInfo="@(listNeedsMoreInfo ? "true" : "")"
                class="btn btn-outline-secondary">Back</a>
         </div>
     </div>
@@ -221,15 +259,6 @@
             <ul class="nav nav-tabs crm-tabs" role="tablist">
                 <li class="nav-item" role="presentation">
                     <button class="nav-link @(activeTab == "activity" ? "active" : "")" id="tab-activity-btn" data-bs-toggle="tab" data-bs-target="#tab-activity" type="button" role="tab">Activity</button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link @(activeTab == "tasks" ? "active" : "")" id="tab-tasks-btn" data-bs-toggle="tab" data-bs-target="#tab-tasks" type="button" role="tab">
-                        Tasks
-                        @if (openTasks.Count > 0)
-                        {
-                            <span class="badge rounded-pill bg-primary ms-1">@openTasks.Count</span>
-                        }
-                    </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link @(activeTab == "contacts" ? "active" : "")" id="tab-contacts-btn" data-bs-toggle="tab" data-bs-target="#tab-contacts" type="button" role="tab">
@@ -249,7 +278,10 @@
                         }
                     </button>
                 </li>
-                @if (!isProspect)
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link @(activeTab == "map" ? "active" : "")" id="tab-map-btn" data-bs-toggle="tab" data-bs-target="#tab-map" type="button" role="tab">Map</button>
+                </li>
+                @if (!isProspectLike)
                 {
                     <li class="nav-item" role="presentation">
                         <button class="nav-link @(activeTab == "routes" ? "active" : "")" id="tab-routes-btn" data-bs-toggle="tab" data-bs-target="#tab-routes" type="button" role="tab">
@@ -277,11 +309,20 @@
                     <div class="crm-panel">
                         <form asp-action="AddNote" method="post" class="crm-composer mb-4">
                             <input type="hidden" name="customerId" value="@Model.Id" />
-                            <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="d-flex justify-content-between align-items-center mb-2 gap-2 flex-wrap">
                                 <div class="fw-semibold">Log activity</div>
-                                <select class="form-select form-select-sm w-auto" name="kind" asp-items="Html.GetEnumSelectList<CustomerNoteKind>()"></select>
+                                <div class="d-flex gap-2 flex-wrap">
+                                    <select class="form-select form-select-sm w-auto" name="kind" data-activity-kind>
+                                        @foreach (var kindOption in EnumDisplay.ActivityKinds())
+                                        {
+                                            <option value="@kindOption">@kindOption.Name()</option>
+                                        }
+                                    </select>
+                                    <select class="form-select form-select-sm w-auto" name="status" asp-items="Html.GetEnumSelectList<CustomerNoteStatus>()"></select>
+                                    <input class="form-control form-control-sm w-auto" type="date" name="dueDate" title="Due date" data-activity-due />
+                                </div>
                             </div>
-                            <textarea class="form-control mb-2" name="body" rows="3" maxlength="4000" required placeholder="Log a note, call, email, meeting, or action…"></textarea>
+                            <textarea class="form-control mb-2" name="body" rows="3" maxlength="4000" required placeholder="Log a note, call, email, meeting, task, or action…"></textarea>
                             <button type="submit" class="btn btn-primary btn-sm">Add to timeline</button>
                         </form>
 
@@ -295,9 +336,16 @@
                                     <div class="crm-timeline-body">
                                         <div class="d-flex justify-content-between gap-2 align-items-start">
                                             <div>
-                                                <span class="badge bg-secondary">@note.Kind</span>
+                                                <span class="badge bg-secondary">@note.Kind.Name()</span>
+                                                <span class="badge @NoteStatusBadge(note.Status)">@note.Status</span>
                                                 <span class="text-muted small ms-1">
                                                     @note.CreatedAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")
+                                                    @if (note.DueDate.HasValue)
+                                                    {
+                                                        <span class="@(note.IsOverdue ? "text-danger fw-semibold" : "")">
+                                                            · Due @note.DueDate.Value.ToString("MMM d, yyyy")
+                                                        </span>
+                                                    }
                                                     @if (!string.IsNullOrWhiteSpace(note.CreatedBy))
                                                     {
                                                         <span>· @note.CreatedBy</span>
@@ -320,20 +368,34 @@
                                         <form asp-action="EditNote" method="post" id="note-edit-@note.Id" class="mt-2 d-none">
                                             <input type="hidden" name="id" value="@note.Id" />
                                             <input type="hidden" name="customerId" value="@Model.Id" />
-                                            <div class="d-flex justify-content-end mb-2">
-                                                <select class="form-select form-select-sm w-auto" name="kind">
-                                                    @foreach (CustomerNoteKind kindOption in Enum.GetValues(typeof(CustomerNoteKind)))
+                                            <div class="d-flex justify-content-end mb-2 gap-2 flex-wrap">
+                                                <select class="form-select form-select-sm w-auto" name="kind" data-activity-kind>
+                                                    @foreach (var kindOption in EnumDisplay.ActivityKinds())
                                                     {
                                                         if (kindOption == note.Kind)
                                                         {
-                                                            <option value="@kindOption" selected>@kindOption</option>
+                                                            <option value="@kindOption" selected>@kindOption.Name()</option>
                                                         }
                                                         else
                                                         {
-                                                            <option value="@kindOption">@kindOption</option>
+                                                            <option value="@kindOption">@kindOption.Name()</option>
                                                         }
                                                     }
                                                 </select>
+                                                <select class="form-select form-select-sm w-auto" name="status">
+                                                    @foreach (CustomerNoteStatus statusOption in Enum.GetValues(typeof(CustomerNoteStatus)))
+                                                    {
+                                                        if (statusOption == note.Status)
+                                                        {
+                                                            <option value="@statusOption" selected>@statusOption</option>
+                                                        }
+                                                        else
+                                                        {
+                                                            <option value="@statusOption">@statusOption</option>
+                                                        }
+                                                    }
+                                                </select>
+                                                <input class="form-control form-control-sm w-auto" type="date" name="dueDate" value="@(note.DueDate?.ToString("yyyy-MM-dd"))" title="Due date" data-activity-due />
                                             </div>
                                             <textarea class="form-control mb-2" name="body" rows="3" maxlength="4000" required>@note.Body</textarea>
                                             <div class="d-flex gap-2">
@@ -344,6 +406,35 @@
                                                 </button>
                                             </div>
                                         </form>
+                                        <div class="crm-subnotes">
+                                            @foreach (var sub in note.SubNotes)
+                                            {
+                                                <div class="crm-subnote">
+                                                    <div class="d-flex justify-content-between gap-2 align-items-start">
+                                                        <div class="text-muted small">
+                                                            @sub.CreatedAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")
+                                                            @if (!string.IsNullOrWhiteSpace(sub.CreatedBy))
+                                                            {
+                                                                <span>· @sub.CreatedBy</span>
+                                                            }
+                                                        </div>
+                                                        <form asp-action="DeleteSubNote" method="post">
+                                                            <input type="hidden" name="id" value="@sub.Id" />
+                                                            <input type="hidden" name="noteId" value="@note.Id" />
+                                                            <input type="hidden" name="customerId" value="@Model.Id" />
+                                                            <button type="submit" class="btn btn-sm btn-link text-danger p-0" onclick="return confirm('Delete this sub-note?');">Delete</button>
+                                                        </form>
+                                                    </div>
+                                                    <div class="crm-pre mt-1">@sub.Body</div>
+                                                </div>
+                                            }
+                                            <form asp-action="AddSubNote" method="post" class="crm-subnote-form">
+                                                <input type="hidden" name="noteId" value="@note.Id" />
+                                                <input type="hidden" name="customerId" value="@Model.Id" />
+                                                <textarea class="form-control form-control-sm mb-2" name="body" rows="2" maxlength="2000" required placeholder="Add a sub-note…"></textarea>
+                                                <button type="submit" class="btn btn-outline-secondary btn-sm">Add sub-note</button>
+                                            </form>
+                                        </div>
                                     </div>
                                 </div>
                             }
@@ -352,110 +443,6 @@
                         else
                         {
                             <p class="text-muted mb-0">No activity yet. Log your first note above.</p>
-                        }
-                    </div>
-                </div>
-
-                <div class="tab-pane fade @(activeTab == "tasks" ? "show active" : "")" id="tab-tasks" role="tabpanel">
-                    <div class="crm-panel">
-                        @if (openTasks.Any())
-                        {
-                            <div class="d-flex flex-column gap-2 mb-4">
-                            @foreach (var task in openTasks)
-                            {
-                                <div class="crm-task @(task.IsOverdue ? "crm-task-overdue" : "")">
-                                    <div class="flex-grow-1">
-                                        <div class="fw-semibold">@task.Title</div>
-                                        @if (!string.IsNullOrWhiteSpace(task.Description))
-                                        {
-                                            <div class="small mt-1 crm-pre">@task.Description</div>
-                                        }
-                                        <div class="text-muted small mt-1">
-                                            @if (task.DueDate.HasValue)
-                                            {
-                                                <span class="@(task.IsOverdue ? "text-danger fw-semibold" : "")">
-                                                    Due @task.DueDate.Value.ToString("MMM d, yyyy")
-                                                    @if (task.IsOverdue) { <span>(overdue)</span> }
-                                                </span>
-                                                <span>·</span>
-                                            }
-                                            Added @task.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")
-                                            @if (!string.IsNullOrWhiteSpace(task.CreatedBy))
-                                            {
-                                                <span>by @task.CreatedBy</span>
-                                            }
-                                        </div>
-                                    </div>
-                                    <div class="d-flex flex-column gap-1">
-                                        <form asp-action="CompleteTask" method="post">
-                                            <input type="hidden" name="id" value="@task.Id" />
-                                            <input type="hidden" name="customerId" value="@Model.Id" />
-                                            <button type="submit" class="btn btn-sm btn-success w-100">Complete</button>
-                                        </form>
-                                        <form asp-action="DeleteTask" method="post">
-                                            <input type="hidden" name="id" value="@task.Id" />
-                                            <input type="hidden" name="customerId" value="@Model.Id" />
-                                            <button type="submit" class="btn btn-sm btn-outline-danger w-100" onclick="return confirm('Delete this task?');">Delete</button>
-                                        </form>
-                                    </div>
-                                </div>
-                            }
-                            </div>
-                        }
-                        else
-                        {
-                            <p class="text-muted">No open tasks.</p>
-                        }
-
-                        <form asp-action="AddTask" method="post" class="crm-composer">
-                            <input type="hidden" name="customerId" value="@Model.Id" />
-                            <div class="fw-semibold mb-2">New task</div>
-                            <div class="row g-2">
-                                <div class="col-md-7">
-                                    <input type="text" class="form-control" name="title" maxlength="200" required placeholder="Follow up call, send proposal…" />
-                                </div>
-                                <div class="col-md-5">
-                                    <input type="date" class="form-control" name="dueDate" />
-                                </div>
-                                <div class="col-12">
-                                    <textarea class="form-control" name="description" rows="2" maxlength="2000" placeholder="Optional details"></textarea>
-                                </div>
-                                <div class="col-auto">
-                                    <button type="submit" class="btn btn-primary btn-sm">Add Task</button>
-                                </div>
-                            </div>
-                        </form>
-
-                        @if (completedTasks.Any())
-                        {
-                            <details class="mt-4">
-                                <summary class="text-muted">Completed (@completedTasks.Count)</summary>
-                                <div class="d-flex flex-column gap-2 mt-2">
-                                @foreach (var task in completedTasks)
-                                {
-                                    <div class="crm-task crm-task-done">
-                                        <div class="flex-grow-1">
-                                            <div class="text-decoration-line-through">@task.Title</div>
-                                            <div class="text-muted small mt-1">
-                                                Completed @((task.CompletedAt ?? task.CreatedAt).ToLocalTime().ToString("MMM d, yyyy h:mm tt"))
-                                            </div>
-                                        </div>
-                                        <div class="d-flex flex-column gap-1">
-                                            <form asp-action="ReopenTask" method="post">
-                                                <input type="hidden" name="id" value="@task.Id" />
-                                                <input type="hidden" name="customerId" value="@Model.Id" />
-                                                <button type="submit" class="btn btn-sm btn-outline-secondary w-100">Reopen</button>
-                                            </form>
-                                            <form asp-action="DeleteTask" method="post">
-                                                <input type="hidden" name="id" value="@task.Id" />
-                                                <input type="hidden" name="customerId" value="@Model.Id" />
-                                                <button type="submit" class="btn btn-sm btn-outline-danger w-100" onclick="return confirm('Delete this task?');">Delete</button>
-                                            </form>
-                                        </div>
-                                    </div>
-                                }
-                                </div>
-                            </details>
                         }
                     </div>
                 </div>
@@ -594,19 +581,56 @@
                         <hr class="my-4" />
 
                         <div class="fw-semibold mb-2">Warehouse inventory</div>
-                        <p class="text-muted small mb-3">Log a monthly count of brochures currently in the warehouse.</p>
+                        <p class="text-muted small mb-3">Log a monthly count and the rack/bin where these brochures sit in the warehouse.</p>
+
+                        <div class="crm-warehouse-location mb-3">
+                            <div class="d-flex flex-wrap align-items-baseline gap-2 mb-2">
+                                <span class="text-muted small">Current location</span>
+                                @if (!string.IsNullOrWhiteSpace(Model.WarehouseLocationLabel))
+                                {
+                                    <span class="fw-semibold">@Model.WarehouseLocationLabel</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Not set</span>
+                                }
+                            </div>
+                            <form asp-action="SaveWarehouseLocation" method="post" class="row g-2 align-items-end">
+                                <input type="hidden" name="customerId" value="@Model.Id" />
+                                <div class="col-6 col-sm-3 col-md-2">
+                                    <label class="form-label small mb-1" for="warehouseRack">Rack</label>
+                                    <input type="text" class="form-control" id="warehouseRack" name="rack" maxlength="50" value="@Model.WarehouseRack" placeholder="e.g. 4" />
+                                </div>
+                                <div class="col-6 col-sm-3 col-md-2">
+                                    <label class="form-label small mb-1" for="warehouseBin">Bin</label>
+                                    <input type="text" class="form-control" id="warehouseBin" name="bin" maxlength="50" value="@Model.WarehouseBin" placeholder="e.g. B-12" />
+                                </div>
+                                <div class="col-sm-auto">
+                                    <button type="submit" class="btn btn-outline-primary btn-sm">Save location</button>
+                                </div>
+                            </form>
+                        </div>
+
                         <form asp-action="AddBrochureInventory" method="post" class="crm-composer mb-4">
                             <input type="hidden" name="customerId" value="@Model.Id" />
                             <div class="row g-2 align-items-end">
-                                <div class="col-sm-4 col-md-3">
+                                <div class="col-sm-6 col-md-2">
                                     <label class="form-label small mb-1" for="inventoryDate">Inventory date</label>
                                     <input type="date" class="form-control" id="inventoryDate" name="inventoryDate" value="@DateOnly.FromDateTime(DateTime.Today).ToString("yyyy-MM-dd")" required />
                                 </div>
-                                <div class="col-sm-4 col-md-3">
+                                <div class="col-sm-6 col-md-2">
                                     <label class="form-label small mb-1" for="quantity">Count</label>
                                     <input type="number" class="form-control" id="quantity" name="quantity" min="0" step="1" required placeholder="0" />
                                 </div>
-                                <div class="col-sm-12 col-md-4">
+                                <div class="col-6 col-md-2">
+                                    <label class="form-label small mb-1" for="inventoryRack">Rack</label>
+                                    <input type="text" class="form-control" id="inventoryRack" name="rack" maxlength="50" value="@Model.WarehouseRack" placeholder="Optional" />
+                                </div>
+                                <div class="col-6 col-md-2">
+                                    <label class="form-label small mb-1" for="inventoryBin">Bin</label>
+                                    <input type="text" class="form-control" id="inventoryBin" name="bin" maxlength="50" value="@Model.WarehouseBin" placeholder="Optional" />
+                                </div>
+                                <div class="col-sm-12 col-md-3">
                                     <label class="form-label small mb-1" for="inventoryNotes">Notes</label>
                                     <input type="text" class="form-control" id="inventoryNotes" name="notes" maxlength="1000" placeholder="Optional" />
                                 </div>
@@ -624,6 +648,8 @@
                                         <tr>
                                             <th>Inventory date</th>
                                             <th class="text-end">Count</th>
+                                            <th>Rack</th>
+                                            <th>Bin</th>
                                             <th>Notes</th>
                                             <th>Logged by</th>
                                             <th>Logged at</th>
@@ -636,6 +662,8 @@
                                         <tr id="inventory-view-@item.Id">
                                             <td>@item.InventoryDate.ToString("MMM d, yyyy")</td>
                                             <td class="text-end fw-semibold">@item.Quantity.ToString("N0")</td>
+                                            <td>@(string.IsNullOrWhiteSpace(item.Rack) ? "—" : item.Rack)</td>
+                                            <td>@(string.IsNullOrWhiteSpace(item.Bin) ? "—" : item.Bin)</td>
                                             <td>@(string.IsNullOrWhiteSpace(item.Notes) ? "—" : item.Notes)</td>
                                             <td>@(item.CreatedBy ?? "—")</td>
                                             <td class="text-muted small">@item.CreatedAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</td>
@@ -652,19 +680,27 @@
                                             </td>
                                         </tr>
                                         <tr id="inventory-edit-@item.Id" class="d-none">
-                                            <td colspan="6">
+                                            <td colspan="8">
                                                 <form asp-action="EditBrochureInventory" method="post" class="row g-2 align-items-end">
                                                     <input type="hidden" name="id" value="@item.Id" />
                                                     <input type="hidden" name="customerId" value="@Model.Id" />
-                                                    <div class="col-sm-4 col-md-3">
+                                                    <div class="col-sm-6 col-md-2">
                                                         <label class="form-label small mb-1" for="inventoryDate-@item.Id">Inventory date</label>
                                                         <input type="date" class="form-control" id="inventoryDate-@item.Id" name="inventoryDate" value="@item.InventoryDate.ToString("yyyy-MM-dd")" required />
                                                     </div>
-                                                    <div class="col-sm-4 col-md-2">
+                                                    <div class="col-sm-6 col-md-2">
                                                         <label class="form-label small mb-1" for="quantity-@item.Id">Count</label>
                                                         <input type="number" class="form-control" id="quantity-@item.Id" name="quantity" min="0" step="1" value="@item.Quantity" required />
                                                     </div>
-                                                    <div class="col-sm-12 col-md-4">
+                                                    <div class="col-6 col-md-2">
+                                                        <label class="form-label small mb-1" for="inventoryRack-@item.Id">Rack</label>
+                                                        <input type="text" class="form-control" id="inventoryRack-@item.Id" name="rack" maxlength="50" value="@item.Rack" />
+                                                    </div>
+                                                    <div class="col-6 col-md-2">
+                                                        <label class="form-label small mb-1" for="inventoryBin-@item.Id">Bin</label>
+                                                        <input type="text" class="form-control" id="inventoryBin-@item.Id" name="bin" maxlength="50" value="@item.Bin" />
+                                                    </div>
+                                                    <div class="col-sm-12 col-md-3">
                                                         <label class="form-label small mb-1" for="inventoryNotes-@item.Id">Notes</label>
                                                         <input type="text" class="form-control" id="inventoryNotes-@item.Id" name="notes" maxlength="1000" value="@item.Notes" placeholder="Optional" />
                                                     </div>
@@ -690,7 +726,42 @@
                     </div>
                 </div>
 
-                @if (!isProspect)
+                <div class="tab-pane fade @(activeTab == "map" ? "show active" : "")" id="tab-map" role="tabpanel">
+                    <div class="crm-panel">
+                        @if (Model.Latitude.HasValue && Model.Longitude.HasValue)
+                        {
+                            var mapAddress = CustomerAddressHelper.FormatFullAddress(Model.Address, Model.City, Model.State, Model.Zip);
+                            <div id="customerMap"
+                                 class="customer-map"
+                                 data-lat="@Model.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                 data-lng="@Model.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                 data-name="@Model.CustomerName"
+                                 data-address="@mapAddress"></div>
+                            <div class="d-flex flex-wrap justify-content-between gap-2 mt-2">
+                                <div class="text-muted small">
+                                    @if (!string.IsNullOrWhiteSpace(mapAddress))
+                                    {
+                                        @mapAddress
+                                        <span class="mx-1">·</span>
+                                    }
+                                    @Model.Latitude.Value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture),
+                                    @Model.Longitude.Value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)
+                                </div>
+                                <a class="small"
+                                   href="https://www.google.com/maps?q=@Uri.EscapeDataString($"{Model.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{Model.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}")"
+                                   target="_blank"
+                                   rel="noopener">Open in Google Maps</a>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-muted mb-2">No coordinates yet. Add an address or enter latitude and longitude.</p>
+                            <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-sm btn-outline-primary">Edit details</a>
+                        }
+                    </div>
+                </div>
+
+                @if (!isProspectLike)
                 {
                     <div class="tab-pane fade @(activeTab == "routes" ? "show active" : "")" id="tab-routes" role="tabpanel">
                         <div class="crm-panel">
@@ -781,6 +852,11 @@
                                 <a asp-controller="CustomerContracts" asp-action="Create" asp-route-customerId="@Model.Id" class="btn btn-sm btn-primary">Add Contract</a>
                             </div>
 
+                            <div class="crm-side-card mb-3">
+                                <div class="text-muted small mb-1">Invoice receipt</div>
+                                <div>@Model.InvoiceReceiptMethod.Name()</div>
+                            </div>
+
                             @if (billingContacts.Any())
                             {
                                 <div class="crm-side-card mb-3">
@@ -809,8 +885,8 @@
                                         <thead>
                                             <tr>
                                                 <th>Contract</th>
-                                                <th>Term</th>
-                                                <th>Months</th>
+                                                <th>Bill months</th>
+                                                <th>Service months</th>
                                                 <th>Routes</th>
                                                 <th>Next Bill</th>
                                                 <th>Ends</th>
@@ -825,8 +901,23 @@
                                             var total = routes.Sum(AnnualBillingHelper.GetBillingAmount);
                                             var isExpired = contract.ContractEndDate.HasValue && contract.ContractEndDate.Value < DateOnly.FromDateTime(DateTime.Today);
                                             <tr class="@(isExpired ? "text-muted" : "")">
-                                                <td>@contract.ContractName</td>
-                                                <td>@BillingTermDisplay.Label(contract.Term)</td>
+                                                <td>
+                                                    @contract.ContractName
+                                                    @if (!string.IsNullOrWhiteSpace(contract.WaveInvoiceNumber) || contract.HasWaveInvoicePdf)
+                                                    {
+                                                        <div class="small">
+                                                            @if (!string.IsNullOrWhiteSpace(contract.WaveInvoiceNumber))
+                                                            {
+                                                                <span class="text-muted">Wave @contract.WaveInvoiceNumber</span>
+                                                            }
+                                                            @if (contract.HasWaveInvoicePdf)
+                                                            {
+                                                                <a asp-controller="CustomerContracts" asp-action="InvoicePdf" asp-route-id="@contract.Id" class="ms-1">PDF</a>
+                                                            }
+                                                        </div>
+                                                    }
+                                                </td>
+                                                <td>@BillingTermDisplay.Label(contract)</td>
                                                 <td>@SubscribedMonths.Format(contract.ServiceMonthMask)</td>
                                                 <td>
                                                     @if (routes.Any())
@@ -892,8 +983,8 @@
                                                 <th>Route</th>
                                                 <th>Contract</th>
                                                 <th>Billing</th>
-                                                <th>Months</th>
-                                                <th class="text-end">Rate / Term</th>
+                                                <th>Service months</th>
+                                                <th class="text-end">Invoice</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -903,7 +994,7 @@
                                             <tr>
                                                 <td><a asp-controller="Routes" asp-action="Details" asp-route-id="@item.ContractRoute.RouteId">@item.ContractRoute.Route.RouteName</a></td>
                                                 <td>@item.Contract.ContractName</td>
-                                                <td>@BillingTermDisplay.Label(item.Contract.Term)</td>
+                                                <td>@BillingTermDisplay.Label(item.Contract)</td>
                                                 <td>@SubscribedMonths.Format(item.Contract.ServiceMonthMask)</td>
                                                 <td class="text-end">@amount.ToString("C")</td>
                                             </tr>
@@ -959,6 +1050,10 @@
                         </div>
                     }
                     <div class="small text-muted mt-2">Uploaded @latestBrochure.UploadedAt.ToLocalTime().ToString("MMM d, yyyy")</div>
+                    @if (!string.IsNullOrWhiteSpace(Model.WarehouseLocationLabel))
+                    {
+                        <div class="small mt-1">Warehouse @Model.WarehouseLocationLabel</div>
+                    }
                 </div>
             }
 
@@ -990,6 +1085,14 @@
                         <dd>@(Model.Zip ?? "—")</dd>
                     </div>
                     <div>
+                        <dt>Coordinates</dt>
+                        <dd>
+                            @(Model.Latitude.HasValue && Model.Longitude.HasValue
+                                ? $"{Model.Latitude:0.######}, {Model.Longitude:0.######}"
+                                : "—")
+                        </dd>
+                    </div>
+                    <div>
                         <dt>Phone</dt>
                         <dd>
                             @if (!string.IsNullOrWhiteSpace(Model.Phone))
@@ -1016,6 +1119,10 @@
                         </dd>
                     </div>
                     <div>
+                        <dt>Invoice receipt</dt>
+                        <dd>@Model.InvoiceReceiptMethod.Name()</dd>
+                    </div>
+                    <div>
                         <dt>Web URL</dt>
                         <dd>
                             @if (!string.IsNullOrWhiteSpace(Model.WebUrl))
@@ -1032,7 +1139,23 @@
                         <dt>Account manager</dt>
                         <dd>@(Model.AccountManager?.DisplayName ?? Model.AccountManager?.Email ?? "—")</dd>
                     </div>
-                    @if (!isProspect)
+                    @if (Model.Type == CustomerType.ExpandedProspect)
+                    {
+                        <div>
+                            <dt>Target route</dt>
+                            <dd>
+                                @if (Model.ExpandedProspectRoute != null)
+                                {
+                                    <a asp-controller="Routes" asp-action="Details" asp-route-id="@Model.ExpandedProspectRoute.Id">@Model.ExpandedProspectRoute.RouteName</a>
+                                }
+                                else
+                                {
+                                    <span>—</span>
+                                }
+                            </dd>
+                        </div>
+                    }
+                    @if (!isProspectLike)
                     {
                         <div>
                             <dt>Annual revenue</dt>
@@ -1047,16 +1170,29 @@
                             <dd>@activeContractRoutes.Count</dd>
                         </div>
                     }
-                    @if (isProspect && Model.IsHighValueProspect)
+                    @if (Model.NeedsMoreInfo)
                     {
                         <div>
-                            <dt>High value</dt>
-                            <dd class="d-inline-flex align-items-center justify-content-end gap-1">
-                                @{ ViewData["IconSize"] = "sm"; }
-                                <partial name="_FlagIcons" model="Model" />
-                                <span>Yes</span>
-                            </dd>
+                            <dt>Needs more info</dt>
+                            <dd>Yes — missing an address or map coordinates</dd>
                         </div>
+                    }
+                    @if (isProspectLike)
+                    {
+                        var proximity = ViewBag.HighValueProximity as HighValueProximityHit;
+                        if (Model.IsHighValueProspect || proximity != null)
+                        {
+                            <div>
+                                <dt>High value</dt>
+                                <dd>
+                                    <span>@(Model.IsHighValueProspect ? "Yes" : "Nearby")</span>
+                                    @if (proximity != null)
+                                    {
+                                        <div class="small text-muted">@proximity.Summary</div>
+                                    }
+                                </dd>
+                            </div>
+                        }
                     }
                 </dl>
             </div>
@@ -1081,36 +1217,6 @@
                 else
                 {
                     <p class="text-muted small mb-0">No contacts yet.</p>
-                }
-            </div>
-
-            <div class="crm-side-card mb-3">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <div class="crm-side-title mb-0">Open tasks</div>
-                    <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="tab" data-bs-target="#tab-tasks">View</button>
-                </div>
-                @if (openTasks.Any())
-                {
-                    <ul class="list-unstyled mb-0">
-                    @foreach (var task in openTasks.Take(4))
-                    {
-                        <li class="small mb-2">
-                            <div class="fw-semibold">@task.Title</div>
-                            @if (task.DueDate.HasValue)
-                            {
-                                <div class="@(task.IsOverdue ? "text-danger" : "text-muted")">Due @task.DueDate.Value.ToString("MMM d")</div>
-                            }
-                        </li>
-                    }
-                    </ul>
-                    @if (openTasks.Count > 4)
-                    {
-                        <div class="text-muted small">+@(openTasks.Count - 4) more</div>
-                    }
-                }
-                else
-                {
-                    <p class="text-muted small mb-0">No open tasks.</p>
                 }
             </div>
         </div>
@@ -1140,19 +1246,65 @@
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
-    <script>
-        document.querySelectorAll('[data-bs-toggle="tab"][data-bs-target="#tab-tasks"]').forEach(function (el) {
-            el.addEventListener('click', function () {
-                var btn = document.getElementById('tab-tasks-btn');
-                if (btn) bootstrap.Tab.getOrCreateInstance(btn).show();
+    @if (Model.Latitude.HasValue && Model.Longitude.HasValue)
+    {
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+                integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+        <script src="~/js/customer-map.js" asp-append-version="true"></script>
+        <script>
+            AdRackCustomerMap.init({
+                mapId: 'customerMap',
+                tabButtonId: 'tab-map-btn',
+                tabPaneId: 'tab-map'
             });
-        });
+        </script>
+    }
+    <script>
         document.querySelectorAll('[data-bs-toggle="tab"][data-bs-target="#tab-brochures"]').forEach(function (el) {
             el.addEventListener('click', function () {
                 var btn = document.getElementById('tab-brochures-btn');
                 if (btn) bootstrap.Tab.getOrCreateInstance(btn).show();
             });
         });
+
+        (function () {
+            function todayValue() {
+                var now = new Date();
+                var month = String(now.getMonth() + 1).padStart(2, '0');
+                var day = String(now.getDate()).padStart(2, '0');
+                return now.getFullYear() + '-' + month + '-' + day;
+            }
+
+            function kindDefaultsDue(kind) {
+                return kind === 'Task' || kind === 'BrochuresNeeded';
+            }
+
+            document.querySelectorAll('[data-activity-kind]').forEach(function (kindSelect) {
+                var form = kindSelect.closest('form');
+                var dueInput = form && form.querySelector('[data-activity-due]');
+                if (!dueInput) return;
+
+                function syncDueDate() {
+                    if (kindDefaultsDue(kindSelect.value)) {
+                        if (!dueInput.value) {
+                            dueInput.value = todayValue();
+                            dueInput.dataset.autoDue = '1';
+                        }
+                        return;
+                    }
+                    if (dueInput.dataset.autoDue === '1') {
+                        dueInput.value = '';
+                        delete dueInput.dataset.autoDue;
+                    }
+                }
+
+                dueInput.addEventListener('input', function () {
+                    delete dueInput.dataset.autoDue;
+                });
+                kindSelect.addEventListener('change', syncDueDate);
+                syncDueDate();
+            });
+        })();
 
         (function () {
             var modalEl = document.getElementById('brochurePreviewModal');

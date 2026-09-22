@@ -112,15 +112,68 @@
     </div>
 }
 
+@if (Model.MissingBillingEmailAlerts.Count > 0)
+{
+    <div class="alert alert-warning">
+        <strong>@Model.MissingBillingEmailAlerts.Count</strong>
+        @(Model.MissingBillingEmailAlerts.Count == 1 ? "customer has" : "customers have")
+        no billing email. You can still Create On Send; Wave will skip email when the receipt method is Mail.
+    </div>
+}
+
+@if (!Model.CreateOnSendConfigured)
+{
+    <div class="alert alert-info">
+        Connect to Wave on <a asp-controller="Admin" asp-action="WaveProof">Admin → Wave proof</a> to create, approve, and send invoices.
+    </div>
+}
+@if (Model.WaveSessionExpired)
+{
+    <partial name="_WaveResetBusinessAlert" />
+}
+
+@if (Model.BatchPdfContractIds.Count > 0)
+{
+    <div class="alert alert-success d-flex flex-wrap gap-2 align-items-center justify-content-between">
+        <div>The invoices you just sent are combined into one PDF.</div>
+        <form asp-action="DownloadPdfs" method="post" class="mb-0" id="batch-pdf-form">
+            <input type="hidden" name="year" value="@Model.Year" />
+            <input type="hidden" name="month" value="@Model.Month" />
+            @foreach (var contractId in Model.BatchPdfContractIds)
+            {
+                <input type="hidden" name="customerContractIds" value="@contractId" />
+            }
+            <button type="submit" class="btn btn-sm btn-success">Download combined PDF</button>
+        </form>
+    </div>
+}
+
 <h2 class="h5">Due this period — @Model.PeriodLabel</h2>
 @if (Model.DueContracts.Any())
 {
+    <form asp-action="CreateOnSendBatch" method="post" id="due-send-form">
+        <input type="hidden" name="year" value="@Model.Year" />
+        <input type="hidden" name="month" value="@Model.Month" />
+        <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+            @if (Model.CreateOnSendConfigured && !Model.WaveSessionExpired)
+            {
+                <button type="submit" class="btn btn-sm btn-primary" id="send-selected-due" disabled
+                        data-confirm-template="Send {count} selected invoice(s) to Wave, then download one combined PDF?">
+                    Send selected
+                </button>
+            }
+            <span class="text-muted small" id="due-selected-count">0 selected</span>
+        </div>
     <table class="table table-sm table-hover">
         <thead>
             <tr>
+                <th class="text-center" style="width: 2.25rem;">
+                    <input type="checkbox" class="form-check-input" id="select-all-due"
+                           title="Select all" aria-label="Select all" />
+                </th>
                 <th>Customer</th>
                 <th>Contract</th>
-                <th>Term</th>
+                <th>Months</th>
                 <th>Routes</th>
                 <th>Products</th>
                 <th class="text-end">Amount</th>
@@ -131,26 +184,61 @@
         @foreach (var item in Model.DueContractSummaries)
         {
             <tr>
+                <td class="text-center">
+                    <input type="checkbox" class="form-check-input due-contract-check"
+                           name="customerContractIds" value="@item.CustomerContractId"
+                           aria-label="Select @item.CustomerName @item.ContractName" />
+                </td>
                 <td>
                     <a asp-controller="Customers" asp-action="Details" asp-route-id="@item.CustomerId">@item.CustomerName</a>
+                    <partial name="_InvoiceReceiptIcon" model="item.InvoiceReceiptMethod" />
+                    @if (Model.MissingBillingContactIssue(item.CustomerId) is string billingIssue)
+                    {
+                        <a class="badge bg-warning text-dark text-decoration-none ms-1"
+                           asp-controller="Customers" asp-action="Details"
+                           asp-route-id="@item.CustomerId"
+                           asp-route-tab="contacts"
+                           title="@billingIssue">No billing contact</a>
+                    }
+                    else if (Model.MissingBillingEmailIssue(item.CustomerId) is string emailIssue)
+                    {
+                        <a class="badge bg-warning text-dark text-decoration-none ms-1"
+                           asp-controller="Customers" asp-action="Details"
+                           asp-route-id="@item.CustomerId"
+                           asp-route-tab="contacts"
+                           title="@emailIssue">No email</a>
+                    }
                 </td>
-                <td>@item.ContractName</td>
-                <td>@BillingTermDisplay.Label(item.Term)</td>
-                <td>@string.Join(", ", item.RouteNames)</td>
+                <td>@item.ContractName
+                    @if (Model.ContractsWithInvoicePdf.Contains(item.CustomerContractId))
+                    {
+                        <a class="ms-1" asp-controller="CustomerContracts" asp-action="InvoicePdf" asp-route-id="@item.CustomerContractId">PDF</a>
+                    }
+                </td>
+                <td>@BillingTermDisplay.Label(item.BillingMonthCount > 0 ? item.BillingMonthCount : AnnualBillingHelper.MonthsInTerm(item.Term))</td>
+                <td>@string.Join(", ", item.RouteNames.Select(RouteNaming.DisplayName))</td>
                 <td>@string.Join(", ", item.Products)</td>
                 <td class="text-end">@item.Amount.ToString("C")</td>
                 <td>
-                    @if (Model.CreateOnSendConfigured)
+                    @if (Model.WaveSessionExpired)
                     {
-                        <form asp-action="CreateOnSend" method="post" class="d-inline">
-                            <input type="hidden" name="year" value="@Model.Year" />
-                            <input type="hidden" name="month" value="@Model.Month" />
-                            <input type="hidden" name="customerContractId" value="@item.CustomerContractId" />
-                            <button type="submit" class="btn btn-sm btn-outline-primary"
-                                    onclick="return confirm('Send invoice for @item.ContractName (@item.CustomerName) and advance the next bill date?');">
-                                Create On Send
-                            </button>
-                        </form>
+                        <button type="submit" class="btn btn-sm btn-warning"
+                                formaction="@Url.Action("WaveOAuthResetBusiness", "Admin")"
+                                onclick="return confirm('Your Wave session expired. Reset the business now?');">
+                            Create On Send
+                        </button>
+                    }
+                    else if (Model.CreateOnSendConfigured)
+                    {
+                        var sendConfirm = Model.MissingBillingEmailIssue(item.CustomerId) != null
+                            ? $"No billing email on file for {item.CustomerName}. Send {item.ContractName} anyway and advance the next bill date?"
+                            : $"Send invoice for {item.ContractName} ({item.CustomerName}) and advance the next bill date?";
+                        <button type="submit" class="btn btn-sm btn-outline-primary"
+                                formaction="@Url.Action("CreateOnSend")"
+                                name="customerContractId" value="@item.CustomerContractId"
+                                onclick="return confirm('@Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(sendConfirm))');">
+                            Create On Send
+                        </button>
                     }
                 </td>
             </tr>
@@ -158,24 +246,47 @@
         </tbody>
         <tfoot class="table-light fw-semibold">
             <tr>
+                <td></td>
                 <td colspan="5" class="text-end">Total</td>
                 <td class="text-end">@Model.DueTotal.ToString("C")</td>
                 <td></td>
             </tr>
         </tfoot>
     </table>
+    </form>
 }
 else
 {
     <p class="text-muted">No contracts are due for @Model.PeriodLabel.</p>
 }
 
-<h2 class="h5 mt-4">Submitted invoices — @Model.PeriodLabel</h2>
+<div class="d-flex flex-wrap gap-2 align-items-center justify-content-between mt-4 mb-2">
+    <h2 class="h5 mb-0">Submitted invoices — @Model.PeriodLabel</h2>
+    @if (Model.InvoicesWithInvoicePdf.Count > 0)
+    {
+        <form asp-action="DownloadPdfs" method="post" class="mb-0" id="submitted-pdf-form">
+            <input type="hidden" name="year" value="@Model.Year" />
+            <input type="hidden" name="month" value="@Model.Month" />
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                <button type="submit" class="btn btn-sm btn-outline-secondary" id="download-selected-submitted" disabled
+                        name="downloadSelected" value="1">
+                    Download selected PDFs
+                </button>
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Download all PDFs</button>
+                <span class="text-muted small" id="submitted-selected-count">0 selected</span>
+            </div>
+        </form>
+    }
+</div>
 @if (Model.SubmittedInvoices.Any())
 {
     <table class="table table-sm table-hover align-middle">
         <thead>
             <tr>
+                <th class="text-center" style="width: 2.25rem;">
+                    <input type="checkbox" class="form-check-input" id="select-all-submitted"
+                           title="Select all" aria-label="Select all submitted invoices" />
+                </th>
                 <th>Period</th>
                 <th>Customer</th>
                 <th>Invoice</th>
@@ -193,12 +304,27 @@ else
             var periodLabel = BillingDueCalculator.PeriodLabel(invoice.BillingRun.Year, invoice.BillingRun.Month);
             var contractNames = string.Join(", ", invoice.Lines.Select(l => l.ContractName).Distinct().OrderBy(n => n));
             <tr>
+                <td class="text-center">
+                    @if (Model.InvoicesWithInvoicePdf.Contains(invoice.Id))
+                    {
+                        <input type="checkbox" class="form-check-input submitted-invoice-check"
+                               form="submitted-pdf-form" name="invoiceIds" value="@invoice.Id"
+                               aria-label="Select invoice @invoice.Id for @invoice.Customer.CustomerName" />
+                    }
+                </td>
                 <td>@periodLabel</td>
                 <td>
                     <a asp-controller="Customers" asp-action="Details" asp-route-id="@invoice.CustomerId">@invoice.Customer.CustomerName</a>
+                    <partial name="_InvoiceReceiptIcon" model="invoice.Customer.InvoiceReceiptMethod" />
                 </td>
                 <td>#@invoice.Id</td>
-                <td>@(invoice.WaveInvoiceNumber ?? "—")</td>
+                <td>
+                    @(invoice.WaveInvoiceNumber ?? "—")
+                    @if (Model.InvoicesWithInvoicePdf.Contains(invoice.Id))
+                    {
+                        <a class="ms-1" asp-action="InvoicePdf" asp-route-invoiceId="@invoice.Id">PDF</a>
+                    }
+                </td>
                 <td class="small">@contractNames</td>
                 <td class="text-end">@invoice.TotalAmount.ToString("C")</td>
                 <td>
@@ -239,9 +365,18 @@ else
                                 }
                             </select>
                             <input type="date" name="receivedDate" class="form-control form-control-sm"
-                                   value="@(invoice.ReceivedDate ?? today).ToString("yyyy-MM-dd")" style="width: 9.5rem;"
+                                   value="@((invoice.ReceivedDate ?? today).ToString("yyyy-MM-dd"))" style="width: 9.5rem;"
                                    title="Used when status is Received" />
                             <button type="submit" class="btn btn-sm btn-outline-secondary">Update</button>
+                        </form>
+                        <form asp-action="ResetInvoice" method="post" class="d-inline">
+                            <input type="hidden" name="year" value="@Model.Year" />
+                            <input type="hidden" name="month" value="@Model.Month" />
+                            <input type="hidden" name="invoiceId" value="@invoice.Id" />
+                            <button type="submit" class="btn btn-sm btn-outline-warning"
+                                    onclick="return confirm('@Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode($"Reset invoice #{invoice.Id} for {invoice.Customer.CustomerName}? This rolls the next bill date back so you can Create On Send again. It does not delete anything in Wave."))');">
+                                Reset to send again
+                            </button>
                         </form>
                     </div>
                 </td>
@@ -253,4 +388,97 @@ else
 else
 {
     <p class="text-muted">No submitted invoices yet. Use Create On Send on a due contract to create one.</p>
+}
+
+@section Scripts {
+    <script>
+        (function () {
+            const selectAll = document.getElementById('select-all-due');
+            const checks = Array.from(document.querySelectorAll('.due-contract-check'));
+            const sendSelected = document.getElementById('send-selected-due');
+            const countLabel = document.getElementById('due-selected-count');
+            const form = document.getElementById('due-send-form');
+            if (!selectAll || checks.length === 0)
+                return;
+
+            function selectedCount() {
+                return checks.filter(function (c) { return c.checked; }).length;
+            }
+
+            function sync() {
+                const count = selectedCount();
+                if (countLabel)
+                    countLabel.textContent = count + ' selected';
+                if (sendSelected)
+                    sendSelected.disabled = count === 0;
+                selectAll.checked = count === checks.length;
+                selectAll.indeterminate = count > 0 && count < checks.length;
+            }
+
+            selectAll.addEventListener('change', function () {
+                checks.forEach(function (c) { c.checked = selectAll.checked; });
+                sync();
+            });
+            checks.forEach(function (c) { c.addEventListener('change', sync); });
+            if (form) {
+                form.addEventListener('submit', function (e) {
+                    if (e.submitter !== sendSelected)
+                        return;
+                    const count = selectedCount();
+                    if (count === 0) {
+                        e.preventDefault();
+                        return;
+                    }
+                    const template = sendSelected.getAttribute('data-confirm-template')
+                        || 'Send {count} selected invoice(s) to Wave, then download one combined PDF?';
+                    if (!confirm(template.replace('{count}', String(count))))
+                        e.preventDefault();
+                });
+            }
+            sync();
+        })();
+        (function () {
+            const selectAll = document.getElementById('select-all-submitted');
+            const checks = Array.from(document.querySelectorAll('.submitted-invoice-check'));
+            const downloadSelected = document.getElementById('download-selected-submitted');
+            const countLabel = document.getElementById('submitted-selected-count');
+            const form = document.getElementById('submitted-pdf-form');
+            if (!selectAll || checks.length === 0)
+                return;
+
+            function selectedCount() {
+                return checks.filter(function (c) { return c.checked; }).length;
+            }
+
+            function sync() {
+                const count = selectedCount();
+                if (countLabel)
+                    countLabel.textContent = count + ' selected';
+                if (downloadSelected)
+                    downloadSelected.disabled = count === 0;
+                selectAll.checked = count === checks.length;
+                selectAll.indeterminate = count > 0 && count < checks.length;
+            }
+
+            selectAll.addEventListener('change', function () {
+                checks.forEach(function (c) { c.checked = selectAll.checked; });
+                sync();
+            });
+            checks.forEach(function (c) { c.addEventListener('change', sync); });
+            if (form && downloadSelected) {
+                form.addEventListener('submit', function (e) {
+                    if (e.submitter !== downloadSelected)
+                        return;
+                    if (selectedCount() === 0)
+                        e.preventDefault();
+                });
+            }
+            sync();
+        })();
+        (function () {
+            const batchForm = document.getElementById('batch-pdf-form');
+            if (batchForm)
+                batchForm.submit();
+        })();
+    </script>
 }

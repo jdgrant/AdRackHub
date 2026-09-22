@@ -27,6 +27,7 @@ public static class SubscribedMonths
     public static decimal DefaultRatePerMonth(Route route) => route.BillingFrequency switch
     {
         BillingFrequency.Quarterly => route.Price / 3m,
+        BillingFrequency.EveryFourMonths => route.Price / 4m,
         BillingFrequency.Annual => route.Price / 12m,
         _ => route.Price
     };

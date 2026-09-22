@@ -29,6 +29,17 @@
         </div>
         <div class="row">
             <div class="col-md-6 mb-3">
+                <label asp-for="Latitude" class="form-label"></label>
+                <input asp-for="Latitude" class="form-control" step="any" />
+            </div>
+            <div class="col-md-6 mb-3">
+                <label asp-for="Longitude" class="form-label"></label>
+                <input asp-for="Longitude" class="form-control" step="any" />
+            </div>
+        </div>
+        <div class="form-text mb-3">Filled automatically from the address. Changing the address rebuilds latitude and longitude.</div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
                 <label asp-for="Phone" class="form-label"></label>
                 <input asp-for="Phone" class="form-control" />
             </div>
@@ -37,6 +48,12 @@
                 <input asp-for="Email" class="form-control" />
                 <span asp-validation-for="Email" class="text-danger"></span>
             </div>
+        </div>
+        <div class="mb-3">
+            <label asp-for="InvoiceReceiptMethod" class="form-label"></label>
+            <select asp-for="InvoiceReceiptMethod" class="form-select" asp-items="Html.GetEnumSelectList<InvoiceReceiptMethod>()"></select>
+            <div class="form-text">Mail sends a paper invoice. Email sends the Wave invoice. Both does both.</div>
+            <span asp-validation-for="InvoiceReceiptMethod" class="text-danger"></span>
         </div>
         <div class="mb-3">
             <label asp-for="WebUrl" class="form-label"></label>
@@ -56,14 +73,21 @@
         </div>
         <div class="mb-3">
             <label asp-for="Type" class="form-label"></label>
-            <select asp-for="Type" class="form-select" asp-items="Html.GetEnumSelectList<CustomerType>()"></select>
-            <div class="form-text">Use Type to move a record between Customers and Prospects.</div>
+            <select asp-for="Type" class="form-select" asp-items="Html.GetEnumSelectList<CustomerType>()" id="customerType"></select>
+            <div class="form-text">Use Type to move a record between Customers, Prospects, and Expanded Prospects.</div>
+        </div>
+        <div class="mb-3" id="expandedRouteField">
+            <label asp-for="ExpandedProspectRouteId" class="form-label"></label>
+            <select asp-for="ExpandedProspectRouteId" class="form-select" asp-items="ViewBag.ExpandedProspectRoutes">
+                <option value="">— Select route —</option>
+            </select>
+            <div class="form-text">Groups this attraction on the Expanded Prospects grid for that route.</div>
         </div>
         <div class="mb-3">
             <label asp-for="Status" class="form-label"></label>
             <select asp-for="Status" class="form-select" asp-items="Html.GetEnumSelectList<CustomerStatus>()"></select>
         </div>
-        @if (Model.Type == CustomerType.Prospect || ViewBag.ShowTypeSelector == true)
+        @if (CustomerTypeLabels.IsProspectLike(Model.Type) || ViewBag.ShowTypeSelector == true)
         {
             <div class="mb-3 form-check" id="highValueFlag">
                 <input asp-for="IsHighValueProspect" class="form-check-input" />
@@ -89,3 +113,16 @@
         }
     </div>
 </div>
+
+<script>
+    (function () {
+        var type = document.getElementById('customerType');
+        var field = document.getElementById('expandedRouteField');
+        if (!type || !field) return;
+        function sync() {
+            field.style.display = type.value === 'ExpandedProspect' ? '' : 'none';
+        }
+        type.addEventListener('change', sync);
+        sync();
+    })();
+</script>

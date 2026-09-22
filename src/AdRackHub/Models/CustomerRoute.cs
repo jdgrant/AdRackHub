@@ -30,8 +30,12 @@ public class CustomerRoute
     public int SubscribedMonthMask { get; set; } = SubscribedMonths.AllMonthsMask;
 
     [Required]
-    [Display(Name = "Billing Cycle")]
+    [Display(Name = "Billing Term")]
     public BillingFrequency BillingTerm { get; set; } = BillingFrequency.Quarterly;
+
+    [Range(1, 36)]
+    [Display(Name = "Number of Months")]
+    public int BillingMonthCount { get; set; } = 3;
 
     public Customer Customer { get; set; } = null!;
     public Route Route { get; set; } = null!;

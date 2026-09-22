@@ -1,3 +1,6 @@
+using System.ComponentModel.DataAnnotations;
+using System.Reflection;
+
 namespace AdRackHub.Models;
 
 public enum CustomerStatus
@@ -9,7 +12,9 @@ public enum CustomerStatus
 public enum CustomerType
 {
     Customer,
-    Prospect
+    Prospect,
+    [Display(Name = "Expanded Prospect")]
+    ExpandedProspect
 }
 
 public enum RouteStatus
@@ -29,7 +34,8 @@ public enum StopType
     Hotel,
     Attraction,
     RestArea,
-    Other
+    Other,
+    ProspectStop
 }
 
 public enum StopStatus
@@ -42,6 +48,7 @@ public enum BillingFrequency
 {
     Monthly,
     Quarterly,
+    EveryFourMonths,
     Annual
 }
 
@@ -66,7 +73,40 @@ public enum CustomerNoteKind
     Call,
     Email,
     Meeting,
-    Action
+    Action,
+    Task,
+    [Display(Name = "Brochures Needed (911)")]
+    BrochuresNeeded = 911
+}
+
+public enum CustomerNoteStatus
+{
+    New,
+    Working,
+    Done
+}
+
+public static class EnumDisplay
+{
+    public static string Name(this Enum value)
+    {
+        var member = value.GetType().GetMember(value.ToString()).FirstOrDefault();
+        return member?.GetCustomAttribute<DisplayAttribute>()?.GetName() ?? value.ToString();
+    }
+
+    public static string KindCss(this CustomerNoteKind kind) => kind switch
+    {
+        CustomerNoteKind.Call => "call",
+        CustomerNoteKind.Email => "email",
+        CustomerNoteKind.Meeting => "meeting",
+        CustomerNoteKind.Action => "action",
+        CustomerNoteKind.Task => "task",
+        CustomerNoteKind.BrochuresNeeded => "brochures",
+        _ => "note"
+    };
+
+    public static IEnumerable<CustomerNoteKind> ActivityKinds() =>
+        Enum.GetValues<CustomerNoteKind>();
 }
 
 public enum CustomerTaskStatus
@@ -91,6 +131,22 @@ public enum BillingRunInvoiceStatus
     Canceled,
     Skipped,
     Failed
+}
+
+public enum InvoiceReceiptMethod
+{
+    Mail,
+    Email,
+    Both
+}
+
+public static class InvoiceReceiptMethods
+{
+    public static bool IncludesEmail(this InvoiceReceiptMethod method) =>
+        method is InvoiceReceiptMethod.Email or InvoiceReceiptMethod.Both;
+
+    public static bool IncludesMail(this InvoiceReceiptMethod method) =>
+        method is InvoiceReceiptMethod.Mail or InvoiceReceiptMethod.Both;
 }
 
 /// <summary>Statuses allowed once an invoice has a Wave invoice number.</summary>

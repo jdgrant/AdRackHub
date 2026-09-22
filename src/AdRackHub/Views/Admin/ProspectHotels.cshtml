@@ -1,0 +1,234 @@
+@using AdRackHub.Services
+@model ProspectHotelsViewModel
+@{
+    ViewData["Title"] = "Prospect Hotels";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Find Prospect Hotels</h1>
+    <a asp-action="Index" class="btn btn-outline-secondary">Back</a>
+</div>
+
+@if (TempData["Message"] != null)
+{
+    <div class="alert alert-success">@TempData["Message"]</div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-warning">@TempData["Error"]</div>
+}
+
+<p class="text-muted mb-4">
+    Uses DataForSEO to find hotels within
+    <strong>@ProspectHotelDiscoveryService.MaxDistanceMiles.ToString("0.#") mile</strong>
+    of existing active stops, skipping places you already have, and saving new finds as
+    <strong>Prospect Stop</strong> on the nearby stop’s route.
+    First-time geocoding is slow (~5–10 seconds per stop), so runs are batched.
+</p>
+
+@if (!Model.Stats.IsConfigured)
+{
+    <div class="alert alert-danger">
+        DataForSEO credentials are not configured. Set <code>DataForSEO:Login</code> and
+        <code>DataForSEO:Password</code> (or <code>DataForSEO__Login</code> /
+        <code>DataForSEO__Password</code> env vars).
+    </div>
+}
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Seed stop candidates</div>
+                <div class="display-6">@Model.Stats.ActiveSeedCandidates</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Stops with coordinates</div>
+                <div class="display-6">@Model.Stats.StopsWithCoordinates</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Existing prospect stops</div>
+                <div class="display-6">@Model.Stats.ProspectStops</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Total stops</div>
+                <div class="display-6">@Model.Stats.TotalStops</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<form asp-action="ProspectHotelsRun" method="post" class="card card-body mb-4" id="prospectHotelsForm">
+    <div class="row g-3 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label" for="maxSeeds">Max seed stops</label>
+            <input type="number" class="form-control" id="maxSeeds" name="maxSeeds" min="1" value="@(Model.MaxSeeds ?? 5)" required />
+            <div class="form-text">Default 5. Full catalog scans take a long time.</div>
+        </div>
+        <div class="col-md-3">
+            <div class="form-check mt-4">
+                <input class="form-check-input" type="checkbox" id="dryRun" name="dryRun" value="true" @(Model.DryRun ? "checked" : "") />
+                <label class="form-check-label" for="dryRun">Dry run (do not save)</label>
+            </div>
+        </div>
+        <div class="col-md-auto">
+            <button type="submit" class="btn btn-primary" id="runDiscoveryBtn" @(Model.Stats.IsConfigured ? null : "disabled")>
+                Run discovery
+            </button>
+        </div>
+    </div>
+</form>
+
+<div id="jobProgressCard" class="card mb-4 @(Model.ActiveJobId.HasValue ? "" : "d-none")">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+            <h2 class="h5 mb-0">Discovery progress</h2>
+            @if (Model.ActiveJobId.HasValue)
+            {
+                <form asp-action="ProspectHotelsCancel" method="post" class="m-0">
+                    <input type="hidden" name="jobId" value="@Model.ActiveJobId" />
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Cancel</button>
+                </form>
+            }
+        </div>
+        <div class="progress mb-2" role="progressbar" style="height: 1.25rem;">
+            <div id="jobProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%">0%</div>
+        </div>
+        <div id="jobProgressText" class="text-muted small">Starting…</div>
+        <div id="jobProgressDetail" class="small mt-1"></div>
+    </div>
+</div>
+
+<div id="jobResultHost">
+@if (Model.LastResult != null)
+{
+    var result = Model.LastResult;
+    <div class="card mb-4">
+        <div class="card-body">
+            <h2 class="h5">Last run @(result.DryRun ? "(dry run)" : "")</h2>
+            <ul class="mb-3">
+                <li>Seeds selected: @result.SeedsSelected</li>
+                <li>Seeds scanned: @result.SeedsScanned</li>
+                <li>Skipped (no coordinates): @result.SeedsSkippedNoCoords</li>
+                <li>Seed failures: @result.SeedsFailed</li>
+                <li>Candidates within 1 mile: @result.CandidatesWithinMile</li>
+                <li>Too far: @result.CandidatesTooFar</li>
+                <li>Skipped duplicates: @result.SkippedDuplicates</li>
+                <li>@(result.DryRun ? "Would add" : "Added"): @(result.DryRun ? result.WouldAdd : result.Added)</li>
+            </ul>
+
+            @if (result.Messages.Any())
+            {
+                <div class="alert alert-warning">
+                    <ul class="mb-0">
+                        @foreach (var message in result.Messages.Take(25))
+                        {
+                            <li>@message</li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            @if (result.Candidates.Any())
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Hotel</th>
+                                <th>Near stop</th>
+                                <th class="text-end">Miles</th>
+                                <th>Address</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var item in result.Candidates.OrderBy(c => c.DistanceMiles).ThenBy(c => c.StopName))
+                        {
+                            <tr>
+                                <td>@item.StopName</td>
+                                <td>@item.NearStopName</td>
+                                <td class="text-end">@item.DistanceMiles.ToString("0.00")</td>
+                                <td class="small text-muted">@item.Address</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+}
+</div>
+
+@section Scripts {
+<script>
+(() => {
+    const jobId = @Html.Raw(Model.ActiveJobId.HasValue ? $"'{Model.ActiveJobId}'" : "null");
+    if (!jobId) return;
+
+    const card = document.getElementById('jobProgressCard');
+    const bar = document.getElementById('jobProgressBar');
+    const text = document.getElementById('jobProgressText');
+    const detail = document.getElementById('jobProgressDetail');
+    const host = document.getElementById('jobResultHost');
+
+    const poll = async () => {
+        try {
+            const res = await fetch(`/Admin/ProspectHotelsStatus?jobId=${jobId}`, { headers: { 'Accept': 'application/json' } });
+            if (!res.ok) {
+                text.textContent = 'Could not load job status.';
+                return;
+            }
+            const data = await res.json();
+            const p = data.progress || {};
+            const selected = p.seedsSelected || 0;
+            const index = p.currentIndex || 0;
+            const pct = selected > 0 ? Math.min(100, Math.round((index / selected) * 100)) : 0;
+            bar.style.width = pct + '%';
+            bar.textContent = pct + '%';
+            text.textContent = `${data.status}: ${p.phase || ''} ${p.currentStopName ? '— ' + p.currentStopName : ''}`.trim();
+            detail.textContent = `Stop ${index} of ${selected}. Scanned ${p.seedsScanned || 0}. Within 1 mi: ${p.candidatesWithinMile || 0}. Duplicates skipped: ${p.skippedDuplicates || 0}.`;
+
+            if (data.status === 'Running') {
+                setTimeout(poll, 1500);
+                return;
+            }
+
+            bar.classList.remove('progress-bar-animated');
+            if (data.status === 'Completed') {
+                text.textContent = data.dryRun
+                    ? `Dry run complete. Would add ${data.result?.wouldAdd ?? 0} prospect(s).`
+                    : `Complete. Added ${data.result?.added ?? 0} prospect(s).`;
+                // Reload once so the result table renders server-side.
+                if (!host.querySelector('.card')) {
+                    window.location.href = `/Admin/ProspectHotels?jobId=${jobId}`;
+                }
+            } else if (data.status === 'Failed') {
+                text.textContent = `Failed: ${data.error || 'Unknown error'}`;
+                bar.classList.add('bg-danger');
+            } else if (data.status === 'Canceled') {
+                text.textContent = 'Canceled.';
+            }
+        } catch (err) {
+            text.textContent = 'Progress check failed; retrying…';
+            setTimeout(poll, 2500);
+        }
+    };
+
+    card.classList.remove('d-none');
+    poll();
+})();
+</script>
+}

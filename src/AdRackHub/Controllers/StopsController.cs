@@ -20,7 +20,7 @@ public class StopsController : Controller
         _visitService = visitService;
     }
 
-    public async Task<IActionResult> Index(int? routeId, StopStatus? status)
+    public async Task<IActionResult> Index(int? routeId, StopStatus? status, StopType? stopType)
     {
         var query = _context.Stops.Include(s => s.Route).AsQueryable();
 
@@ -30,8 +30,12 @@ public class StopsController : Controller
         if (status.HasValue)
             query = query.Where(s => s.Status == status.Value);
 
+        if (stopType.HasValue)
+            query = query.Where(s => s.StopType == stopType.Value);
+
         ViewBag.RouteId = new SelectList(await _context.Routes.OrderBy(r => r.RouteName).ToListAsync(), "Id", "RouteName", routeId);
         ViewBag.Status = status;
+        ViewBag.StopType = stopType;
 
         return View(await query.OrderBy(s => s.Route.RouteName).ThenBy(s => s.StopName).ToListAsync());
     }
@@ -128,6 +132,9 @@ public class StopsController : Controller
             existing.Zip = stop.Zip;
             existing.HighwayExit = stop.HighwayExit;
             existing.Notes = stop.Notes;
+            existing.Latitude = stop.Latitude;
+            existing.Longitude = stop.Longitude;
+            existing.PlaceId = stop.PlaceId;
             existing.Status = stop.Status;
 
             await _context.SaveChangesAsync();

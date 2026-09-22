@@ -1,6 +1,7 @@
 @model IEnumerable<Stop>
 @{
     ViewData["Title"] = "Stops";
+    var selectedStopType = ViewBag.StopType as StopType?;
 }
 
 <div class="page-header">
@@ -9,8 +10,24 @@
 </div>
 
 <form method="get" class="row g-2 mb-3">
-    <div class="col-md-4">
+    <div class="col-md-3">
         <select name="routeId" class="form-select" asp-items="ViewBag.RouteId"><option value="">All routes</option></select>
+    </div>
+    <div class="col-md-3">
+        <select name="stopType" class="form-select">
+            <option value="">All types</option>
+            @foreach (StopType type in Enum.GetValues(typeof(StopType)))
+            {
+                if (selectedStopType == type)
+                {
+                    <option value="@type" selected>@type</option>
+                }
+                else
+                {
+                    <option value="@type">@type</option>
+                }
+            }
+        </select>
     </div>
     <div class="col-md-3">
         <select name="status" class="form-select" asp-items="Html.GetEnumSelectList<StopStatus>()"><option value="">All statuses</option></select>
@@ -24,9 +41,18 @@
     @foreach (var item in Model)
     {
         <tr>
-            <td>@item.Route.RouteName</td>
+            <td>@item.Route?.RouteName</td>
             <td><a asp-action="Details" asp-route-id="@item.Id">@item.StopName</a></td>
-            <td>@item.StopType</td>
+            <td>
+                @if (item.StopType == StopType.ProspectStop)
+                {
+                    <span class="badge bg-info text-dark">Prospect Stop</span>
+                }
+                else
+                {
+                    @item.StopType
+                }
+            </td>
             <td>@(item.City ?? "—")</td>
             <td>@(item.State ?? "—")</td>
             <td>@item.Status</td>

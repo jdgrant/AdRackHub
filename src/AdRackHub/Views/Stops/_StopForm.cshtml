@@ -35,6 +35,20 @@
         <label asp-for="HighwayExit" class="form-label"></label>
         <input asp-for="HighwayExit" class="form-control" />
     </div>
+    <div class="row">
+        <div class="col-md-4 mb-3">
+            <label asp-for="Latitude" class="form-label"></label>
+            <input asp-for="Latitude" class="form-control" step="any" />
+        </div>
+        <div class="col-md-4 mb-3">
+            <label asp-for="Longitude" class="form-label"></label>
+            <input asp-for="Longitude" class="form-control" step="any" />
+        </div>
+        <div class="col-md-4 mb-3">
+            <label asp-for="PlaceId" class="form-label"></label>
+            <input asp-for="PlaceId" class="form-control" />
+        </div>
+    </div>
     <div class="mb-3">
         <label asp-for="Notes" class="form-label"></label>
         <textarea asp-for="Notes" class="form-control" rows="2"></textarea>

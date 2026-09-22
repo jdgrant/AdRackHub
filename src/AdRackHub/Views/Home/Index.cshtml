@@ -8,6 +8,7 @@
     <div class="d-flex gap-2">
         <a asp-controller="Customers" asp-action="Index" class="btn btn-outline-primary btn-sm">Customers</a>
         <a asp-controller="Prospects" asp-action="Index" class="btn btn-outline-primary btn-sm">Prospects</a>
+        <a asp-controller="ExpandedProspects" asp-action="Index" class="btn btn-outline-primary btn-sm">Expanded Prospects</a>
     </div>
 </div>
 
@@ -44,17 +45,91 @@
             </div>
         </div>
     </div>
-    <div class="col-6 col-lg">
-        <div class="card stat-card @(Model.OverdueTaskCount > 0 ? "danger" : "") h-100">
-            <div class="card-body">
-                <div class="text-muted small">Open Tasks</div>
-                <div class="display-6">@Model.OpenTaskCount</div>
-                @if (Model.OverdueTaskCount > 0)
-                {
-                    <div class="small text-danger mt-1">@Model.OverdueTaskCount overdue</div>
-                }
+</div>
+
+<div class="card mb-4">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span>Activity pipeline</span>
+        <form method="get" asp-action="Index" class="d-flex flex-wrap align-items-center gap-3">
+            <div class="pipeline-scope-switch">
+                <label class="mb-0 @(Model.PipelineShowProspects ? "" : "is-active")" for="pipelineScope">Customers</label>
+                <div class="form-check form-switch m-0">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="pipelineScope" name="scope" value="prospects"
+                           aria-label="Show prospect activities"
+                           @(Model.PipelineShowProspects ? "checked" : null)
+                           onchange="this.form.submit()" />
+                </div>
+                <label class="mb-0 @(Model.PipelineShowProspects ? "is-active" : "")" for="pipelineScope">Prospects</label>
             </div>
+            <div class="d-flex align-items-center gap-2">
+                <label class="small text-muted mb-0" for="pipelineDays">Due now through next</label>
+                <input class="form-control form-control-sm pipeline-days-input" type="number" min="0" max="90" id="pipelineDays" name="days" value="@Model.PipelineDays" />
+                <span class="small text-muted">days</span>
+                <button type="submit" class="btn btn-sm btn-outline-primary">Update</button>
+            </div>
+        </form>
+    </div>
+    <div class="card-body">
+        <div class="pipeline-legend mb-3">
+            @foreach (var kind in EnumDisplay.ActivityKinds())
+            {
+                <span class="pipeline-legend-item">
+                    <span class="pipeline-legend-swatch kind-@kind.KindCss()"></span>
+                    @kind.Name()
+                </span>
+            }
         </div>
+        @{
+            var pipelineLanes = new (string Title, List<DashboardPipelineItem> Items)[]
+            {
+                ("New", Model.PipelineNew),
+                ("Working", Model.PipelineWorking),
+                ("Done", Model.PipelineDone)
+            };
+        }
+        <div class="pipeline" data-status-url="@Url.Action("UpdatePipelineStatus")" data-subnote-url="@Url.Action("AddPipelineSubNote")">
+            @Html.AntiForgeryToken()
+        @foreach (var lane in pipelineLanes)
+        {
+            <section class="pipeline-lane" data-status="@lane.Title">
+                <div class="pipeline-lane-label">
+                    <div class="fw-semibold">@lane.Title</div>
+                    <div class="small text-muted pipeline-lane-count">@lane.Items.Count</div>
+                </div>
+                <div class="pipeline-lane-cards">
+                    <div class="pipeline-empty text-muted">None in this window</div>
+                    @foreach (var item in lane.Items)
+                    {
+                        <article class="pipeline-card kind-@item.Kind.KindCss()"
+                                 data-note-id="@item.Id"
+                                 data-kind="@item.Kind.KindCss()"
+                                 data-href="@Url.Action("Details", "Customers", new { id = item.CustomerId, tab = "activity" })"
+                                 data-customer="@item.CustomerName"
+                                 data-past-due="@(item.IsOverdue ? "true" : "false")">
+                                <button type="button" class="pipeline-card-note" title="Add sub-note" aria-label="Add sub-note">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                                        <path d="M2.5 1A1.5 1.5 0 0 0 1 2.5v11A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-7.086a1.5 1.5 0 0 0-.44-1.06L11.147 1.44A1.5 1.5 0 0 0 10.086 1H2.5zM2 2.5a.5.5 0 0 1 .5-.5h7.586a.5.5 0 0 1 .354.146l3.414 3.414a.5.5 0 0 1 .146.354V13.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11z"/>
+                                        <path d="M4.5 6a.5.5 0 0 0 0 1h7a.5.5 0 0 0 0-1h-7zM4 9.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zm.5 2.5a.5.5 0 0 0 0 1h4a.5.5 0 0 0 0-1h-4z"/>
+                                    </svg>
+                                </button>
+                                <div class="pipeline-card-type">@item.Kind.Name()</div>
+                                <div class="pipeline-card-name">@item.CustomerName</div>
+                                <div class="pipeline-card-due @(item.IsOverdue ? "is-overdue" : "")">
+                                    @(item.DueDate?.ToString("MMM d") ?? "No due date")
+                                    <span class="pipeline-overdue-label @(item.IsOverdue ? "" : "d-none")">overdue</span>
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(item.Preview))
+                                {
+                                    <div class="pipeline-card-preview">@item.Preview</div>
+                                }
+                        </article>
+                    }
+                </div>
+            </section>
+        }
+        </div>
+        <p class="small text-muted mb-0 mt-3">Shows @(Model.PipelineShowProspects ? "prospect" : "customer") activities due today through the next @Model.PipelineDays day@(Model.PipelineDays == 1 ? "" : "s"). Notes, calls, emails, meetings, and actions appear only if a due date is set. Task and Brochures Needed get today as the default due date. Overdue New and Working items stay in this window. Brochures Needed without a due date stay until Done. Done items from the last @Model.PipelineDays day@(Model.PipelineDays == 1 ? "" : "s") stay in this window.</p>
     </div>
 </div>
 
@@ -127,51 +202,6 @@
     </div>
 </div>
 
-<div class="card mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <span>CRM Tasks</span>
-        @if (Model.OverdueTaskCount > 0)
-        {
-            <span class="badge bg-danger">@Model.OverdueTaskCount overdue</span>
-        }
-    </div>
-    <div class="card-body p-0">
-        @if (Model.OpenTasks.Any())
-        {
-            <table class="table mb-0">
-                <thead>
-                    <tr>
-                        <th>Task</th>
-                        <th>Account</th>
-                        <th>Due</th>
-                    </tr>
-                </thead>
-                <tbody>
-                @foreach (var task in Model.OpenTasks)
-                {
-                    <tr class="@(task.IsOverdue ? "table-danger" : null)">
-                        <td>
-                            <a asp-controller="Customers" asp-action="Details" asp-route-id="@task.CustomerId" asp-route-tab="tasks">@task.Title</a>
-                        </td>
-                        <td>
-                            <a asp-controller="Customers" asp-action="Details" asp-route-id="@task.CustomerId">@task.CustomerName</a>
-                            <span class="text-muted small">(@(task.CustomerType == CustomerType.Prospect ? "Prospect" : "Customer"))</span>
-                        </td>
-                        <td class="@(task.IsOverdue ? "text-danger fw-semibold" : "text-muted")">
-                            @(task.DueDate?.ToString("MMM d, yyyy") ?? "—")
-                        </td>
-                    </tr>
-                }
-                </tbody>
-            </table>
-        }
-        else
-        {
-            <p class="text-muted p-3 mb-0">No open CRM tasks.</p>
-        }
-    </div>
-</div>
-
 <details class="dashboard-routes">
     <summary class="dashboard-routes-summary">
         Routes
@@ -210,3 +240,28 @@
         </div>
     </div>
 </details>
+
+<div class="modal fade" id="pipelineSubNoteModal" tabindex="-1" aria-labelledby="pipelineSubNoteTitle" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="pipelineSubNoteTitle">Add sub-note</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="small text-muted mb-2" id="pipelineSubNoteTarget"></div>
+                <label class="form-label" for="pipelineSubNoteBody">Sub-note</label>
+                <textarea class="form-control" id="pipelineSubNoteBody" rows="4" maxlength="2000" required placeholder="Add a sub-note…"></textarea>
+                <div class="text-danger small mt-2 d-none" id="pipelineSubNoteError"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="pipelineSubNoteSave">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/activity-pipeline.js" asp-append-version="true"></script>
+}

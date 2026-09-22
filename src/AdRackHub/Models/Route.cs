@@ -59,4 +59,18 @@ public static class RouteProductHelper
     };
 
     public static string LabelForRouteName(string? routeName) => Label(FromRouteName(routeName));
+
+    public static string BrochureDistributionLabel(IEnumerable<string?> routeOrProductNames)
+    {
+        var products = routeOrProductNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(FromRouteName)
+            .Distinct()
+            .ToList();
+        if (products.Count == 1 && products[0] == RouteProduct.RestArea)
+            return "Rest Area Brochure Distribution";
+        if (products.Count == 1 && products[0] == RouteProduct.Exits)
+            return "Hotel Brochure Distribution";
+        return "Brochure Distribution";
+    }
 }

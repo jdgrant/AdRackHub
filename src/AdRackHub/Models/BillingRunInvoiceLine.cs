@@ -22,6 +22,9 @@ public class BillingRunInvoiceLine
     [Required]
     public BillingFrequency Term { get; set; }
 
+    [Range(1, 36)]
+    public int BillingMonthCount { get; set; }
+
     [Required]
     [StringLength(200)]
     public string RouteName { get; set; } = string.Empty;

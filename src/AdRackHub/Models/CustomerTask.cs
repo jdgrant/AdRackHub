@@ -38,5 +38,7 @@ public class CustomerTask
     public bool IsOpen => Status == CustomerTaskStatus.Open;
 
     public bool IsOverdue =>
-        IsOpen && DueDate.HasValue && DueDate.Value < DateOnly.FromDateTime(DateTime.Today);
+        Status == CustomerTaskStatus.Open
+        && DueDate.HasValue
+        && DueDate.Value < DateOnly.FromDateTime(DateTime.Today);
 }

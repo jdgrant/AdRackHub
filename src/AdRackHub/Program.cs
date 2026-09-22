@@ -7,7 +7,11 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"), sql =>
+    {
+        sql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(3), null);
+        sql.CommandTimeout(60);
+    }));
 
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     {
@@ -47,18 +51,33 @@ builder.Services.AddSingleton<GoogleSheetsService>();
 builder.Services.AddScoped<RouteSheetSyncService>();
 builder.Services.Configure<WaveOptions>(builder.Configuration.GetSection(WaveOptions.SectionName));
 builder.Services.Configure<WaveSyncOptions>(builder.Configuration.GetSection(WaveSyncOptions.SectionName));
+builder.Services.Configure<DataForSeoOptions>(builder.Configuration.GetSection(DataForSeoOptions.SectionName));
 builder.Services.AddHttpClient();
 builder.Services.AddHttpClient<WaveApiService>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<WavePocTokenStore>();
+builder.Services.AddScoped<WaveSessionService>();
+builder.Services.AddScoped<WaveInvoiceWorkflowService>();
+builder.Services.AddHttpClient<DataForSeoClient>();
 builder.Services.AddScoped<WaveSyncService>();
 builder.Services.AddScoped<MonthlyBillingService>();
 builder.Services.AddScoped<StopImportService>();
 builder.Services.AddScoped<CustomerImportService>();
 builder.Services.AddScoped<StopVisitService>();
 builder.Services.AddScoped<BrochureScanService>();
+builder.Services.AddSingleton<InvoicePdfStorageService>();
+builder.Services.AddSingleton<InvoicePdfGenerator>();
 builder.Services.AddScoped<BrochureOptimizeService>();
+builder.Services.AddScoped<ProspectHotelDiscoveryService>();
+builder.Services.AddSingleton<ProspectHotelDiscoveryJobService>();
 builder.Services.AddScoped<KyBrochureProspectImportService>();
 builder.Services.AddScoped<CustomerFieldEnrichmentService>();
+builder.Services.AddScoped<CustomerGeocodeService>();
+builder.Services.AddScoped<StopGeocodeService>();
+builder.Services.AddScoped<CustomerNeedsMoreInfoService>();
+builder.Services.AddScoped<HighValueProspectProximityService>();
 builder.Services.AddScoped<CustomerRouteMatrixService>();
+builder.Services.AddScoped<Sept2026ContractImportService>();
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
 {
     options.ValueCountLimit = 16384;
@@ -82,12 +101,83 @@ using (var scope = app.Services.CreateScope())
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
     await DbInitializer.InitializeAsync(context, userManager, roleManager, app.Configuration);
+    var needsMoreInfoService = scope.ServiceProvider.GetRequiredService<CustomerNeedsMoreInfoService>();
+    await needsMoreInfoService.RefreshAllAsync();
 
     var env = scope.ServiceProvider.GetRequiredService<IWebHostEnvironment>();
     var uploadRoot = BrochureScanService.GetUploadRoot(env);
     Directory.CreateDirectory(uploadRoot);
+    var invoiceUploadRoot = InvoicePdfStorageService.GetUploadRoot(env);
+    Directory.CreateDirectory(invoiceUploadRoot);
     var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
     logger.LogInformation("Brochure uploads directory: {UploadRoot}", uploadRoot);
+    logger.LogInformation("Invoice PDF uploads directory: {UploadRoot}", invoiceUploadRoot);
+
+    if (args.Contains("--set-invoice-receipt-both"))
+    {
+        var matchedIds = await context.Contacts
+            .Where(ct => ct.SendInvoice && ct.Email != null && ct.Email.Trim() != "")
+            .Select(ct => ct.CustomerId)
+            .Distinct()
+            .ToListAsync();
+        var current = await context.Customers
+            .Where(c => matchedIds.Contains(c.Id))
+            .Select(c => c.InvoiceReceiptMethod)
+            .ToListAsync();
+        var updated = await context.Customers
+            .Where(c => matchedIds.Contains(c.Id) && c.InvoiceReceiptMethod != InvoiceReceiptMethod.Both)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.InvoiceReceiptMethod, InvoiceReceiptMethod.Both));
+        Console.WriteLine(
+            $"Customers with a Send Invoice contact that has an email: {matchedIds.Count}. " +
+            $"Already Both: {current.Count(m => m == InvoiceReceiptMethod.Both)}. " +
+            $"Updated to Both: {updated} " +
+            $"(from Mail: {current.Count(m => m == InvoiceReceiptMethod.Mail)}, " +
+            $"from Email: {current.Count(m => m == InvoiceReceiptMethod.Email)}).");
+        return;
+    }
+
+    if (args.Contains("--sample-invoice-pdf"))
+    {
+        var generator = scope.ServiceProvider.GetRequiredService<InvoicePdfGenerator>();
+        var bytes = generator.Generate(InvoicePdfGenerator.Sample());
+        var samplePath = Path.Combine(invoiceUploadRoot, "AdRack-sample.pdf");
+        File.WriteAllBytes(samplePath, bytes);
+        Console.WriteLine(samplePath);
+        return;
+    }
+
+    if (args.Contains("--cleanup-wave-test-invoices"))
+    {
+        var session = scope.ServiceProvider.GetRequiredService<WaveSessionService>();
+        var waveApi = scope.ServiceProvider.GetRequiredService<WaveApiService>();
+        var credentials = await session.GetCredentialsAsync();
+        if (credentials == null || string.IsNullOrWhiteSpace(credentials.AccessToken))
+        {
+            Console.WriteLine("Connect to Wave on Admin → Wave proof first.");
+            return;
+        }
+
+        var invoices = await waveApi.ListRecentInvoicesAsync(
+            accessToken: credentials.AccessToken,
+            businessId: credentials.BusinessId);
+        var testInvoices = invoices
+            .Where(i => string.Equals(i.CustomerName, "test customer", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var keep = testInvoices
+            .OrderByDescending(i => int.TryParse(i.InvoiceNumber, out var n) ? n : -1)
+            .FirstOrDefault();
+        var toDelete = testInvoices.Where(i => keep == null || i.WaveInvoiceId != keep.WaveInvoiceId).ToList();
+        Console.WriteLine($"Test customer invoices: {testInvoices.Count}. Keeping #{keep?.InvoiceNumber ?? "none"}.");
+        foreach (var item in toDelete)
+        {
+            var deleted = await waveApi.DeleteInvoiceAsync(item.WaveInvoiceId, accessToken: credentials.AccessToken);
+            Console.WriteLine(
+                deleted.Success
+                    ? $"Deleted Wave invoice #{item.InvoiceNumber} ({item.Status})."
+                    : $"Could not delete #{item.InvoiceNumber}: {deleted.ErrorMessage}");
+        }
+        return;
+    }
 
     if (args.Contains("--run-billing"))
     {
@@ -98,6 +188,98 @@ using (var scope = app.Services.CreateScope())
         var run = await billingService.PrepareRunAsync(year, month);
         run = await billingService.SubmitRunAsync(run.Id);
         Console.WriteLine($"Billing run for {BillingDueCalculator.PeriodLabel(year, month)}: {run.Status}");
+        return;
+    }
+
+    var discoverArg = args.FirstOrDefault(a => a.StartsWith("--discover-prospect-hotels", StringComparison.OrdinalIgnoreCase));
+    if (discoverArg != null || args.Contains("--discover-prospect-hotels"))
+    {
+        var discovery = scope.ServiceProvider.GetRequiredService<ProspectHotelDiscoveryService>();
+        var dryRun = args.Contains("--dry-run");
+        var cityArg = args.FirstOrDefault(a => a.StartsWith("--city=", StringComparison.OrdinalIgnoreCase));
+        var city = cityArg?["--city=".Length..];
+        var routeArg = args.FirstOrDefault(a => a.StartsWith("--route-id=", StringComparison.OrdinalIgnoreCase));
+        int? routeId = int.TryParse(routeArg?["--route-id=".Length..], out var rid) ? rid : null;
+        var routesArg = args.FirstOrDefault(a => a.StartsWith("--route-ids=", StringComparison.OrdinalIgnoreCase));
+        int[]? routeIds = routesArg?["--route-ids=".Length..]
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(s => int.TryParse(s, out var id) ? id : (int?)null)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .ToArray();
+        var statesArg = args.FirstOrDefault(a => a.StartsWith("--states=", StringComparison.OrdinalIgnoreCase));
+        string[]? states = statesArg?["--states=".Length..]
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var maxArg = args.FirstOrDefault(a => a.StartsWith("--max-seeds=", StringComparison.OrdinalIgnoreCase));
+        int? maxSeeds = int.TryParse(maxArg?["--max-seeds=".Length..], out var ms) ? ms : null;
+        var skipArg = args.FirstOrDefault(a => a.StartsWith("--skip-seeds=", StringComparison.OrdinalIgnoreCase));
+        int? skipSeeds = int.TryParse(skipArg?["--skip-seeds=".Length..], out var sk) ? sk : 0;
+
+        Console.WriteLine(
+            $"Discovering prospect hotels (dryRun={dryRun}, city={city ?? "(any)"}, routeId={routeId?.ToString() ?? "(any)"}, routeIds={(routeIds is { Length: > 0 } ? string.Join('|', routeIds) : "(any)")}, states={(states is { Length: > 0 } ? string.Join('|', states) : "(any)")}, maxSeeds={maxSeeds?.ToString() ?? "(all)"}, skip={skipSeeds})…");
+        var progress = new Progress<ProspectHotelProgress>(p =>
+            Console.WriteLine($"  [{p.CurrentIndex}/{p.SeedsSelected}] {p.Phase} {p.CurrentStopName} (within1={p.CandidatesWithinMile}, dups={p.SkippedDuplicates})"));
+        var result = await discovery.DiscoverAsync(
+            dryRun,
+            maxSeeds,
+            skipSeeds,
+            routeId,
+            city,
+            routeIds,
+            states,
+            progress: progress);
+        Console.WriteLine($"Done. Scanned {result.SeedsScanned}/{result.SeedsSelected}. Within 1 mi: {result.CandidatesWithinMile}. Duplicates: {result.SkippedDuplicates}. {(result.DryRun ? "Would add" : "Added")}: {(result.DryRun ? result.WouldAdd : result.Added)}.");
+        foreach (var c in result.Candidates.OrderBy(c => c.DistanceMiles).Take(100))
+            Console.WriteLine($"  + {c.StopName} ({c.DistanceMiles:0.00} mi near {c.NearStopName}) — {c.Address}");
+        if (result.Candidates.Count > 100)
+            Console.WriteLine($"  … and {result.Candidates.Count - 100} more");
+        foreach (var msg in result.Messages.Take(30))
+            Console.WriteLine($"  ! {msg}");
+        return;
+    }
+
+    if (args.Contains("--repair-exit-contract-routes"))
+    {
+        var importService = scope.ServiceProvider.GetRequiredService<Sept2026ContractImportService>();
+        var dryRun = args.Contains("--dry-run");
+        var result = await importService.RepairDisconnectedExitRoutesAsync(dryRun);
+        Console.WriteLine(
+            $"Repair Exit contract routes ({(result.DryRun ? "dry-run" : "apply")}): " +
+            $"{(result.DryRun ? "wouldRepair" : "repaired")}={(result.DryRun ? result.WouldRepair.Count : result.Repaired.Count)}, " +
+            $"skipped={result.Skipped.Count}, errors={result.Errors.Count}.");
+        foreach (var line in result.DryRun ? result.WouldRepair : result.Repaired)
+            Console.WriteLine($"  + {line}");
+        foreach (var line in result.Skipped)
+            Console.WriteLine($"  skip {line}");
+        foreach (var line in result.Errors)
+            Console.WriteLine($"  ! {line}");
+        return;
+    }
+
+    if (args.Contains("--import-sept-2026-contracts") || args.Contains("--verify-sept-2026-contracts"))
+    {
+        var importService = scope.ServiceProvider.GetRequiredService<Sept2026ContractImportService>();
+        if (args.Contains("--verify-sept-2026-contracts") && !args.Contains("--import-sept-2026-contracts"))
+        {
+            var verifications = await importService.VerifyAsync();
+            PrintSept2026ContractVerification(verifications);
+            return;
+        }
+
+        var dryRun = args.Contains("--dry-run");
+        var result = await importService.ImportAsync(dryRun);
+        Console.WriteLine(
+            $"Sept 2026 contracts ({(result.DryRun ? "dry-run" : "apply")}): seed={result.SeedCount}, " +
+            $"{(result.DryRun ? "wouldCreate" : "created")}={(result.DryRun ? result.WouldCreate.Count : result.Created.Count)}, " +
+            $"skipped={result.Skipped.Count}, errors={result.Errors.Count}.");
+        foreach (var line in result.DryRun ? result.WouldCreate : result.Created)
+            Console.WriteLine($"  + {line}");
+        foreach (var line in result.Skipped)
+            Console.WriteLine($"  skip {line}");
+        foreach (var line in result.Errors)
+            Console.WriteLine($"  ! {line}");
+        if (result.Verifications.Count > 0)
+            PrintSept2026ContractVerification(result.Verifications);
         return;
     }
 
@@ -112,6 +294,73 @@ using (var scope = app.Services.CreateScope())
             Console.WriteLine($"Brochure errors: {string.Join(" | ", result.BrochureErrors)}");
         foreach (var name in result.CreatedNames)
             Console.WriteLine($"  + {name}");
+        return;
+    }
+
+    // Named pipeline: Brochure Prospect Batch
+    // Prefer: --import-scan-batch=20260825  (or Batch-20260825)
+    // Legacy aliases: --import-scan-batch-20260824 / --import-scan-batch-20260825
+    var scanBatchArg = args.FirstOrDefault(a =>
+        a.StartsWith("--import-scan-batch=", StringComparison.OrdinalIgnoreCase));
+    string? scanBatchId = null;
+    if (!string.IsNullOrWhiteSpace(scanBatchArg))
+        scanBatchId = scanBatchArg["--import-scan-batch=".Length..].Trim();
+    else
+    {
+        var legacy = args.FirstOrDefault(a =>
+            a.StartsWith("--import-scan-batch-", StringComparison.OrdinalIgnoreCase)
+            && !a.Equals("--import-scan-batch-", StringComparison.OrdinalIgnoreCase));
+        if (legacy != null)
+            scanBatchId = legacy["--import-scan-batch-".Length..].Trim();
+    }
+
+    if (!string.IsNullOrWhiteSpace(scanBatchId))
+    {
+        var batchKey = scanBatchId.StartsWith("Batch-", StringComparison.OrdinalIgnoreCase)
+            ? scanBatchId["Batch-".Length..]
+            : scanBatchId;
+        batchKey = batchKey.Replace("-", "", StringComparison.Ordinal);
+        var importService = scope.ServiceProvider.GetRequiredService<KyBrochureProspectImportService>();
+        var jsonPath = Path.Combine(env.ContentRootPath, "Data", "Imports", $"ScanBatch{batchKey}.json");
+        var scansDir = Path.Combine(env.ContentRootPath, "Data", "Scans", $"Batch-{batchKey}");
+        if (!File.Exists(jsonPath))
+        {
+            Console.WriteLine($"Missing import JSON: {jsonPath}");
+            return;
+        }
+
+        if (!Directory.Exists(scansDir))
+        {
+            Console.WriteLine($"Missing scans folder: {scansDir}");
+            return;
+        }
+
+        var attachOnly = args.Contains("--attach-only");
+        var result = await importService.ImportAsync(jsonPath, scansDir, createMissing: !attachOnly);
+        Console.WriteLine(
+            $"Brochure Prospect Batch {batchKey}: {result.Created} created, {result.SkippedExisting} skipped (already exist), {result.BrochuresAttached} brochures attached.");
+        if (result.MissingScanFiles.Count > 0)
+            Console.WriteLine($"Missing scan files: {string.Join(", ", result.MissingScanFiles)}");
+        if (result.BrochureErrors.Count > 0)
+            Console.WriteLine($"Brochure errors: {string.Join(" | ", result.BrochureErrors)}");
+        if (result.UnmatchedNames.Count > 0)
+            Console.WriteLine($"Unmatched attractions: {string.Join(" | ", result.UnmatchedNames)}");
+        foreach (var name in result.CreatedNames)
+            Console.WriteLine($"  + {name}");
+        foreach (var name in result.SkippedNames)
+            Console.WriteLine($"  skip {name}");
+        return;
+    }
+
+    if (args.Contains("--dump-customer-names"))
+    {
+        var rows = await context.Customers.AsNoTracking()
+            .OrderBy(c => c.CustomerName)
+            .Select(c => new { c.Id, c.Type, c.CustomerName, c.City, c.State })
+            .ToListAsync();
+        foreach (var row in rows)
+            Console.WriteLine($"{row.Id}\t{row.Type}\t{row.CustomerName}\t{row.City}\t{row.State}");
+        Console.WriteLine($"COUNT={rows.Count}");
         return;
     }
 
@@ -192,6 +441,63 @@ using (var scope = app.Services.CreateScope())
         return;
     }
 
+    if (args.Contains("--geocode-customers"))
+    {
+        var geocodeService = scope.ServiceProvider.GetRequiredService<CustomerGeocodeService>();
+        var force = args.Contains("--force");
+        var limitArg = args.FirstOrDefault(a => a.StartsWith("--limit=", StringComparison.OrdinalIgnoreCase));
+        int? limit = int.TryParse(limitArg?["--limit=".Length..], out var lim) ? lim : null;
+        Console.WriteLine($"Geocoding customers and prospects (force={force}, limit={limit?.ToString() ?? "all"})…");
+        var result = await geocodeService.GeocodeMissingAsync(force, limit);
+        Console.WriteLine($"Geocode: {result.Updated} updated, {result.NotFound} not found, {result.SkippedNoQuery} no address, {result.Failed} failed of {result.Eligible} eligible.");
+        foreach (var line in result.Updates)
+            Console.WriteLine($"  OK {line}");
+        foreach (var line in result.Failures)
+            Console.WriteLine($"  ! {line}");
+        return;
+    }
+
+    if (args.Contains("--geocode-stops"))
+    {
+        var stopGeocode = scope.ServiceProvider.GetRequiredService<StopGeocodeService>();
+        var limitArg = args.FirstOrDefault(a => a.StartsWith("--limit=", StringComparison.OrdinalIgnoreCase));
+        int? limit = int.TryParse(limitArg?["--limit=".Length..], out var lim) ? lim : null;
+        var fixedRows = await stopGeocode.FixKnownBadMidTnRowsAsync();
+        if (fixedRows > 0)
+            Console.WriteLine($"Fixed {fixedRows} mangled Mid-TN stop row(s).");
+        Console.WriteLine($"Geocoding stops missing coordinates (limit={limit?.ToString() ?? "all"})…");
+        var result = await stopGeocode.GeocodeMissingAsync(limit);
+        Console.WriteLine($"Stop geocode: {result.Updated} updated, {result.NotFound} not found, {result.SkippedNoQuery} no address, {result.Failed} failed of {result.Eligible} eligible.");
+        foreach (var line in result.Updates)
+            Console.WriteLine($"  OK {line}");
+        foreach (var line in result.Failures)
+            Console.WriteLine($"  ! {line}");
+        return;
+    }
+
+    if (args.Contains("--mark-high-value-proximity"))
+    {
+        var proximity = scope.ServiceProvider.GetRequiredService<HighValueProspectProximityService>();
+        var dryRun = args.Contains("--dry-run");
+        var replace = args.Contains("--replace");
+        var milesArg = args.FirstOrDefault(a => a.StartsWith("--miles=", StringComparison.OrdinalIgnoreCase));
+        var miles = double.TryParse(milesArg?["--miles=".Length..], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var parsedMiles)
+            ? parsedMiles
+            : HighValueProspectProximityService.DefaultRadiusMiles;
+        Console.WriteLine($"Marking high-value prospects within {miles:0.##} miles of a customer or exit stop (dryRun={dryRun}, replace={replace})…");
+        var result = await proximity.ApplyAsync(miles, dryRun, replace);
+        Console.WriteLine($"Anchors: {result.CustomerAnchorCount} customers, {result.ExitStopAnchorCount} exit stops. Prospects: {result.ProspectsConsidered} ({result.SkippedNoCoords} skipped, no coords).");
+        Console.WriteLine($"Within {result.RadiusMiles:0.##} mi: {result.Matches.Count} ({result.Marked} newly marked, {result.Matches.Count - result.Marked} already high value). Unmarked: {result.Unmarked}.");
+        foreach (var match in result.Matches.OrderBy(m => m.Hit.Miles))
+        {
+            var flag = match.AlreadyHighValue ? "keep" : "mark";
+            Console.WriteLine($"  {flag} #{match.ProspectId} {match.ProspectName}: {match.Hit.Summary}");
+        }
+        foreach (var line in result.Cleared)
+            Console.WriteLine($"  clear {line}");
+        return;
+    }
+
     if (args.Contains("--purge-inactive-stops"))
     {
         var inactiveStops = await context.Stops.Where(s => s.Status == StopStatus.Inactive).ToListAsync();
@@ -210,6 +516,25 @@ using (var scope = app.Services.CreateScope())
     {
         var removed = await DbInitializer.DeleteInactiveRoutesAsync(context);
         Console.WriteLine($"Removed {removed} inactive/non-standard routes.");
+        return;
+    }
+
+    if (args.Contains("--route-map-status"))
+    {
+        var routes = await context.Routes
+            .OrderBy(r => r.RouteName)
+            .Select(r => new
+            {
+                r.RouteName,
+                Stops = r.Stops.Count(s => s.Status == StopStatus.Active),
+                Mapped = r.Stops.Count(s => s.Status == StopStatus.Active && s.Latitude != null && s.Longitude != null)
+            })
+            .ToListAsync();
+        foreach (var row in routes)
+            Console.WriteLine($"{row.RouteName}: {row.Mapped}/{row.Stops} stops have coordinates");
+        var totalStops = routes.Sum(r => r.Stops);
+        var totalMapped = routes.Sum(r => r.Mapped);
+        Console.WriteLine($"Total: {totalMapped}/{totalStops} active stops have coordinates.");
         return;
     }
 
@@ -297,10 +622,10 @@ using (var scope = app.Services.CreateScope())
         return;
     }
 
+    var seededRoutes = await context.Routes.ToListAsync();
     foreach (var (routeKey, routeName) in RouteImportMap.KeyToRouteName)
     {
-        var nameCandidates = RouteSheetMap.DatabaseNameCandidates(routeName);
-        var route = await context.Routes.FirstOrDefaultAsync(r => nameCandidates.Contains(r.RouteName));
+        var route = RouteSheetMap.FindImportRoute(seededRoutes, routeName);
         if (route == null || await context.Stops.AnyAsync(s => s.RouteId == route.Id))
             continue;
 
@@ -310,6 +635,7 @@ using (var scope = app.Services.CreateScope())
 
         await using var stream = File.OpenRead(csvPath);
         await stopImportService.ImportAsync(route.Id, stream, replaceExisting: false);
+        Console.WriteLine($"Imported missing stops for {route.RouteName} from {routeKey}.csv.");
     }
 }
 
@@ -331,6 +657,21 @@ app.MapControllerRoute(
 
 app.Run();
 
+static void PrintSept2026ContractVerification(List<Sept2026ContractVerifyItem> verifications)
+{
+    var passed = verifications.Count(v => v.Passed);
+    Console.WriteLine($"Verification: {passed}/{verifications.Count} passed.");
+    foreach (var item in verifications)
+    {
+        var mark = item.Passed ? "PASS" : "FAIL";
+        Console.WriteLine(
+            $"  [{mark}] {item.Product} · {item.BillName} · #{item.CustomerId} {item.CustomerName} · " +
+            $"contract #{item.ContractId} {item.ContractName} · ${item.ActualTotal:0.00} (expected ${item.ExpectedTotal:0.00})");
+        foreach (var failure in item.Failures)
+            Console.WriteLine($"      - {failure}");
+    }
+}
+
 static async Task ImportRouteAsync(
     ApplicationDbContext context,
     StopImportService stopImportService,
@@ -340,8 +681,8 @@ static async Task ImportRouteAsync(
     if (!RouteImportMap.KeyToRouteName.TryGetValue(routeKey, out var routeName))
         throw new InvalidOperationException($"Unknown route key '{routeKey}'.");
 
-    var nameCandidates = RouteSheetMap.DatabaseNameCandidates(routeName);
-    var route = await context.Routes.FirstOrDefaultAsync(r => nameCandidates.Contains(r.RouteName))
+    var allRoutes = await context.Routes.ToListAsync();
+    var route = RouteSheetMap.FindImportRoute(allRoutes, routeName)
         ?? throw new InvalidOperationException($"{routeName} route not found.");
 
     var csvPath = Path.Combine(contentRoot, "Data", "Imports", $"{routeKey}.csv");

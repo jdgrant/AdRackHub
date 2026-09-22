@@ -358,9 +358,9 @@ public class CustomerRouteMatrixService
                         CustomerId = customer.Id,
                         RouteId = route.Id,
                         AllStops = true,
-                        Status = CustomerRouteStatus.Active,
-                        BillingTerm = term
+                        Status = CustomerRouteStatus.Active
                     };
+                    AnnualBillingHelper.ApplyBillingMonths(customerRoute, AnnualBillingHelper.MonthsInTerm(term));
                     _context.CustomerRoutes.Add(customerRoute);
                     customer.CustomerRoutes.Add(customerRoute);
                     result.AssignmentsAdded++;
@@ -369,7 +369,7 @@ public class CustomerRouteMatrixService
                 {
                     customerRoute.AllStops = true;
                     customerRoute.Status = CustomerRouteStatus.Active;
-                    customerRoute.BillingTerm = term;
+                    AnnualBillingHelper.ApplyBillingMonths(customerRoute, AnnualBillingHelper.MonthsInTerm(term));
                     result.AssignmentsUpdated++;
                 }
 
@@ -405,6 +405,7 @@ public class CustomerRouteMatrixService
                         CustomerId = customer.Id,
                         ContractName = $"{BillingTermDisplay.Label(termGroup.Key)} Contract",
                         Term = termGroup.Key,
+                        BillingMonthCount = AnnualBillingHelper.MonthsInTerm(termGroup.Key),
                         BillingAnchorMonth = 1,
                         ServiceMonthMask = SubscribedMonths.AllMonthsMask,
                         NextBillDate = new DateOnly(DateTime.Today.Year, 1, 1)

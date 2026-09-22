@@ -46,15 +46,6 @@
   },
   {
     "Attraction": "Bernheim Forest and Arboretum",
-    "ImageName": "Bernheim-Forest.png",
-    "Address": "2075 Clermont Road",
-    "City": "Clermont",
-    "State": "KY",
-    "Zip": "40110",
-    "WebURL": "https://bernheim.org/"
-  },
-  {
-    "Attraction": "Bernheim Forest and Arboretum",
     "ImageName": "BernheimForest.png",
     "Address": "2075 Clermont Road",
     "City": "Clermont",
@@ -326,15 +317,6 @@
   {
     "Attraction": "Kentucky Western Waterlands",
     "ImageName": "KyWesternWaterlands.png",
-    "Address": "721 Complex Drive",
-    "City": "Grand Rivers",
-    "State": "KY",
-    "Zip": "42045",
-    "WebURL": "https://kentuckylakebarkley.org/"
-  },
-  {
-    "Attraction": "Kentucky Western Waterlands",
-    "ImageName": "KyWesterwaterlands.png",
     "Address": "721 Complex Drive",
     "City": "Grand Rivers",
     "State": "KY",

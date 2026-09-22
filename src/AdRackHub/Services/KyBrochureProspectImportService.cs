@@ -33,10 +33,14 @@ public class KyBrochureProspectImportService
         _logger = logger;
     }
 
-    public async Task<KyBrochureProspectImportResult> ImportAsync(CancellationToken cancellationToken = default)
+    public async Task<KyBrochureProspectImportResult> ImportAsync(
+        string? jsonPath = null,
+        string? scansDir = null,
+        bool createMissing = true,
+        CancellationToken cancellationToken = default)
     {
-        var jsonPath = Path.Combine(_environment.ContentRootPath, "Data", "Imports", "KYBrochures.json");
-        var scansDir = Path.Combine(_environment.ContentRootPath, "Data", "Scans");
+        jsonPath ??= Path.Combine(_environment.ContentRootPath, "Data", "Imports", "KYBrochures.json");
+        scansDir ??= Path.Combine(_environment.ContentRootPath, "Data", "Scans");
 
         if (!File.Exists(jsonPath))
             throw new FileNotFoundException($"Missing import file: {jsonPath}");
@@ -69,89 +73,126 @@ public class KyBrochureProspectImportService
             UniqueAttractions = groups.Count
         };
 
+        var customersByName = await _context.Customers
+            .AsNoTracking()
+            .Select(c => new { c.Id, c.CustomerName, c.Type })
+            .ToListAsync(cancellationToken);
+
+        var customerIdByName = customersByName
+            .Where(c => !string.IsNullOrWhiteSpace(c.CustomerName))
+            .GroupBy(c => NormalizeName(c.CustomerName), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderBy(c => c.Type == CustomerType.Customer ? 0 : 1)
+                    .ThenByDescending(c => c.Id)
+                    .First().Id,
+                StringComparer.OrdinalIgnoreCase);
+
         foreach (var group in groups)
         {
             var primary = group.First();
             var attractionName = primary.Attraction!.Trim();
             var key = NormalizeName(attractionName);
 
+            int customerId;
             if (existingLookup.Contains(key))
             {
                 result.SkippedExisting++;
                 result.SkippedNames.Add(attractionName);
+                if (!customerIdByName.TryGetValue(key, out customerId))
+                    continue;
+            }
+            else if (!createMissing)
+            {
+                result.UnmatchedNames.Add(attractionName);
                 continue;
             }
-
-            var customer = new Customer
+            else
             {
-                CustomerName = attractionName,
-                Status = CustomerStatus.Active,
-                Type = CustomerType.Prospect,
-                AccountManagerId = accountManagerId,
-                Address = NullIfEmpty(primary.Address),
-                City = NullIfEmpty(primary.City),
-                State = NullIfEmpty(primary.State),
-                Zip = NullIfEmpty(primary.Zip),
-                WebUrl = NullIfEmpty(primary.WebURL)
-            };
-            _context.Customers.Add(customer);
-            await _context.SaveChangesAsync(cancellationToken);
-
-            existingLookup.Add(key);
-            result.Created++;
-
-            var hasAddress = !string.IsNullOrWhiteSpace(primary.Address)
-                || !string.IsNullOrWhiteSpace(primary.City)
-                || !string.IsNullOrWhiteSpace(primary.State)
-                || !string.IsNullOrWhiteSpace(primary.Zip);
-
-            if (hasAddress || !string.IsNullOrWhiteSpace(primary.WebURL))
-            {
-                _context.Contacts.Add(new Contact
+                var customer = new Customer
                 {
-                    CustomerId = customer.Id,
-                    Name = attractionName,
+                    CustomerName = attractionName,
+                    Status = CustomerStatus.Active,
+                    Type = CustomerType.Prospect,
+                    AccountManagerId = accountManagerId,
                     Address = NullIfEmpty(primary.Address),
                     City = NullIfEmpty(primary.City),
                     State = NullIfEmpty(primary.State),
                     Zip = NullIfEmpty(primary.Zip),
-                    WebUrl = NullIfEmpty(primary.WebURL),
-                    Role = ContactRole.Primary
-                });
+                    WebUrl = NullIfEmpty(primary.WebURL)
+                };
+                _context.Customers.Add(customer);
+                await _context.SaveChangesAsync(cancellationToken);
+
+                existingLookup.Add(key);
+                customerIdByName[key] = customer.Id;
+                customerId = customer.Id;
+                result.Created++;
+
+                var hasAddress = !string.IsNullOrWhiteSpace(primary.Address)
+                    || !string.IsNullOrWhiteSpace(primary.City)
+                    || !string.IsNullOrWhiteSpace(primary.State)
+                    || !string.IsNullOrWhiteSpace(primary.Zip);
+
+                if (hasAddress || !string.IsNullOrWhiteSpace(primary.WebURL))
+                {
+                    _context.Contacts.Add(new Contact
+                    {
+                        CustomerId = customer.Id,
+                        Name = attractionName,
+                        Address = NullIfEmpty(primary.Address),
+                        City = NullIfEmpty(primary.City),
+                        State = NullIfEmpty(primary.State),
+                        Zip = NullIfEmpty(primary.Zip),
+                        WebUrl = NullIfEmpty(primary.WebURL),
+                        Role = ContactRole.Primary
+                    });
+                }
+
+                await _context.SaveChangesAsync(cancellationToken);
+                result.CreatedNames.Add(attractionName);
             }
 
-            await _context.SaveChangesAsync(cancellationToken);
+            var existingOriginals = await _context.CustomerBrochureScans
+                .AsNoTracking()
+                .Where(s => s.CustomerId == customerId)
+                .Select(s => s.OriginalFileName)
+                .ToListAsync(cancellationToken);
+            var existingOriginalLookup = new HashSet<string>(existingOriginals, StringComparer.OrdinalIgnoreCase);
 
             foreach (var row in group)
             {
                 if (string.IsNullOrWhiteSpace(row.ImageName))
                     continue;
 
-                var sourcePath = Path.Combine(scansDir, row.ImageName.Trim());
+                var imageName = row.ImageName.Trim();
+                if (existingOriginalLookup.Contains(imageName))
+                    continue;
+
+                var sourcePath = Path.Combine(scansDir, imageName);
                 if (!File.Exists(sourcePath))
                 {
-                    result.MissingScanFiles.Add(row.ImageName);
-                    _logger.LogWarning("Scan file missing for {Attraction}: {File}", attractionName, row.ImageName);
+                    result.MissingScanFiles.Add(imageName);
+                    _logger.LogWarning("Scan file missing for {Attraction}: {File}", attractionName, imageName);
                     continue;
                 }
 
                 try
                 {
                     await _brochureScanService.SaveFromPathAsync(
-                        customer.Id,
+                        customerId,
                         sourcePath,
-                        notes: $"Imported from Data/Scans/{row.ImageName}",
+                        notes: $"Imported from Data/Scans/{imageName}",
                         cancellationToken);
+                    existingOriginalLookup.Add(imageName);
                     result.BrochuresAttached++;
                 }
                 catch (Exception ex)
                 {
-                    result.BrochureErrors.Add($"{row.ImageName}: {ex.Message}");
-                    _logger.LogError(ex, "Failed attaching brochure {File} to {Attraction}", row.ImageName, attractionName);
+                    result.BrochureErrors.Add($"{imageName}: {ex.Message}");
+                    _logger.LogError(ex, "Failed attaching brochure {File} to {Attraction}", imageName, attractionName);
                 }
             }
-
-            result.CreatedNames.Add(attractionName);
         }
 
         return result;
@@ -315,6 +356,7 @@ public class KyBrochureProspectImportResult
     public int BrochuresAttached { get; set; }
     public List<string> CreatedNames { get; } = new();
     public List<string> SkippedNames { get; } = new();
+    public List<string> UnmatchedNames { get; } = new();
     public List<string> MissingScanFiles { get; } = new();
     public List<string> BrochureErrors { get; } = new();
 }

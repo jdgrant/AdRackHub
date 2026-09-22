@@ -18,6 +18,9 @@ public class CustomersController : Controller
     private readonly IWebHostEnvironment _environment;
     private readonly WaveSyncService _waveSyncService;
     private readonly BrochureScanService _brochureScanService;
+    private readonly HighValueProspectProximityService _highValueProximity;
+    private readonly CustomerGeocodeService _geocodeService;
+    private readonly CustomerNeedsMoreInfoService _needsMoreInfoService;
     private readonly UserManager<ApplicationUser> _userManager;
 
     public CustomersController(
@@ -26,6 +29,9 @@ public class CustomersController : Controller
         IWebHostEnvironment environment,
         WaveSyncService waveSyncService,
         BrochureScanService brochureScanService,
+        HighValueProspectProximityService highValueProximity,
+        CustomerGeocodeService geocodeService,
+        CustomerNeedsMoreInfoService needsMoreInfoService,
         UserManager<ApplicationUser> userManager)
     {
         _context = context;
@@ -33,14 +39,19 @@ public class CustomersController : Controller
         _environment = environment;
         _waveSyncService = waveSyncService;
         _brochureScanService = brochureScanService;
+        _highValueProximity = highValueProximity;
+        _geocodeService = geocodeService;
+        _needsMoreInfoService = needsMoreInfoService;
         _userManager = userManager;
     }
 
     public async Task<IActionResult> Index(string? search, CustomerStatus? status)
     {
         var query = _context.Customers
+            .AsNoTracking()
+            .AsSplitQuery()
             .Include(c => c.Contacts)
-            .Include(c => c.BrochureScans)
+            .Include(c => c.BrochureScans.OrderByDescending(s => s.UploadedAt).Take(3))
             .Include(c => c.CustomerRoutes)
                 .ThenInclude(cr => cr.Route)
             .Include(c => c.Contracts)
@@ -89,38 +100,65 @@ public class CustomersController : Controller
         {
             Customers = customers,
             Summary = BuildSummary(customers),
-            ListType = CustomerType.Customer
+            ListType = CustomerType.Customer,
+            ContractedCustomersByRoute = await GetContractedCustomersByRouteAsync()
         };
 
         return View(model);
     }
 
+    private async Task<List<ContractedRouteCustomerGroup>> GetContractedCustomersByRouteAsync()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var rows = await _context.CustomerContractRoutes
+            .AsNoTracking()
+            .Where(cr => cr.Contract.Customer.Type == CustomerType.Customer
+                && (!cr.Contract.ContractEndDate.HasValue || cr.Contract.ContractEndDate >= today))
+            .Select(cr => new
+            {
+                cr.RouteId,
+                RouteName = cr.Route.RouteName,
+                cr.Contract.CustomerId,
+                CustomerName = cr.Contract.Customer.CustomerName
+            })
+            .ToListAsync();
+
+        return rows
+            .GroupBy(r => new { r.RouteId, r.RouteName })
+            .OrderBy(g => g.Key.RouteName)
+            .Select(g => new ContractedRouteCustomerGroup
+            {
+                RouteId = g.Key.RouteId,
+                RouteName = g.Key.RouteName,
+                Customers = g
+                    .GroupBy(x => new { x.CustomerId, x.CustomerName })
+                    .OrderBy(x => x.Key.CustomerName)
+                    .Select(x => new ContractedCustomerOption
+                    {
+                        CustomerId = x.Key.CustomerId,
+                        CustomerName = x.Key.CustomerName
+                    })
+                    .ToList()
+            })
+            .Where(g => g.Customers.Count > 0)
+            .ToList();
+    }
+
     private static CustomerIndexSummary BuildSummary(IReadOnlyList<Customer> customers)
     {
-        var totalRevenue = customers.Sum(GetCustomerRevenue);
+        var withContracts = customers.Where(c => c.Contracts.Count > 0).ToList();
+        var totalRevenue = withContracts.Sum(CustomerRevenue.GetAnnual);
         return new CustomerIndexSummary
         {
             ClientCount = customers.Count,
+            ClientsWithContracts = withContracts.Count,
             RouteCount = customers.Sum(c =>
                 c.CustomerRoutes.Count(cr => cr.Status == CustomerRouteStatus.Active)),
             TotalRevenue = totalRevenue
         };
     }
 
-    private static decimal GetCustomerRevenue(Customer customer)
-    {
-        if (customer.Contracts.Any())
-        {
-            return customer.Contracts                .SelectMany(b => b.ContractRoutes)
-                .Sum(AnnualBillingHelper.GetBillingAmount);
-        }
-
-        return customer.CustomerRoutes
-            .Where(cr => cr.Status == CustomerRouteStatus.Active)
-            .Sum(cr => cr.RatePerMonth > 0 ? cr.RatePerMonth : cr.Route.Price);
-    }
-
-    public async Task<IActionResult> Details(int? id, string? tab = null, string? search = null, CustomerStatus? status = null)
+    public async Task<IActionResult> Details(int? id, string? tab = null, string? search = null, CustomerStatus? status = null, bool highValue = false, bool needsMoreInfo = false)
     {
         if (id == null) return NotFound();
 
@@ -140,46 +178,65 @@ public class CustomersController : Controller
             .Include(c => c.BrochureScans.OrderByDescending(s => s.UploadedAt))
             .Include(c => c.BrochureInventories.OrderByDescending(i => i.InventoryDate).ThenByDescending(i => i.CreatedAt))
             .Include(c => c.Notes.OrderByDescending(n => n.CreatedAt))
-            .Include(c => c.Tasks)
+                .ThenInclude(n => n.SubNotes.OrderBy(s => s.CreatedAt))
             .Include(c => c.AccountManager)
+            .Include(c => c.ExpandedProspectRoute)
             .FirstOrDefaultAsync(c => c.Id == id);
 
         if (customer == null) return NotFound();
-        ViewBag.ActiveTab = NormalizeDetailTab(tab, customer.Type == CustomerType.Prospect);
+        ViewBag.ActiveTab = NormalizeDetailTab(tab, CustomerTypeLabels.IsProspectLike(customer.Type));
         ViewBag.AnnualRevenue = CustomerRevenue.GetAnnual(customer);
-        await PopulateListNavigationAsync(customer, search, status);
+        if (CustomerTypeLabels.IsProspectLike(customer.Type))
+            ViewBag.HighValueProximity = await _highValueProximity.GetNearestHitAsync(customer);
+        await PopulateListNavigationAsync(customer, search, status, highValue, needsMoreInfo);
+        if (customer.Type == CustomerType.Customer)
+            ViewBag.ContractedCustomersByRoute = await GetContractedCustomersByRouteAsync();
         return View(customer);
     }
 
-    private async Task PopulateListNavigationAsync(Customer customer, string? search, CustomerStatus? status)
+    private async Task PopulateListNavigationAsync(Customer customer, string? search, CustomerStatus? status, bool highValue, bool needsMoreInfo)
     {
         var saved = CustomerListNavigation.Load(HttpContext.Session);
-        var hasQueryFilters = search != null || status.HasValue || Request.Query.ContainsKey("search") || Request.Query.ContainsKey("status");
+        var hasQueryFilters = search != null || status.HasValue || highValue || needsMoreInfo
+            || Request.Query.ContainsKey("search")
+            || Request.Query.ContainsKey("status")
+            || Request.Query.ContainsKey("highValue")
+            || Request.Query.ContainsKey("needsMoreInfo");
 
         string? effectiveSearch;
         CustomerStatus? effectiveStatus;
+        var effectiveHighValue = false;
+        var effectiveNeedsMoreInfo = false;
         List<int> ids;
 
         if (hasQueryFilters)
         {
             effectiveSearch = search;
             effectiveStatus = status;
-            ids = await CustomerListNavigation.GetOrderedIdsAsync(_context, customer.Type, effectiveSearch, effectiveStatus);
+            effectiveHighValue = highValue;
+            effectiveNeedsMoreInfo = needsMoreInfo;
+            ids = await CustomerListNavigation.GetOrderedIdsAsync(
+                _context, customer.Type, effectiveSearch, effectiveStatus, effectiveHighValue, effectiveNeedsMoreInfo, saved?.RouteId);
         }
         else if (saved != null && saved.Type == customer.Type && saved.Ids.Count > 0)
         {
             effectiveSearch = saved.Search;
             effectiveStatus = saved.Status;
+            effectiveHighValue = saved.HighValue;
+            effectiveNeedsMoreInfo = saved.NeedsMoreInfo;
             ids = saved.Ids;
             if (!ids.Contains(customer.Id))
             {
-                ids = await CustomerListNavigation.GetOrderedIdsAsync(_context, customer.Type, effectiveSearch, effectiveStatus);
+                ids = await CustomerListNavigation.GetOrderedIdsAsync(
+                    _context, customer.Type, effectiveSearch, effectiveStatus, effectiveHighValue, effectiveNeedsMoreInfo, saved.RouteId);
             }
         }
         else
         {
             effectiveSearch = null;
             effectiveStatus = null;
+            effectiveHighValue = false;
+            effectiveNeedsMoreInfo = false;
             ids = await CustomerListNavigation.GetOrderedIdsAsync(_context, customer.Type, null, null);
         }
 
@@ -188,6 +245,9 @@ public class CustomersController : Controller
             Type = customer.Type,
             Search = effectiveSearch,
             Status = effectiveStatus,
+            HighValue = effectiveHighValue,
+            NeedsMoreInfo = effectiveNeedsMoreInfo,
+            RouteId = saved?.RouteId,
             Ids = ids
         });
 
@@ -198,6 +258,8 @@ public class CustomersController : Controller
         ViewBag.NavTotal = total;
         ViewBag.ListSearch = effectiveSearch;
         ViewBag.ListStatus = effectiveStatus;
+        ViewBag.ListHighValue = effectiveHighValue;
+        ViewBag.ListNeedsMoreInfo = effectiveNeedsMoreInfo;
     }
 
     private static string NormalizeDetailTab(string? tab, bool isProspect)
@@ -205,9 +267,9 @@ public class CustomersController : Controller
         var value = (tab ?? "activity").Trim().ToLowerInvariant();
         return value switch
         {
-            "tasks" => "tasks",
             "contacts" => "contacts",
             "brochures" => "brochures",
+            "map" => "map",
             "routes" when !isProspect => "routes",
             "contracts" when !isProspect => "contracts",
             _ => "activity"
@@ -275,9 +337,33 @@ public class CustomersController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> AddBrochureInventory(int customerId, DateOnly? inventoryDate, int? quantity, string? notes)
+    public async Task<IActionResult> SaveWarehouseLocation(int customerId, string? rack, string? bin)
     {
-        if (!await _context.Customers.AnyAsync(c => c.Id == customerId))
+        var customer = await _context.Customers.FirstOrDefaultAsync(c => c.Id == customerId);
+        if (customer == null)
+            return NotFound();
+
+        customer.WarehouseRack = WarehouseLocation.NullIfEmpty(rack);
+        customer.WarehouseBin = WarehouseLocation.NullIfEmpty(bin);
+        await _context.SaveChangesAsync();
+        TempData["Message"] = customer.WarehouseLocationLabel == null
+            ? "Warehouse location cleared."
+            : $"Warehouse location set to {customer.WarehouseLocationLabel}.";
+        return RedirectToAction(nameof(Details), new { id = customerId, tab = "brochures" });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddBrochureInventory(
+        int customerId,
+        DateOnly? inventoryDate,
+        int? quantity,
+        string? rack,
+        string? bin,
+        string? notes)
+    {
+        var customer = await _context.Customers.FirstOrDefaultAsync(c => c.Id == customerId);
+        if (customer == null)
             return NotFound();
 
         if (!quantity.HasValue || quantity.Value < 0)
@@ -286,15 +372,27 @@ public class CustomersController : Controller
             return RedirectToAction(nameof(Details), new { id = customerId, tab = "brochures" });
         }
 
+        var locationRack = WarehouseLocation.NullIfEmpty(rack) ?? customer.WarehouseRack;
+        var locationBin = WarehouseLocation.NullIfEmpty(bin) ?? customer.WarehouseBin;
+
         _context.CustomerBrochureInventories.Add(new CustomerBrochureInventory
         {
             CustomerId = customerId,
             Quantity = quantity.Value,
             InventoryDate = inventoryDate ?? DateOnly.FromDateTime(DateTime.Today),
-            Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim(),
+            Rack = locationRack,
+            Bin = locationBin,
+            Notes = WarehouseLocation.NullIfEmpty(notes),
             CreatedAt = DateTime.UtcNow,
             CreatedBy = await GetCurrentUserLabelAsync()
         });
+
+        if (WarehouseLocation.NullIfEmpty(rack) != null || WarehouseLocation.NullIfEmpty(bin) != null)
+        {
+            customer.WarehouseRack = locationRack;
+            customer.WarehouseBin = locationBin;
+        }
+
         await _context.SaveChangesAsync();
         TempData["Message"] = "Inventory recorded.";
         return RedirectToAction(nameof(Details), new { id = customerId, tab = "brochures" });
@@ -307,6 +405,8 @@ public class CustomersController : Controller
         int customerId,
         DateOnly? inventoryDate,
         int? quantity,
+        string? rack,
+        string? bin,
         string? notes)
     {
         var inventory = await _context.CustomerBrochureInventories
@@ -322,7 +422,17 @@ public class CustomersController : Controller
 
         inventory.Quantity = quantity.Value;
         inventory.InventoryDate = inventoryDate ?? inventory.InventoryDate;
-        inventory.Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+        inventory.Rack = WarehouseLocation.NullIfEmpty(rack);
+        inventory.Bin = WarehouseLocation.NullIfEmpty(bin);
+        inventory.Notes = WarehouseLocation.NullIfEmpty(notes);
+
+        var customer = await _context.Customers.FirstOrDefaultAsync(c => c.Id == customerId);
+        if (customer != null && (inventory.Rack != null || inventory.Bin != null))
+        {
+            customer.WarehouseRack = inventory.Rack;
+            customer.WarehouseBin = inventory.Bin;
+        }
+
         await _context.SaveChangesAsync();
         TempData["Message"] = "Inventory record updated.";
         return RedirectToAction(nameof(Details), new { id = customerId, tab = "brochures" });
@@ -345,7 +455,7 @@ public class CustomersController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> AddNote(int customerId, CustomerNoteKind kind, string? body)
+    public async Task<IActionResult> AddNote(int customerId, CustomerNoteKind kind, CustomerNoteStatus status, DateOnly? dueDate, string? body)
     {
         if (!await _context.Customers.AnyAsync(c => c.Id == customerId))
             return NotFound();
@@ -356,10 +466,13 @@ public class CustomersController : Controller
             return RedirectToAction(nameof(Details), new { id = customerId, tab = "activity" });
         }
 
+        var resolvedKind = Enum.IsDefined(kind) ? kind : CustomerNoteKind.Note;
         _context.CustomerNotes.Add(new CustomerNote
         {
             CustomerId = customerId,
-            Kind = Enum.IsDefined(kind) ? kind : CustomerNoteKind.Note,
+            Kind = resolvedKind,
+            Status = Enum.IsDefined(status) ? status : CustomerNoteStatus.New,
+            DueDate = ResolveActivityDueDate(resolvedKind, dueDate),
             Body = body.Trim(),
             CreatedAt = DateTime.UtcNow,
             CreatedBy = await GetCurrentUserLabelAsync()
@@ -371,7 +484,7 @@ public class CustomersController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> EditNote(int id, int customerId, CustomerNoteKind kind, string? body)
+    public async Task<IActionResult> EditNote(int id, int customerId, CustomerNoteKind kind, CustomerNoteStatus status, DateOnly? dueDate, string? body)
     {
         var note = await _context.CustomerNotes.FirstOrDefaultAsync(n => n.Id == id && n.CustomerId == customerId);
         if (note == null)
@@ -384,6 +497,8 @@ public class CustomersController : Controller
         }
 
         note.Kind = Enum.IsDefined(kind) ? kind : note.Kind;
+        note.Status = Enum.IsDefined(status) ? status : note.Status;
+        note.DueDate = ResolveActivityDueDate(note.Kind, dueDate);
         note.Body = body.Trim();
         await _context.SaveChangesAsync();
         TempData["Message"] = "Note updated.";
@@ -406,74 +521,52 @@ public class CustomersController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> AddTask(int customerId, string? title, string? description, DateOnly? dueDate)
+    public async Task<IActionResult> AddSubNote(int noteId, int customerId, string? body)
     {
-        if (!await _context.Customers.AnyAsync(c => c.Id == customerId))
+        var note = await _context.CustomerNotes.FirstOrDefaultAsync(n => n.Id == noteId && n.CustomerId == customerId);
+        if (note == null)
             return NotFound();
 
-        if (string.IsNullOrWhiteSpace(title))
+        if (string.IsNullOrWhiteSpace(body))
         {
-            TempData["Error"] = "Enter a task title before saving.";
-            return RedirectToAction(nameof(Details), new { id = customerId, tab = "tasks" });
+            TempData["Error"] = "Enter a sub-note before saving.";
+            return Redirect($"{Url.Action(nameof(Details), new { id = customerId, tab = "activity" })}#note-{noteId}");
         }
 
-        _context.CustomerTasks.Add(new CustomerTask
+        _context.CustomerNoteSubNotes.Add(new CustomerNoteSubNote
         {
-            CustomerId = customerId,
-            Title = title.Trim(),
-            Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim(),
-            DueDate = dueDate,
-            Status = CustomerTaskStatus.Open,
+            CustomerNoteId = noteId,
+            Body = body.Trim(),
             CreatedAt = DateTime.UtcNow,
             CreatedBy = await GetCurrentUserLabelAsync()
         });
         await _context.SaveChangesAsync();
-        TempData["Message"] = "Task added.";
-        return RedirectToAction(nameof(Details), new { id = customerId, tab = "tasks" });
+        TempData["Message"] = "Sub-note added.";
+        return Redirect($"{Url.Action(nameof(Details), new { id = customerId, tab = "activity" })}#note-{noteId}");
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> CompleteTask(int id, int customerId)
+    public async Task<IActionResult> DeleteSubNote(int id, int noteId, int customerId)
     {
-        var task = await _context.CustomerTasks.FirstOrDefaultAsync(t => t.Id == id && t.CustomerId == customerId);
-        if (task != null)
+        var subNote = await _context.CustomerNoteSubNotes
+            .FirstOrDefaultAsync(s => s.Id == id && s.CustomerNoteId == noteId && s.CustomerNote.CustomerId == customerId);
+        if (subNote != null)
         {
-            task.Status = CustomerTaskStatus.Completed;
-            task.CompletedAt = DateTime.UtcNow;
+            _context.CustomerNoteSubNotes.Remove(subNote);
             await _context.SaveChangesAsync();
-            TempData["Message"] = "Task completed.";
+            TempData["Message"] = "Sub-note deleted.";
         }
-        return RedirectToAction(nameof(Details), new { id = customerId, tab = "tasks" });
+        return Redirect($"{Url.Action(nameof(Details), new { id = customerId, tab = "activity" })}#note-{noteId}");
     }
 
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ReopenTask(int id, int customerId)
+    private static DateOnly? ResolveActivityDueDate(CustomerNoteKind kind, DateOnly? dueDate)
     {
-        var task = await _context.CustomerTasks.FirstOrDefaultAsync(t => t.Id == id && t.CustomerId == customerId);
-        if (task != null)
-        {
-            task.Status = CustomerTaskStatus.Open;
-            task.CompletedAt = null;
-            await _context.SaveChangesAsync();
-            TempData["Message"] = "Task reopened.";
-        }
-        return RedirectToAction(nameof(Details), new { id = customerId, tab = "tasks" });
-    }
-
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> DeleteTask(int id, int customerId)
-    {
-        var task = await _context.CustomerTasks.FirstOrDefaultAsync(t => t.Id == id && t.CustomerId == customerId);
-        if (task != null)
-        {
-            _context.CustomerTasks.Remove(task);
-            await _context.SaveChangesAsync();
-            TempData["Message"] = "Task deleted.";
-        }
-        return RedirectToAction(nameof(Details), new { id = customerId, tab = "tasks" });
+        if (dueDate.HasValue)
+            return dueDate;
+        if (kind is CustomerNoteKind.Task or CustomerNoteKind.BrochuresNeeded)
+            return DateOnly.FromDateTime(DateTime.Today);
+        return null;
     }
 
     private async Task<string> GetCurrentUserLabelAsync()
@@ -486,18 +579,21 @@ public class CustomersController : Controller
         return User.Identity?.Name ?? "User";
     }
 
-    public async Task<IActionResult> Create(CustomerType type = CustomerType.Customer)
+    public async Task<IActionResult> Create(CustomerType type = CustomerType.Customer, int? routeId = null)
     {
         if (!Enum.IsDefined(type))
             type = CustomerType.Customer;
 
         var currentUser = await _userManager.GetUserAsync(User);
         await PopulateAccountManagersAsync(currentUser?.Id);
+        await PopulateExpandedProspectRoutesAsync(type == CustomerType.ExpandedProspect ? routeId : null);
         return View(new Customer
         {
             Status = CustomerStatus.Active,
             Type = type,
-            AccountManagerId = currentUser?.Id
+            AccountManagerId = currentUser?.Id,
+            InvoiceReceiptMethod = InvoiceReceiptMethod.Mail,
+            ExpandedProspectRouteId = type == CustomerType.ExpandedProspect ? routeId : null
         });
     }
 
@@ -513,13 +609,19 @@ public class CustomersController : Controller
 
         if (ModelState.IsValid)
         {
+            customer.NeedsMoreInfo = CustomerContactCompleteness.NeedsMoreInfo(customer);
             _context.Add(customer);
             await _context.SaveChangesAsync();
+            if (CustomerAddressHelper.HasGeocodableAddress(customer))
+                await _geocodeService.UpdateCoordinatesOnlyAsync(customer.Id);
+            await _needsMoreInfoService.RefreshAsync(customer.Id);
+
             if (customer.Type == CustomerType.Customer)
                 await _waveSyncService.PushCustomerToWaveAsync(customer.Id);
             return RedirectToAction(nameof(Details), new { id = customer.Id });
         }
         await PopulateAccountManagersAsync(customer.AccountManagerId);
+        await PopulateExpandedProspectRoutesAsync(customer.ExpandedProspectRouteId);
         return View(customer);
     }
 
@@ -529,6 +631,7 @@ public class CustomersController : Controller
         var customer = await _context.Customers.FindAsync(id);
         if (customer == null) return NotFound();
         await PopulateAccountManagersAsync(customer.AccountManagerId);
+        await PopulateExpandedProspectRoutesAsync(customer.ExpandedProspectRouteId);
         return View(customer);
     }
 
@@ -540,6 +643,18 @@ public class CustomersController : Controller
 
         if (ModelState.IsValid)
         {
+            var existing = await _context.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id);
+            if (existing == null)
+                return NotFound();
+
+            var addressChanged = CustomerAddressHelper.AddressChanged(existing, customer);
+
+            if (addressChanged)
+            {
+                customer.IsHighValueProspect = existing.IsHighValueProspect;
+                customer.IsAtRisk = existing.IsAtRisk;
+            }
+
             if (customer.Type == CustomerType.Customer)
                 customer.IsHighValueProspect = false;
             else
@@ -548,7 +663,12 @@ public class CustomersController : Controller
             try
             {
                 _context.Update(customer);
+                await _context.Entry(customer).Collection(c => c.Contacts).LoadAsync();
+                customer.NeedsMoreInfo = CustomerContactCompleteness.NeedsMoreInfo(customer);
                 await _context.SaveChangesAsync();
+                if (addressChanged)
+                    await _geocodeService.UpdateCoordinatesOnlyAsync(id);
+                await _needsMoreInfoService.RefreshAsync(id);
             }
             catch (DbUpdateConcurrencyException)
             {
@@ -559,6 +679,7 @@ public class CustomersController : Controller
             return RedirectToAction(nameof(Details), new { id = customer.Id });
         }
         await PopulateAccountManagersAsync(customer.AccountManagerId);
+        await PopulateExpandedProspectRoutesAsync(customer.ExpandedProspectRouteId);
         return View(customer);
     }
 
@@ -579,16 +700,32 @@ public class CustomersController : Controller
             selectedId);
     }
 
+    private async Task PopulateExpandedProspectRoutesAsync(int? selectedId = null)
+    {
+        var routes = await _context.Routes
+            .AsNoTracking()
+            .Where(r => r.Status == RouteStatus.Active
+                || (selectedId.HasValue && r.Id == selectedId.Value))
+            .OrderBy(r => r.RouteName)
+            .Select(r => new { r.Id, r.RouteName })
+            .ToListAsync();
+
+        ViewBag.ExpandedProspectRoutes = new SelectList(routes, "Id", "RouteName", selectedId);
+    }
+
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ToggleType(int id, string? returnTo = null)
+    public async Task<IActionResult> ToggleType(int id, CustomerType? toType = null, string? returnTo = null)
     {
         var customer = await _context.Customers.FindAsync(id);
         if (customer == null) return NotFound();
 
-        customer.Type = customer.Type == CustomerType.Prospect
-            ? CustomerType.Customer
-            : CustomerType.Prospect;
+        if (toType.HasValue && Enum.IsDefined(toType.Value) && toType.Value != customer.Type)
+            customer.Type = toType.Value;
+        else if (!toType.HasValue)
+            customer.Type = customer.Type == CustomerType.Prospect
+                ? CustomerType.Customer
+                : CustomerType.Prospect;
 
         if (customer.Type == CustomerType.Customer)
         {
@@ -601,19 +738,15 @@ public class CustomersController : Controller
 
         await _context.SaveChangesAsync();
 
+        await _needsMoreInfoService.RefreshAsync(customer.Id);
+
         if (customer.Type == CustomerType.Customer)
             await _waveSyncService.PushCustomerToWaveAsync(customer.Id);
 
-        TempData["Message"] = customer.Type == CustomerType.Customer
-            ? $"{customer.CustomerName} is now a customer."
-            : $"{customer.CustomerName} is now a prospect.";
+        TempData["Message"] = $"{customer.CustomerName} is now a {CustomerTypeLabels.Singular(customer.Type).ToLowerInvariant()}.";
 
         if (string.Equals(returnTo, "list", StringComparison.OrdinalIgnoreCase))
-        {
-            // After converting, the record leaves the current list — send them to the new list.
-            var listController = customer.Type == CustomerType.Prospect ? "Prospects" : "Customers";
-            return RedirectToAction("Index", listController);
-        }
+            return RedirectToAction("Index", CustomerTypeLabels.Controller(customer.Type));
 
         return RedirectToAction(nameof(Details), new { id = customer.Id });
     }
@@ -624,7 +757,7 @@ public class CustomersController : Controller
     {
         var customer = await _context.Customers.FindAsync(id);
         if (customer == null) return NotFound();
-        if (customer.Type != CustomerType.Prospect)
+        if (!CustomerTypeLabels.IsProspectLike(customer.Type))
         {
             TempData["Error"] = "Only prospects can be marked high value.";
             return RedirectToAction(nameof(Details), new { id });
@@ -637,7 +770,7 @@ public class CustomersController : Controller
             : $"{customer.CustomerName} is no longer high value.";
 
         if (string.Equals(returnTo, "list", StringComparison.OrdinalIgnoreCase))
-            return RedirectToAction("Index", "Prospects");
+            return RedirectToAction("Index", CustomerTypeLabels.Controller(customer.Type));
 
         return RedirectToAction(nameof(Details), new { id });
     }
@@ -671,6 +804,7 @@ public class CustomersController : Controller
         if (id == null) return NotFound();
         var customer = await _context.Customers.FirstOrDefaultAsync(c => c.Id == id);
         if (customer == null) return NotFound();
+        ViewBag.InvoiceCount = await _context.BillingRunInvoices.CountAsync(i => i.CustomerId == id.Value);
         return View(customer);
     }
 
@@ -678,14 +812,58 @@ public class CustomersController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteConfirmed(int id)
     {
-        var customer = await _context.Customers.FindAsync(id);
-        var listController = customer?.Type == CustomerType.Prospect ? "Prospects" : "Customers";
-        if (customer != null)
+        var customer = await _context.Customers.FirstOrDefaultAsync(c => c.Id == id);
+        if (customer == null)
+            return RedirectToAction(nameof(Index));
+
+        var listController = CustomerTypeLabels.Controller(customer.Type);
+        var typeLabel = CustomerTypeLabels.Singular(customer.Type).ToLowerInvariant();
+        var name = customer.CustomerName;
+
+        var invoiceCount = await _context.BillingRunInvoices.CountAsync(i => i.CustomerId == id);
+        if (invoiceCount > 0)
         {
-            _context.Customers.Remove(customer);
+            TempData["Error"] = $"{name} has {invoiceCount} invoice{(invoiceCount == 1 ? "" : "s")} and cannot be deleted.";
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        _context.Customers.Remove(customer);
+        try
+        {
             await _context.SaveChangesAsync();
         }
+        catch (DbUpdateException)
+        {
+            TempData["Error"] = $"{name} could not be deleted because related records still depend on it.";
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        TryDeleteCustomerUploadFolder(id);
+        TempData["Message"] = $"Deleted {typeLabel} {name}.";
         return RedirectToAction("Index", listController);
+    }
+
+    private void TryDeleteCustomerUploadFolder(int customerId)
+    {
+        foreach (var root in new[]
+                 {
+                     BrochureScanService.GetUploadRoot(_environment),
+                     BrochureScanService.GetLegacyUploadRoot(_environment)
+                 })
+        {
+            if (string.IsNullOrWhiteSpace(root))
+                continue;
+            var dir = Path.Combine(root, customerId.ToString());
+            try
+            {
+                if (Directory.Exists(dir))
+                    Directory.Delete(dir, recursive: true);
+            }
+            catch
+            {
+                // Best-effort cleanup of leftover scan files.
+            }
+        }
     }
 
     public IActionResult ImportMatrix()

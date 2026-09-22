@@ -1,0 +1,40 @@
+@model BillingTermPickerViewModel
+@{
+    var months = Model.MonthCount is >= 1 and <= 36 ? Model.MonthCount : 3;
+}
+
+<div class="mb-3">
+    <label class="form-label" for="billingTermPreset">Billing Term</label>
+    <select id="billingTermPreset" class="form-select" data-billing-term-preset>
+        <option value="1">Monthly</option>
+        <option value="3">Quarterly</option>
+        <option value="4">Every 4 Months</option>
+        <option value="12">Yearly</option>
+        <option value="custom">Custom number of months</option>
+    </select>
+    <div class="form-text">Choose Custom for a span that is not 1, 3, 4, or 12 months.</div>
+</div>
+<div class="mb-3" data-billing-term-custom hidden>
+    <label class="form-label" for="@Model.MonthCountInputId">Number of Months</label>
+    <div class="input-group">
+        <input class="form-control"
+               type="number"
+               min="1"
+               max="36"
+               name="@Model.MonthCountInputName"
+               id="@Model.MonthCountInputId"
+               value="@months"
+               data-billing-term-months />
+        @if (Model.ShowUseDates)
+        {
+            <button type="button" class="btn btn-outline-secondary" id="matchMonthsFromDates" data-billing-term-use-dates>Use dates</button>
+        }
+    </div>
+    <div class="form-text">
+        Each invoice covers this many months (monthly rate × months).
+        @if (Model.ShowUseDates)
+        {
+            @:September through July 2027 is 11 months.
+        }
+    </div>
+</div>

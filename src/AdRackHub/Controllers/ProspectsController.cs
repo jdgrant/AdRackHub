@@ -18,16 +18,9 @@ public class ProspectsController : Controller
         _context = context;
     }
 
-    public async Task<IActionResult> Index(string? search, CustomerStatus? status)
+    public async Task<IActionResult> Index(string? search, CustomerStatus? status, bool highValue = false, bool needsMoreInfo = false)
     {
         var query = _context.Customers
-            .Include(c => c.Contacts)
-            .Include(c => c.BrochureScans)
-            .Include(c => c.CustomerRoutes)
-                .ThenInclude(cr => cr.Route)
-            .Include(c => c.Contracts)
-                .ThenInclude(b => b.ContractRoutes)
-                    .ThenInclude(cbr => cbr.Route)
             .Where(c => c.Type == CustomerType.Prospect);
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -55,22 +48,45 @@ public class ProspectsController : Controller
         if (status.HasValue)
             query = query.Where(c => c.Status == status.Value);
 
+        var prospectCount = await query.CountAsync();
+        var highValueCount = await query.CountAsync(c => c.IsHighValueProspect);
+        var needsMoreInfoCount = await query.CountAsync(c => c.NeedsMoreInfo);
+
+        if (highValue)
+            query = query.Where(c => c.IsHighValueProspect);
+        if (needsMoreInfo)
+            query = query.Where(c => c.NeedsMoreInfo);
+
         ViewBag.Search = search;
         ViewBag.Status = status;
+        ViewBag.HighValue = highValue;
+        ViewBag.NeedsMoreInfo = needsMoreInfo;
 
-        var prospects = await query.OrderBy(c => c.CustomerName).ToListAsync();
+        var prospects = await query
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(c => c.BrochureScans.OrderByDescending(s => s.UploadedAt).Take(3))
+            .OrderBy(c => c.CustomerName)
+            .ToListAsync();
         CustomerListNavigation.Store(HttpContext.Session, new CustomerListNavState
         {
             Type = CustomerType.Prospect,
             Search = search,
             Status = status,
+            HighValue = highValue,
+            NeedsMoreInfo = needsMoreInfo,
             Ids = prospects.Select(c => c.Id).ToList()
         });
 
         var model = new CustomerIndexViewModel
         {
             Customers = prospects,
-            Summary = BuildSummary(prospects),
+            Summary = new CustomerIndexSummary
+            {
+                ClientCount = prospectCount,
+                HighValueCount = highValueCount,
+                NeedsMoreInfoCount = needsMoreInfoCount
+            },
             ListType = CustomerType.Prospect
         };
 
@@ -79,30 +95,4 @@ public class ProspectsController : Controller
 
     public IActionResult Create() =>
         RedirectToAction("Create", "Customers", new { type = CustomerType.Prospect });
-
-    private static CustomerIndexSummary BuildSummary(IReadOnlyList<Customer> customers)
-    {
-        var totalRevenue = customers.Sum(GetCustomerRevenue);
-        return new CustomerIndexSummary
-        {
-            ClientCount = customers.Count,
-            RouteCount = customers.Sum(c =>
-                c.CustomerRoutes.Count(cr => cr.Status == CustomerRouteStatus.Active)),
-            TotalRevenue = totalRevenue
-        };
-    }
-
-    private static decimal GetCustomerRevenue(Customer customer)
-    {
-        if (customer.Contracts.Any())
-        {
-            return customer.Contracts
-                .SelectMany(b => b.ContractRoutes)
-                .Sum(AnnualBillingHelper.GetBillingAmount);
-        }
-
-        return customer.CustomerRoutes
-            .Where(cr => cr.Status == CustomerRouteStatus.Active)
-            .Sum(cr => cr.RatePerMonth > 0 ? cr.RatePerMonth : cr.Route.Price);
-    }
 }

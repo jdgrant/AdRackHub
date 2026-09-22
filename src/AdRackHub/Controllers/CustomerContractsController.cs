@@ -15,11 +15,16 @@ public class CustomerContractsController : Controller
 {
     private readonly ApplicationDbContext _context;
     private readonly WaveSyncService _waveSyncService;
+    private readonly InvoicePdfStorageService _invoicePdfs;
 
-    public CustomerContractsController(ApplicationDbContext context, WaveSyncService waveSyncService)
+    public CustomerContractsController(
+        ApplicationDbContext context,
+        WaveSyncService waveSyncService,
+        InvoicePdfStorageService invoicePdfs)
     {
         _context = context;
         _waveSyncService = waveSyncService;
+        _invoicePdfs = invoicePdfs;
     }
 
     public async Task<IActionResult> Create(int customerId)
@@ -32,6 +37,7 @@ public class CustomerContractsController : Controller
         {
             CustomerId = customerId,
             Term = BillingFrequency.Quarterly,
+            BillingMonthCount = 3,
             ContractName = await SuggestUniqueContractNameAsync(customerId, customer.CustomerName, today),
             ServiceMonthMask = SubscribedMonths.AllMonthsMask,
             NextBillDate = new DateOnly(today.Year, today.Month, 1),
@@ -87,7 +93,7 @@ public class CustomerContractsController : Controller
         vm.AvailableRoutes = await GetAvailableRoutesAsync(
             vm.Contract.CustomerId,
             vm.SelectedRouteIds ?? new List<int>(),
-            vm.Contract.Term,
+            AnnualBillingHelper.BillingMonths(vm.Contract),
             vm.Contract.ContractRoutes,
             vm.AvailableRoutes);
         var customer = await _context.Customers.FindAsync(vm.Contract.CustomerId);
@@ -146,6 +152,7 @@ public class CustomerContractsController : Controller
         {
             try
             {
+                await PreserveWaveInvoiceFieldsAsync(vm.Contract);
                 _context.Update(vm.Contract);
                 await _context.SaveChangesAsync();
                 await SyncRoutesAsync(vm);
@@ -168,7 +175,7 @@ public class CustomerContractsController : Controller
         vm.AvailableRoutes = await GetAvailableRoutesAsync(
             vm.Contract.CustomerId,
             vm.SelectedRouteIds ?? new List<int>(),
-            vm.Contract.Term,
+            AnnualBillingHelper.BillingMonths(vm.Contract),
             vm.Contract.ContractRoutes,
             vm.AvailableRoutes);
         var customer = await _context.Customers.FindAsync(vm.Contract.CustomerId);
@@ -241,7 +248,7 @@ public class CustomerContractsController : Controller
         var availableRoutes = await GetAvailableRoutesAsync(
             contract.CustomerId,
             selectedRouteIds,
-            contract.Term,
+            AnnualBillingHelper.BillingMonths(contract),
             contract.ContractRoutes,
             postedRoutes);
 
@@ -257,6 +264,49 @@ public class CustomerContractsController : Controller
         };
     }
 
+    private async Task PreserveWaveInvoiceFieldsAsync(CustomerContract contract)
+    {
+        var existing = await _context.CustomerContracts.AsNoTracking()
+            .Where(c => c.Id == contract.Id)
+            .Select(c => new
+            {
+                c.WaveRecurringInvoiceId,
+                c.WaveInvoiceNumber,
+                c.WaveInvoiceId,
+                c.WaveInvoicePdfPath
+            })
+            .FirstOrDefaultAsync();
+        if (existing == null)
+            return;
+
+        contract.WaveRecurringInvoiceId = existing.WaveRecurringInvoiceId;
+        contract.WaveInvoiceNumber = existing.WaveInvoiceNumber;
+        contract.WaveInvoiceId = existing.WaveInvoiceId;
+        contract.WaveInvoicePdfPath = existing.WaveInvoicePdfPath;
+    }
+
+    public async Task<IActionResult> InvoicePdf(int id, bool download = false)
+    {
+        var contract = await _context.CustomerContracts.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == id);
+        if (contract == null)
+            return NotFound();
+
+        var filePath = _invoicePdfs.ResolveFilePath(contract.WaveInvoicePdfPath, contract.WaveInvoiceNumber, contract.Id);
+        if (filePath == null)
+            return NotFound();
+
+        if (download)
+        {
+            return PhysicalFile(
+                filePath,
+                "application/pdf",
+                InvoicePdfStorageService.DownloadFileName(contract.WaveInvoiceNumber, contract.WaveInvoicePdfPath));
+        }
+
+        return PhysicalFile(filePath, "application/pdf", enableRangeProcessing: true);
+    }
+
     private void ApplyContractFields(CustomerContractEditViewModel vm)
     {
         if (vm.SelectedMonthNumbers == null || !vm.SelectedMonthNumbers.Any())
@@ -265,6 +315,10 @@ public class CustomerContractsController : Controller
         vm.Contract.ContractName = (vm.Contract.ContractName ?? string.Empty).Trim();
         vm.Contract.ServiceMonthMask = SubscribedMonths.BuildMask(vm.SelectedMonthNumbers ?? new List<int>());
         vm.Contract.BillingAnchorMonth = vm.Contract.NextBillDate.Month;
+        if (vm.Contract.BillingMonthCount is < 1 or > 36)
+            ModelState.AddModelError("Contract.BillingMonthCount", "Enter a number of months between 1 and 36.");
+        else
+            AnnualBillingHelper.ApplyBillingMonths(vm.Contract, vm.Contract.BillingMonthCount);
     }
 
     private async Task ValidateUniqueContractNameAsync(CustomerContractEditViewModel vm)
@@ -368,7 +422,7 @@ public class CustomerContractsController : Controller
     private async Task<List<RouteSelectionItem>> GetAvailableRoutesAsync(
         int customerId,
         List<int> selectedRouteIds,
-        BillingFrequency term,
+        int billingMonthCount,
         IEnumerable<CustomerContractRoute>? existingContractRoutes = null,
         List<RouteSelectionItem>? postedRoutes = null)
     {
@@ -403,7 +457,7 @@ public class CustomerContractsController : Controller
             var billingAmount = posted?.BillingAmount > 0
                 ? posted.BillingAmount
                 : existingAmounts.TryGetValue(r.Id, out var existingAmount) && existingAmount > 0
-                    ? AnnualBillingHelper.BillingPeriodAmountToMonthlyRate(existingAmount, term)
+                    ? AnnualBillingHelper.BillingPeriodAmountToMonthlyRate(existingAmount, billingMonthCount)
                     : defaultMonthly;
 
             bool allStops;
@@ -478,7 +532,7 @@ public class CustomerContractsController : Controller
                 var monthlyRate = routeBillingAmounts.TryGetValue(routeId, out var postedAmount) && postedAmount >= 0
                     ? postedAmount
                     : AnnualBillingHelper.ToRatePerMonth(route.Price);
-                var billingAmount = AnnualBillingHelper.MonthlyRateToBillingPeriodAmount(monthlyRate, contract.Term);
+                var billingAmount = AnnualBillingHelper.MonthlyRateToBillingPeriodAmount(monthlyRate, contract);
 
                 _context.CustomerContractRoutes.Add(new CustomerContractRoute
                 {
@@ -533,11 +587,11 @@ public class CustomerContractsController : Controller
             }
 
             customerRoute.Status = CustomerRouteStatus.Active;
-            customerRoute.BillingTerm = entry.Contract.Term;
+            AnnualBillingHelper.ApplyBillingMonths(customerRoute, AnnualBillingHelper.BillingMonths(entry.Contract));
             customerRoute.SubscribedMonthMask = entry.Contract.ServiceMonthMask;
             var billingAmount = AnnualBillingHelper.GetBillingAmount(entry.ContractRoute);
-            customerRoute.RatePerMonth = AnnualBillingHelper.ToRatePerMonth(
-                AnnualBillingHelper.ToAnnualPrice(billingAmount, entry.Contract.Term));
+            customerRoute.RatePerMonth = AnnualBillingHelper.BillingPeriodAmountToMonthlyRate(
+                billingAmount, entry.Contract);
 
             if (routeStopSelections?.TryGetValue(routeId, out var stopSelection) == true)
                 customerRoute.AllStops = stopSelection.AllStops;

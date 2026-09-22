@@ -122,7 +122,9 @@ public class RoutesController : Controller
                 StepNumber = s.StepNumber,
                 Name = s.StopName,
                 Address = StopAddressHelper.FormatFullAddress(s),
-                Query = StopAddressHelper.GetGeocodingQuery(s)
+                Query = StopAddressHelper.GetGeocodingQuery(s),
+                Latitude = s.Latitude,
+                Longitude = s.Longitude
             })
             .ToList();
 
@@ -300,6 +302,8 @@ public class RoutesController : Controller
             RouteId = route.Id,
             RouteName = route.RouteName,
             RatePerMonth = SubscribedMonths.DefaultRatePerMonth(route),
+            BillingTerm = route.BillingFrequency,
+            BillingMonthCount = AnnualBillingHelper.MonthsInTerm(route.BillingFrequency),
             AvailableStops = stops.Select(s => new StopSelectionItem
             {
                 StopId = s.Id,
@@ -346,10 +350,10 @@ public class RoutesController : Controller
             RouteId = id,
             AllStops = vm.AllStops,
             Status = vm.Status,
-            BillingTerm = vm.BillingTerm,
             RatePerMonth = vm.RatePerMonth,
             SubscribedMonthMask = SubscribedMonths.BuildMask(vm.SelectedMonthNumbers)
         };
+        AnnualBillingHelper.ApplyBillingMonths(customerRoute, vm.BillingMonthCount);
 
         _context.CustomerRoutes.Add(customerRoute);
         await _context.SaveChangesAsync();

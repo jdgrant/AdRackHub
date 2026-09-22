@@ -1,13 +1,25 @@
 @model Customer
 @{
-    var isProspect = Model.Type == CustomerType.Prospect;
-    ViewData["Title"] = isProspect ? "Delete Prospect" : "Delete Customer";
+    var typeLabel = CustomerTypeLabels.Singular(Model.Type);
+    ViewData["Title"] = "Delete " + typeLabel;
+    var invoiceCount = ViewBag.InvoiceCount as int? ?? 0;
 }
 
 <h1 class="h2 mb-4">@ViewData["Title"]</h1>
-<p>Are you sure you want to delete <strong>@Model.CustomerName</strong>? This will also remove all contacts and route assignments.</p>
-<form asp-action="Delete" method="post">
-    <input type="hidden" asp-for="Id" />
-    <button type="submit" class="btn btn-danger">Delete</button>
-    <a asp-controller="@(isProspect ? "Prospects" : "Customers")" asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
-</form>
+@if (invoiceCount > 0)
+{
+    <div class="alert alert-danger">
+        <strong>@Model.CustomerName</strong> has @invoiceCount invoice@(invoiceCount == 1 ? "" : "s") and cannot be deleted.
+    </div>
+    <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-outline-secondary">Back to edit</a>
+}
+else
+{
+    <p>Are you sure you want to delete <strong>@Model.CustomerName</strong>?</p>
+    <p class="text-muted">This also removes contacts, notes, brochure scans, inventory, and route assignments.</p>
+    <form asp-action="Delete" method="post">
+        <input type="hidden" asp-for="Id" />
+        <button type="submit" class="btn btn-danger">Delete @typeLabel</button>
+        <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-outline-secondary">Cancel</a>
+    </form>
+}

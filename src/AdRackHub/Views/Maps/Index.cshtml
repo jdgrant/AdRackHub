@@ -1,0 +1,219 @@
+@model OverviewMapViewModel
+@{
+    ViewData["Title"] = "Maps";
+    var markersJson = System.Text.Json.JsonSerializer.Serialize(
+        Model.Markers,
+        new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
+}
+
+@section Styles {
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <style>
+        .overview-map {
+            min-height: 520px;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+        }
+        .overview-map-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem 1rem;
+        }
+        .overview-map-legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.875rem;
+        }
+        .overview-map-swatch {
+            width: 0.85rem;
+            height: 0.85rem;
+            border-radius: 50% 50% 50% 0;
+            transform: rotate(-45deg);
+            border: 1px solid #fff;
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
+            flex-shrink: 0;
+        }
+        .overview-map-pin {
+            background: none;
+            border: 0;
+        }
+        .overview-map-pin span {
+            display: block;
+            width: 14px;
+            height: 14px;
+            margin: 2px 0 0 2px;
+            border-radius: 50% 50% 50% 0;
+            transform: rotate(-45deg);
+            border: 2px solid #fff;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+        }
+        .overview-map-grid-wrap {
+            max-height: 480px;
+            overflow: auto;
+        }
+        .overview-map-grid thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            background: #fff;
+        }
+    </style>
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Maps</h1>
+</div>
+
+<form method="get" class="mb-3 d-flex flex-wrap gap-3 align-items-center">
+    <label class="form-label mb-0" for="routeId">Route</label>
+    <select name="routeId" id="routeId" class="form-select w-auto" onchange="this.form.submit()">
+        <option value="">All routes</option>
+        @foreach (var route in Model.Routes)
+        {
+            if (Model.SelectedRouteId == route.Id)
+            {
+                <option value="@route.Id" selected>@route.Name</option>
+            }
+            else
+            {
+                <option value="@route.Id">@route.Name</option>
+            }
+        }
+    </select>
+    @if (Model.ProspectStops.Any())
+    {
+        <div class="form-check mb-0">
+            <input class="form-check-input" type="checkbox" id="showProspects" />
+            <label class="form-check-label" for="showProspects">Show prospect hotels</label>
+        </div>
+    }
+</form>
+
+@if (Model.Legend.Any())
+{
+    <div class="overview-map-legend mb-3">
+        @foreach (var item in Model.Legend)
+        {
+            <span class="overview-map-legend-item">
+                <span class="overview-map-swatch" style="background: @item.Color;"></span>
+                @item.Label
+            </span>
+        }
+    </div>
+}
+
+@if (Model.Markers.Any())
+{
+    <p class="text-muted mb-2" id="mapStatus">Loading map…</p>
+    <div id="overviewMap" class="overview-map" style="height: 68vh; min-height: 580px;"></div>
+    <p class="text-muted small mt-2 mb-3 d-none" id="prospectHint">
+        Gray icons are prospect hotels@(Model.SelectedRouteId.HasValue ? " on this route" : "").
+    </p>
+
+    <h2 class="h5 mt-4 mb-2">Stops (@Model.Stops.Count())</h2>
+    <div class="overview-map-grid-wrap table-responsive mb-4">
+        <table class="table table-hover table-sm align-middle overview-map-grid mb-0">
+            <thead>
+                <tr>
+                    <th>Location</th>
+                    <th>Name</th>
+                    <th>Address</th>
+                    <th>City, State</th>
+                    <th>Exit Num</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var item in Model.Stops)
+            {
+                <tr>
+                    <td>
+                        <span class="overview-map-legend-item">
+                            <span class="overview-map-swatch" style="background: @item.Color;"></span>
+                            @(string.IsNullOrWhiteSpace(item.Location) ? "—" : item.Location)
+                        </span>
+                    </td>
+                    <td>
+                        <a asp-controller="Stops" asp-action="Details" asp-route-id="@item.Id">@item.Name</a>
+                    </td>
+                    <td>@item.Street</td>
+                    <td>@item.CityState</td>
+                    <td>@item.ExitNumber</td>
+                </tr>
+            }
+            @if (!Model.Stops.Any())
+            {
+                <tr>
+                    <td colspan="5" class="text-muted">No mapped stops for this selection.</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="h5 mb-2">Prospect Stops (@Model.ProspectStops.Count())</h2>
+    <div class="overview-map-grid-wrap table-responsive">
+        <table class="table table-hover table-sm align-middle overview-map-grid mb-0">
+            <thead>
+                <tr>
+                    <th>Location</th>
+                    <th>Name</th>
+                    <th>Address</th>
+                    <th>City, State</th>
+                    <th>Exit Num</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var item in Model.ProspectStops)
+            {
+                <tr>
+                    <td>
+                        <span class="overview-map-legend-item">
+                            <span class="overview-map-swatch" style="background: @item.Color;"></span>
+                            @(string.IsNullOrWhiteSpace(item.Location) ? "—" : item.Location)
+                        </span>
+                    </td>
+                    <td>
+                        <a asp-controller="Stops" asp-action="Details" asp-route-id="@item.Id">@item.Name</a>
+                    </td>
+                    <td>@item.Street</td>
+                    <td>@item.CityState</td>
+                    <td>@item.ExitNumber</td>
+                </tr>
+            }
+            @if (!Model.ProspectStops.Any())
+            {
+                <tr>
+                    <td colspan="5" class="text-muted">No mapped prospect stops for this selection.</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+else
+{
+    <div class="alert alert-warning mb-0">
+        No mapped stops are available. Add coordinates to stops first.
+    </div>
+}
+
+@section Scripts {
+    @if (Model.Markers.Any())
+    {
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+                integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+        <script src="~/js/overview-map.js" asp-append-version="true"></script>
+        <script>
+            AdRackOverviewMap.plot({
+                mapId: 'overviewMap',
+                statusId: 'mapStatus',
+                toggleId: 'showProspects',
+                hintId: 'prospectHint',
+                showProspects: false,
+                markers: @Html.Raw(markersJson)
+            });
+        </script>
+    }
+}
