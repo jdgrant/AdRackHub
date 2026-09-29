@@ -364,6 +364,10 @@ namespace AdRackHub.Data.Migrations
                     b.Property<int>("Quantity")
                         .HasColumnType("int");
 
+                    b.Property<string>("Warehouse")
+                        .HasMaxLength(2)
+                        .HasColumnType("nvarchar(2)");
+
                     b.Property<string>("Rack")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
@@ -372,11 +376,52 @@ namespace AdRackHub.Data.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<string>("Shelf")
+                        .HasMaxLength(8)
+                        .HasColumnType("nvarchar(8)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CustomerId", "InventoryDate");
 
                     b.ToTable("CustomerBrochureInventories");
+                });
+
+            modelBuilder.Entity("AdRackHub.Models.CustomerWarehouseLocation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Bin")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Rack")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Shelf")
+                        .HasMaxLength(8)
+                        .HasColumnType("nvarchar(8)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Warehouse")
+                        .HasMaxLength(2)
+                        .HasColumnType("nvarchar(2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId", "SortOrder");
+
+                    b.ToTable("CustomerWarehouseLocations");
                 });
 
             modelBuilder.Entity("AdRackHub.Models.CustomerNote", b =>
@@ -529,6 +574,10 @@ namespace AdRackHub.Data.Migrations
                         .HasMaxLength(300)
                         .HasColumnType("nvarchar(300)");
 
+                    b.Property<string>("BrochureCode")
+                        .HasMaxLength(8)
+                        .HasColumnType("nvarchar(8)");
+
                     b.Property<string>("City")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
@@ -562,6 +611,10 @@ namespace AdRackHub.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("Warehouse")
+                        .HasMaxLength(2)
+                        .HasColumnType("nvarchar(2)");
+
                     b.Property<string>("WarehouseBin")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
@@ -569,6 +622,10 @@ namespace AdRackHub.Data.Migrations
                     b.Property<string>("WarehouseRack")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("WarehouseShelf")
+                        .HasMaxLength(8)
+                        .HasColumnType("nvarchar(8)");
 
                     b.Property<string>("WebUrl")
                         .HasMaxLength(500)
@@ -590,6 +647,10 @@ namespace AdRackHub.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AccountManagerId");
+
+                    b.HasIndex("BrochureCode")
+                        .IsUnique()
+                        .HasFilter("[BrochureCode] IS NOT NULL");
 
                     b.HasIndex("CustomerName");
 
@@ -622,6 +683,14 @@ namespace AdRackHub.Data.Migrations
 
                     b.Property<int>("CustomerId")
                         .HasColumnType("int");
+
+                    b.Property<string>("DriversNotes")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("InvoiceNotes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<DateTime>("NextBillDate")
                         .HasColumnType("date");
@@ -1105,6 +1174,17 @@ namespace AdRackHub.Data.Migrations
                     b.Navigation("Customer");
                 });
 
+            modelBuilder.Entity("AdRackHub.Models.CustomerWarehouseLocation", b =>
+                {
+                    b.HasOne("AdRackHub.Models.Customer", "Customer")
+                        .WithMany("WarehouseLocations")
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Customer");
+                });
+
             modelBuilder.Entity("AdRackHub.Models.CustomerNote", b =>
                 {
                     b.HasOne("AdRackHub.Models.Customer", "Customer")
@@ -1323,6 +1403,8 @@ namespace AdRackHub.Data.Migrations
                     b.Navigation("Notes");
 
                     b.Navigation("Tasks");
+
+                    b.Navigation("WarehouseLocations");
                 });
 
             modelBuilder.Entity("AdRackHub.Models.CustomerBilling", b =>

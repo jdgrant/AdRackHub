@@ -2,16 +2,20 @@ namespace AdRackHub.Models;
 
 public static class CustomerRevenue
 {
-    /// <summary>Annual revenue from contracts (preferred) or active route assignments.</summary>
-    public static decimal GetAnnual(Customer customer)
+    /// <summary>Annual revenue from active contracts (preferred) or active route assignments.</summary>
+    public static decimal GetAnnual(Customer customer, DateOnly? asOf = null)
     {
+        var asOfDate = asOf ?? DateOnly.FromDateTime(DateTime.Today);
+
         if (customer.Contracts.Count > 0)
         {
-            return customer.Contracts.Sum(contract =>
-                contract.ContractRoutes.Sum(cr =>
-                    AnnualBillingHelper.ToAnnualPrice(
-                        AnnualBillingHelper.GetBillingAmount(cr),
-                        contract)));
+            return customer.Contracts
+                .Where(contract => BillingDueCalculator.IsActiveContract(contract, asOfDate))
+                .Sum(contract =>
+                    contract.ContractRoutes.Sum(cr =>
+                        AnnualBillingHelper.ToSeasonalAnnual(
+                            AnnualBillingHelper.GetBillingAmount(cr),
+                            contract)));
         }
 
         return customer.CustomerRoutes

@@ -9,15 +9,23 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
 import sys
 import time
 from ftplib import FTP
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SOURCE_PATHS = ("src", "scripts")
+
 SKIP_FILENAMES = {"appsettings.Production.json"}
 SKIP_REMOTE_PREFIXES = (
     "App_Data/Uploads/",
     "Data/Uploads/",
+    "runtimes/linux",
+    "runtimes/osx",
+    "runtimes/unix",
+    "runtimes/win-arm",
 )
 ENSURE_REMOTE_DIRS = (
     "App_Data/Uploads/brochures",
@@ -26,10 +34,48 @@ ENSURE_REMOTE_DIRS = (
 )
 
 
+def run_git(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def require_checked_in() -> str | None:
+    """Return an error if source is uncommitted or not pushed."""
+    dirty = run_git("status", "--porcelain", "--", *SOURCE_PATHS)
+    if dirty.returncode != 0:
+        return dirty.stderr.strip() or "git status failed."
+    if dirty.stdout.strip():
+        return (
+            "Check in src/ and scripts/ before publishing.\n"
+            f"{dirty.stdout.rstrip()}\n"
+            "Commit, push, then deploy. Use --allow-dirty only if asked."
+        )
+
+    upstream = run_git("rev-parse", "--abbrev-ref", "@{upstream}")
+    if upstream.returncode != 0:
+        return "This branch has no upstream. Push it before publishing."
+
+    unpushed = run_git("rev-list", "--count", "@{upstream}..HEAD")
+    if unpushed.returncode != 0:
+        return unpushed.stderr.strip() or "Could not compare to origin."
+    if unpushed.stdout.strip() not in {"", "0"}:
+        count = unpushed.stdout.strip()
+        return (
+            f"{count} local commit(s) are not on origin. "
+            "git push before publishing."
+        )
+    return None
+
+
 def should_skip(remote_path: str) -> bool:
     normalized = remote_path.replace("\\", "/")
     name = normalized.rsplit("/", 1)[-1]
-    if name in SKIP_FILENAMES:
+    if name in SKIP_FILENAMES or name.endswith(".pdb"):
         return True
     return any(normalized.startswith(prefix) for prefix in SKIP_REMOTE_PREFIXES)
 
@@ -76,8 +122,7 @@ def upload_tree(ftp: FTP, local_dir: Path, remote_dir: str = "") -> tuple[int, i
             with local_path.open("rb") as handle:
                 ftp.storbinary(f"STOR {remote_path}", handle)
             uploaded += 1
-            if uploaded % 25 == 0:
-                print(f"Uploaded {uploaded} files...")
+            print(f"Uploaded {uploaded}: {remote_path}", flush=True)
         except Exception as exc:
             errors.append((remote_path, str(exc)))
 
@@ -117,7 +162,18 @@ def main() -> int:
     parser.add_argument("--password", default=os.environ.get("ADRACKHUB_FTP_PASSWORD"))
     parser.add_argument("--retry-attempts", type=int, default=5)
     parser.add_argument("--retry-delay", type=int, default=8)
+    parser.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="Skip the git check-in requirement (do not use unless asked).",
+    )
     args = parser.parse_args()
+
+    if not args.allow_dirty:
+        git_error = require_checked_in()
+        if git_error:
+            print(git_error, file=sys.stderr)
+            return 1
 
     if not args.password:
         print("Set ADRACKHUB_FTP_PASSWORD or pass --password.", file=sys.stderr)
@@ -131,7 +187,7 @@ def main() -> int:
     ftp = FTP(args.host, timeout=120)
     ftp.login(args.user, args.password)
     ftp.set_pasv(True)
-    print("Connected. Remote:", ftp.pwd())
+    print("Connected. Remote:", ftp.pwd(), flush=True)
 
     for remote_dir in ENSURE_REMOTE_DIRS:
         ensure_remote_dir(ftp, remote_dir)

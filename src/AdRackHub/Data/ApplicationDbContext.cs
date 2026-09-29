@@ -25,6 +25,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<BillingRunInvoiceLine> BillingRunInvoiceLines => Set<BillingRunInvoiceLine>();
     public DbSet<CustomerBrochureScan> CustomerBrochureScans => Set<CustomerBrochureScan>();
     public DbSet<CustomerBrochureInventory> CustomerBrochureInventories => Set<CustomerBrochureInventory>();
+    public DbSet<CustomerWarehouseLocation> CustomerWarehouseLocations => Set<CustomerWarehouseLocation>();
     public DbSet<CustomerNote> CustomerNotes => Set<CustomerNote>();
     public DbSet<CustomerNoteSubNote> CustomerNoteSubNotes => Set<CustomerNoteSubNote>();
     public DbSet<CustomerTask> CustomerTasks => Set<CustomerTask>();
@@ -36,11 +37,20 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         modelBuilder.Entity<Customer>(e =>
         {
             e.HasIndex(c => c.CustomerName);
+            e.HasIndex(c => c.BrochureCode)
+                .IsUnique()
+                .HasFilter("[BrochureCode] IS NOT NULL");
             e.Property(c => c.Status).HasConversion<string>();
             e.Property(c => c.Type).HasConversion<string>();
             e.Property(c => c.InvoiceReceiptMethod)
                 .HasConversion<string>()
                 .HasMaxLength(20);
+            e.Property(c => c.Warehouse)
+                .HasConversion<string>()
+                .HasMaxLength(2);
+            e.Property(c => c.WarehouseShelf)
+                .HasConversion<string>()
+                .HasMaxLength(8);
             e.HasOne(c => c.AccountManager)
                 .WithMany()
                 .HasForeignKey(c => c.AccountManagerId)
@@ -73,9 +83,30 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         modelBuilder.Entity<CustomerBrochureInventory>(e =>
         {
             e.HasIndex(i => new { i.CustomerId, i.InventoryDate });
+            e.Property(i => i.Warehouse)
+                .HasConversion<string>()
+                .HasMaxLength(2);
+            e.Property(i => i.Shelf)
+                .HasConversion<string>()
+                .HasMaxLength(8);
             e.HasOne(i => i.Customer)
                 .WithMany(c => c.BrochureInventories)
                 .HasForeignKey(i => i.CustomerId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CustomerWarehouseLocation>(e =>
+        {
+            e.HasIndex(l => new { l.CustomerId, l.SortOrder });
+            e.Property(l => l.Warehouse)
+                .HasConversion<string>()
+                .HasMaxLength(2);
+            e.Property(l => l.Shelf)
+                .HasConversion<string>()
+                .HasMaxLength(8);
+            e.HasOne(l => l.Customer)
+                .WithMany(c => c.WarehouseLocations)
+                .HasForeignKey(l => l.CustomerId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

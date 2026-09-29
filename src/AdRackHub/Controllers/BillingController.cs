@@ -5,6 +5,7 @@ using AdRackHub.ViewModels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace AdRackHub.Controllers;
 
@@ -15,17 +16,26 @@ public class BillingController : Controller
     private readonly MonthlyBillingService _billingService;
     private readonly WaveSessionService _waveSession;
     private readonly InvoicePdfStorageService _invoicePdfs;
+    private readonly WaveApiService _waveApi;
+    private readonly WavePocTokenStore _wavePocTokens;
+    private readonly WaveOptions _waveOptions;
 
     public BillingController(
         ApplicationDbContext context,
         MonthlyBillingService billingService,
         WaveSessionService waveSession,
-        InvoicePdfStorageService invoicePdfs)
+        InvoicePdfStorageService invoicePdfs,
+        WaveApiService waveApi,
+        WavePocTokenStore wavePocTokens,
+        IOptions<WaveOptions> waveOptions)
     {
         _context = context;
         _billingService = billingService;
         _waveSession = waveSession;
         _invoicePdfs = invoicePdfs;
+        _waveApi = waveApi;
+        _wavePocTokens = wavePocTokens;
+        _waveOptions = waveOptions.Value;
     }
 
     public async Task<IActionResult> Index(int? year, int? month)
@@ -45,6 +55,10 @@ public class BillingController : Controller
             WaveConfigured = _waveSession.IsReady,
             CreateOnSendConfigured = _waveSession.IsReady,
             WaveSessionExpired = _waveSession.NeedsBusinessReset,
+            WaveOAuthConfigured = _waveSession.IsOAuthConfigured,
+            WaveConnected = _waveSession.IsReady && !_waveSession.NeedsBusinessReset,
+            WaveBusinessName = _waveSession.ConnectedBusinessName,
+            WaveClientId = WaveAppCredentials().ClientId,
             BatchPdfContractIds = ParseIdList(TempData["BatchPdfContractIds"] as string)
         };
 
@@ -52,6 +66,81 @@ public class BillingController : Controller
         await ApplyInvoicePdfAvailabilityAsync(model);
 
         return View(model);
+    }
+
+    public async Task<IActionResult> Forecast(int? year, int? month, bool ignoreEndDate = false)
+    {
+        var now = DateTime.Today;
+        var selectedYear = year ?? now.Year;
+        var selectedMonth = month ?? now.Month;
+        var start = new DateOnly(now.Year, now.Month, 1);
+        var months = await _billingService.GetForecastAsync(start, 12, selectedYear, selectedMonth, ignoreEndDate);
+        var selected = months.FirstOrDefault(m => m.IsSelectedPeriod) ?? months.FirstOrDefault(m => m.IsCurrentMonth);
+
+        var model = new BillingForecastPageViewModel
+        {
+            Year = selected?.Year ?? selectedYear,
+            Month = selected?.Month ?? selectedMonth,
+            IgnoreEndDate = ignoreEndDate,
+            Months = months,
+            Selected = selected
+        };
+
+        return View(model);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult WaveOAuthSaveCredentials(string? clientId, string? clientSecret, int? year, int? month)
+    {
+        if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
+        {
+            TempData["Error"] = "Paste both the Wave Client ID and Client Secret, then save.";
+            return RedirectToBilling(year, month);
+        }
+
+        HttpContext.Session.SetString(WaveSessionService.ClientIdKey, clientId.Trim());
+        HttpContext.Session.SetString(WaveSessionService.ClientSecretKey, clientSecret.Trim());
+        TempData["Message"] = "Wave app credentials saved. Click Connect to Wave.";
+        return RedirectToBilling(year, month);
+    }
+
+    public IActionResult WaveOAuthStart(int? year, int? month)
+    {
+        var (clientId, clientSecret) = WaveAppCredentials();
+        if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
+        {
+            TempData["Error"] = "Paste the Wave Client ID and Client Secret, then Connect to Wave.";
+            return RedirectToBilling(year, month);
+        }
+
+        var state = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
+        HttpContext.Session.SetString(WaveSessionService.StateKey, state);
+        if (year is > 0)
+            HttpContext.Session.SetString("WaveOAuthReturnYear", year.Value.ToString());
+        if (month is >= 1 and <= 12)
+            HttpContext.Session.SetString("WaveOAuthReturnMonth", month.Value.ToString());
+        return Redirect(_waveApi.BuildAuthorizationUrl(WaveOAuthRedirectUri(), state, clientId: clientId));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult WaveOAuthDisconnect(int? year, int? month)
+    {
+        ClearWaveLogin();
+        TempData["Message"] = "Disconnected from Wave.";
+        return RedirectToBilling(year, month);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult WaveOAuthResetBusiness(int? year, int? month)
+    {
+        ClearWaveLogin();
+        TempData["Message"] = "Wave business connection was reset. Connect to Wave, then send invoices again.";
+        if (_waveSession.IsOAuthConfigured)
+            return RedirectToAction(nameof(WaveOAuthStart), new { year, month });
+        return RedirectToBilling(year, month);
     }
 
     [HttpPost]
@@ -231,7 +320,9 @@ public class BillingController : Controller
             waveInvoiceNumber,
             receivedDate: receivedDate ?? DateOnly.FromDateTime(DateTime.Today));
 
-        if (success)
+        if (WaveSessionService.IsSessionExpiredMessage(message))
+            TempData["WaveSessionExpired"] = true;
+        else if (success)
             TempData["Message"] = message;
         else
             TempData["Error"] = message;
@@ -261,7 +352,9 @@ public class BillingController : Controller
             waveInvoiceNumber,
             receivedDate: receivedDate);
 
-        if (success)
+        if (WaveSessionService.IsSessionExpiredMessage(message))
+            TempData["WaveSessionExpired"] = true;
+        else if (success)
             TempData["Message"] = message;
         else
             TempData["Error"] = message;
@@ -540,6 +633,37 @@ public class BillingController : Controller
             return;
 
         TempData["BatchPdfContractIds"] = string.Join(",", withPdf);
+    }
+
+    private IActionResult RedirectToBilling(int? year, int? month) =>
+        RedirectToAction(nameof(Index), new { year, month });
+
+    private void ClearWaveLogin()
+    {
+        HttpContext.Session.Remove(WaveSessionService.TokenKey);
+        HttpContext.Session.Remove(WaveSessionService.BusinessIdKey);
+        HttpContext.Session.Remove(WaveSessionService.BusinessNameKey);
+        HttpContext.Session.Remove(WaveSessionService.StateKey);
+        _wavePocTokens.Clear();
+    }
+
+    private (string? ClientId, string? ClientSecret) WaveAppCredentials()
+    {
+        var sessionClientId = HttpContext.Session.GetString(WaveSessionService.ClientIdKey);
+        var sessionClientSecret = HttpContext.Session.GetString(WaveSessionService.ClientSecretKey);
+        return (
+            string.IsNullOrWhiteSpace(sessionClientId) ? _waveOptions.ClientId : sessionClientId,
+            string.IsNullOrWhiteSpace(sessionClientSecret) ? _waveOptions.ClientSecret : sessionClientSecret);
+    }
+
+    private string WaveOAuthRedirectUri() => $"{PublicBaseUrl()}/Admin/WaveOAuthCallback";
+
+    private string PublicBaseUrl()
+    {
+        var scheme = Request.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? Request.Scheme;
+        if (scheme.Contains(',', StringComparison.Ordinal))
+            scheme = scheme.Split(',')[0].Trim();
+        return $"{scheme}://{Request.Host}";
     }
 
     private static List<int> ParseIdList(string? raw) =>

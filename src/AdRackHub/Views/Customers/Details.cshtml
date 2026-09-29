@@ -122,6 +122,10 @@
                 <div class="d-flex flex-wrap gap-2 align-items-center">
                     <span class="badge @CustomerTypeLabels.BadgeClass(Model.Type)">@CustomerTypeLabels.Singular(Model.Type)</span>
                     <span class="badge @(Model.Status == CustomerStatus.Active ? "bg-success" : "bg-secondary")">@Model.Status</span>
+                    @if (!string.IsNullOrWhiteSpace(Model.BrochureCode))
+                    {
+                        <span class="badge bg-dark">@Model.BrochureCode</span>
+                    }
                     @if (!string.IsNullOrWhiteSpace(Model.Phone))
                     {
                         <a href="tel:@Model.Phone" class="text-decoration-none small">@Model.Phone</a>
@@ -186,23 +190,13 @@
                             </form>
                         </li>
                     }
-                    @if (Model.Type != CustomerType.Prospect)
+                    @if (Model.Type != CustomerType.Prospect && Model.Type != CustomerType.ExpandedProspect)
                     {
                         <li>
                             <form asp-action="ToggleType" method="post">
                                 <input type="hidden" name="id" value="@Model.Id" />
                                 <input type="hidden" name="toType" value="@CustomerType.Prospect" />
                                 <button type="submit" class="dropdown-item">Make Prospect</button>
-                            </form>
-                        </li>
-                    }
-                    @if (Model.Type != CustomerType.ExpandedProspect)
-                    {
-                        <li>
-                            <form asp-action="ToggleType" method="post">
-                                <input type="hidden" name="id" value="@Model.Id" />
-                                <input type="hidden" name="toType" value="@CustomerType.ExpandedProspect" />
-                                <button type="submit" class="dropdown-item">Make Expanded Prospect</button>
                             </form>
                         </li>
                     }
@@ -581,32 +575,59 @@
                         <hr class="my-4" />
 
                         <div class="fw-semibold mb-2">Warehouse inventory</div>
-                        <p class="text-muted small mb-3">Log a monthly count and the rack/bin where these brochures sit in the warehouse.</p>
+                        <p class="text-muted small mb-3">Log a monthly count and the warehouse/rack/bin where these brochures sit. A new rack/bin is added to the locations list.</p>
 
                         <div class="crm-warehouse-location mb-3">
                             <div class="d-flex flex-wrap align-items-baseline gap-2 mb-2">
-                                <span class="text-muted small">Current location</span>
-                                @if (!string.IsNullOrWhiteSpace(Model.WarehouseLocationLabel))
-                                {
-                                    <span class="fw-semibold">@Model.WarehouseLocationLabel</span>
-                                }
-                                else
+                                <span class="text-muted small">Locations</span>
+                                @if (!Model.OrderedWarehouseLocations.Any())
                                 {
                                     <span class="text-muted">Not set</span>
                                 }
                             </div>
-                            <form asp-action="SaveWarehouseLocation" method="post" class="row g-2 align-items-end">
+                            @if (Model.OrderedWarehouseLocations.Any())
+                            {
+                                <ul class="list-unstyled mb-3">
+                                    @foreach (var location in Model.OrderedWarehouseLocations)
+                                    {
+                                        <li class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                                            <span class="fw-semibold">@(location.Label ?? "Location")</span>
+                                            <form asp-action="DeleteWarehouseLocation" method="post" class="d-inline">
+                                                <input type="hidden" name="id" value="@location.Id" />
+                                                <input type="hidden" name="customerId" value="@Model.Id" />
+                                                <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                                            </form>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                            <form asp-action="AddWarehouseLocation" method="post" class="row g-2 align-items-end">
                                 <input type="hidden" name="customerId" value="@Model.Id" />
                                 <div class="col-6 col-sm-3 col-md-2">
+                                    <label class="form-label small mb-1" for="warehouseSite">Warehouse</label>
+                                    <select class="form-select" id="warehouseSite" name="warehouse">
+                                        <option value="K" selected="@(Model.Warehouse != BrochureWarehouse.O)">K</option>
+                                        <option value="O" selected="@(Model.Warehouse == BrochureWarehouse.O)">O</option>
+                                    </select>
+                                </div>
+                                <div class="col-6 col-sm-3 col-md-2">
                                     <label class="form-label small mb-1" for="warehouseRack">Rack</label>
-                                    <input type="text" class="form-control" id="warehouseRack" name="rack" maxlength="50" value="@Model.WarehouseRack" placeholder="e.g. 4" />
+                                    <input type="text" class="form-control" id="warehouseRack" name="rack" maxlength="50" placeholder="e.g. 4" />
                                 </div>
                                 <div class="col-6 col-sm-3 col-md-2">
                                     <label class="form-label small mb-1" for="warehouseBin">Bin</label>
-                                    <input type="text" class="form-control" id="warehouseBin" name="bin" maxlength="50" value="@Model.WarehouseBin" placeholder="e.g. B-12" />
+                                    <input type="text" class="form-control" id="warehouseBin" name="bin" maxlength="50" placeholder="e.g. 3" />
+                                </div>
+                                <div class="col-6 col-sm-3 col-md-2">
+                                    <label class="form-label small mb-1" for="warehouseShelf">Top/Bottom</label>
+                                    <select class="form-select" id="warehouseShelf" name="shelf">
+                                        <option value="">—</option>
+                                        <option value="Top">Top</option>
+                                        <option value="Bottom">Bottom</option>
+                                    </select>
                                 </div>
                                 <div class="col-sm-auto">
-                                    <button type="submit" class="btn btn-outline-primary btn-sm">Save location</button>
+                                    <button type="submit" class="btn btn-outline-primary btn-sm">Add location</button>
                                 </div>
                             </form>
                         </div>
@@ -623,12 +644,27 @@
                                     <input type="number" class="form-control" id="quantity" name="quantity" min="0" step="1" required placeholder="0" />
                                 </div>
                                 <div class="col-6 col-md-2">
+                                    <label class="form-label small mb-1" for="inventoryWarehouse">Warehouse</label>
+                                    <select class="form-select" id="inventoryWarehouse" name="warehouse">
+                                        <option value="K" selected="@(Model.Warehouse != BrochureWarehouse.O)">K</option>
+                                        <option value="O" selected="@(Model.Warehouse == BrochureWarehouse.O)">O</option>
+                                    </select>
+                                </div>
+                                <div class="col-6 col-md-2">
                                     <label class="form-label small mb-1" for="inventoryRack">Rack</label>
                                     <input type="text" class="form-control" id="inventoryRack" name="rack" maxlength="50" value="@Model.WarehouseRack" placeholder="Optional" />
                                 </div>
                                 <div class="col-6 col-md-2">
                                     <label class="form-label small mb-1" for="inventoryBin">Bin</label>
                                     <input type="text" class="form-control" id="inventoryBin" name="bin" maxlength="50" value="@Model.WarehouseBin" placeholder="Optional" />
+                                </div>
+                                <div class="col-6 col-md-2">
+                                    <label class="form-label small mb-1" for="inventoryShelf">Top/Bottom</label>
+                                    <select class="form-select" id="inventoryShelf" name="shelf">
+                                        <option value="">—</option>
+                                        <option value="Top" selected="@(Model.WarehouseShelf == BrochureShelf.Top)">Top</option>
+                                        <option value="Bottom" selected="@(Model.WarehouseShelf == BrochureShelf.Bottom)">Bottom</option>
+                                    </select>
                                 </div>
                                 <div class="col-sm-12 col-md-3">
                                     <label class="form-label small mb-1" for="inventoryNotes">Notes</label>
@@ -648,8 +684,10 @@
                                         <tr>
                                             <th>Inventory date</th>
                                             <th class="text-end">Count</th>
+                                            <th>Warehouse</th>
                                             <th>Rack</th>
                                             <th>Bin</th>
+                                            <th>Top/Bottom</th>
                                             <th>Notes</th>
                                             <th>Logged by</th>
                                             <th>Logged at</th>
@@ -662,8 +700,10 @@
                                         <tr id="inventory-view-@item.Id">
                                             <td>@item.InventoryDate.ToString("MMM d, yyyy")</td>
                                             <td class="text-end fw-semibold">@item.Quantity.ToString("N0")</td>
+                                            <td>@(WarehouseLocation.Code(item.Warehouse) ?? "—")</td>
                                             <td>@(string.IsNullOrWhiteSpace(item.Rack) ? "—" : item.Rack)</td>
                                             <td>@(string.IsNullOrWhiteSpace(item.Bin) ? "—" : item.Bin)</td>
+                                            <td>@(WarehouseLocation.ShelfCode(item.Shelf) ?? "—")</td>
                                             <td>@(string.IsNullOrWhiteSpace(item.Notes) ? "—" : item.Notes)</td>
                                             <td>@(item.CreatedBy ?? "—")</td>
                                             <td class="text-muted small">@item.CreatedAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</td>
@@ -680,7 +720,7 @@
                                             </td>
                                         </tr>
                                         <tr id="inventory-edit-@item.Id" class="d-none">
-                                            <td colspan="8">
+                                            <td colspan="10">
                                                 <form asp-action="EditBrochureInventory" method="post" class="row g-2 align-items-end">
                                                     <input type="hidden" name="id" value="@item.Id" />
                                                     <input type="hidden" name="customerId" value="@Model.Id" />
@@ -693,12 +733,27 @@
                                                         <input type="number" class="form-control" id="quantity-@item.Id" name="quantity" min="0" step="1" value="@item.Quantity" required />
                                                     </div>
                                                     <div class="col-6 col-md-2">
+                                                        <label class="form-label small mb-1" for="inventoryWarehouse-@item.Id">Warehouse</label>
+                                                        <select class="form-select" id="inventoryWarehouse-@item.Id" name="warehouse">
+                                                            <option value="K" selected="@(item.Warehouse != BrochureWarehouse.O)">K</option>
+                                                            <option value="O" selected="@(item.Warehouse == BrochureWarehouse.O)">O</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-6 col-md-2">
                                                         <label class="form-label small mb-1" for="inventoryRack-@item.Id">Rack</label>
                                                         <input type="text" class="form-control" id="inventoryRack-@item.Id" name="rack" maxlength="50" value="@item.Rack" />
                                                     </div>
                                                     <div class="col-6 col-md-2">
                                                         <label class="form-label small mb-1" for="inventoryBin-@item.Id">Bin</label>
                                                         <input type="text" class="form-control" id="inventoryBin-@item.Id" name="bin" maxlength="50" value="@item.Bin" />
+                                                    </div>
+                                                    <div class="col-6 col-md-2">
+                                                        <label class="form-label small mb-1" for="inventoryShelf-@item.Id">Top/Bottom</label>
+                                                        <select class="form-select" id="inventoryShelf-@item.Id" name="shelf">
+                                                            <option value="">—</option>
+                                                            <option value="Top" selected="@(item.Shelf == BrochureShelf.Top)">Top</option>
+                                                            <option value="Bottom" selected="@(item.Shelf == BrochureShelf.Bottom)">Bottom</option>
+                                                        </select>
                                                     </div>
                                                     <div class="col-sm-12 col-md-3">
                                                         <label class="form-label small mb-1" for="inventoryNotes-@item.Id">Notes</label>
@@ -903,6 +958,16 @@
                                             <tr class="@(isExpired ? "text-muted" : "")">
                                                 <td>
                                                     @contract.ContractName
+                                                    <form asp-controller="CustomerContracts" asp-action="SaveInvoiceNotes" method="post" class="d-flex gap-1 align-items-center mt-1">
+                                                        <input type="hidden" name="id" value="@contract.Id" />
+                                                        <input type="text" name="invoiceNotes" class="form-control form-control-sm" maxlength="1000" placeholder="Invoice notes" value="@contract.InvoiceNotes" style="max-width: 14rem;" />
+                                                        <button type="submit" class="btn btn-sm btn-outline-secondary">Save</button>
+                                                    </form>
+                                                    <form asp-controller="CustomerContracts" asp-action="SaveDriversNotes" method="post" class="d-flex gap-1 align-items-center mt-1">
+                                                        <input type="hidden" name="id" value="@contract.Id" />
+                                                        <input type="text" name="driversNotes" class="form-control form-control-sm" maxlength="200" placeholder="Drivers notes" value="@contract.DriversNotes" style="max-width: 14rem;" />
+                                                        <button type="submit" class="btn btn-sm btn-outline-secondary">Save</button>
+                                                    </form>
                                                     @if (!string.IsNullOrWhiteSpace(contract.WaveInvoiceNumber) || contract.HasWaveInvoicePdf)
                                                     {
                                                         <div class="small">
@@ -1050,7 +1115,14 @@
                         </div>
                     }
                     <div class="small text-muted mt-2">Uploaded @latestBrochure.UploadedAt.ToLocalTime().ToString("MMM d, yyyy")</div>
-                    @if (!string.IsNullOrWhiteSpace(Model.WarehouseLocationLabel))
+                    @if (Model.OrderedWarehouseLocations.Any())
+                    {
+                        <div class="small mt-1">
+                            Warehouse
+                            @string.Join("; ", Model.OrderedWarehouseLocations.Select(l => l.CompactLabel).Where(l => !string.IsNullOrWhiteSpace(l)))
+                        </div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(Model.WarehouseLocationLabel))
                     {
                         <div class="small mt-1">Warehouse @Model.WarehouseLocationLabel</div>
                     }

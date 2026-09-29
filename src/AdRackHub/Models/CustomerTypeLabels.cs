@@ -21,8 +21,7 @@ public static class CustomerTypeLabels
     public static string Controller(CustomerType type) => type switch
     {
         CustomerType.Customer => "Customers",
-        CustomerType.Prospect => "Prospects",
-        CustomerType.ExpandedProspect => "ExpandedProspects",
+        CustomerType.Prospect or CustomerType.ExpandedProspect => "Prospects",
         _ => "Customers"
     };
 

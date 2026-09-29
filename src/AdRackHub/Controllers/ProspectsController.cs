@@ -21,7 +21,7 @@ public class ProspectsController : Controller
     public async Task<IActionResult> Index(string? search, CustomerStatus? status, bool highValue = false, bool needsMoreInfo = false)
     {
         var query = _context.Customers
-            .Where(c => c.Type == CustomerType.Prospect);
+            .Where(c => c.Type == CustomerType.Prospect || c.Type == CustomerType.ExpandedProspect);
 
         if (!string.IsNullOrWhiteSpace(search))
         {

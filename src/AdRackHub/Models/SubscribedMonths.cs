@@ -24,6 +24,39 @@ public static class SubscribedMonths
         return string.Join(", ", months.Select(m => new DateOnly(2000, m, 1).ToString("MMM")));
     }
 
+    /// <summary>
+    /// Field-sheet period: 1-12 when every month is selected, otherwise start-end ranges.
+    /// </summary>
+    public static string FormatDistributionPeriod(int mask)
+    {
+        var months = GetMonths(mask).ToList();
+        if (months.Count == 0)
+            return string.Empty;
+        if (months.Count == 12)
+            return "1-12";
+
+        var ranges = new List<string>();
+        var start = months[0];
+        var prev = months[0];
+        for (var i = 1; i < months.Count; i++)
+        {
+            if (months[i] == prev + 1)
+            {
+                prev = months[i];
+                continue;
+            }
+
+            ranges.Add(FormatRange(start, prev));
+            start = prev = months[i];
+        }
+
+        ranges.Add(FormatRange(start, prev));
+        return string.Join(", ", ranges);
+    }
+
+    private static string FormatRange(int start, int end) =>
+        start == end ? start.ToString() : $"{start}-{end}";
+
     public static decimal DefaultRatePerMonth(Route route) => route.BillingFrequency switch
     {
         BillingFrequency.Quarterly => route.Price / 3m,

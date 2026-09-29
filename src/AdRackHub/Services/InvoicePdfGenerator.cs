@@ -28,6 +28,7 @@ public sealed class InvoicePdfModel
     public string ServiceLabel { get; init; } = "Brochure Distribution";
     public string? PaymentUrl { get; init; }
     public IReadOnlyList<InvoicePdfLine> Lines { get; init; } = Array.Empty<InvoicePdfLine>();
+    public string? InvoiceNotes { get; init; }
     public string? Notes { get; init; }
     public decimal Total => Lines.Sum(l => l.Amount);
 }
@@ -55,7 +56,8 @@ public class InvoicePdfGenerator
         string? invoiceNumber,
         DateOnly invoiceDate,
         DateOnly dueDate,
-        string? paymentUrl = null)
+        string? paymentUrl = null,
+        string? invoiceNotes = null)
     {
         var contact = customer.Contacts
             .OrderBy(c => c.Role == ContactRole.Billing ? 0 : c.Role == ContactRole.Primary ? 1 : 2)
@@ -74,6 +76,7 @@ public class InvoicePdfGenerator
                 lineItems.Select(item => FirstNonEmpty(item.ProductName, item.Description))),
             PaymentUrl = string.IsNullOrWhiteSpace(paymentUrl) ? null : paymentUrl.Trim(),
             Lines = lineItems.Select(ToPdfLine).ToList(),
+            InvoiceNotes = FirstNonEmpty(invoiceNotes),
             Notes = FirstNonEmpty(_options.InvoiceMemo, _options.InvoiceTerms, WaveOptions.DefaultInvoiceTerms)
         };
     }
@@ -93,6 +96,7 @@ public class InvoicePdfGenerator
                 page.DefaultTextStyle(text => text.FontSize(10).FontColor(Colors.Grey.Darken4));
                 page.Header().Element(header => ComposeHeader(header, model));
                 page.Content().PaddingTop(4).Element(content => ComposeBody(content, model));
+                page.Footer().Element(footer => ComposePaymentFooter(footer, model));
             });
         }).GeneratePdf();
     }
@@ -108,6 +112,7 @@ public class InvoicePdfGenerator
             BillToLines = new[] { "1104 MANNING CT", "La Grange, KY 40031", "United States" },
             ServiceLabel = "Hotel Brochure Distribution",
             PaymentUrl = "https://link.waveapps.com/drzg2t-te6axe",
+            InvoiceNotes = "Please deliver extra brochures with this billing period. Do not leave at closed locations.",
             Notes = WaveOptions.DefaultInvoiceTerms,
             Lines = new[]
             {
@@ -204,16 +209,6 @@ public class InvoicePdfGenerator
                         amount.RelativeItem().Text("Amount Due (USD):").Bold().AlignRight();
                         amount.ConstantItem(78).Text(Money(model.Total)).Bold().AlignRight();
                     });
-                    if (!string.IsNullOrWhiteSpace(model.PaymentUrl))
-                    {
-                        meta.Item().PaddingTop(6).AlignRight().Column(pay =>
-                        {
-                            pay.Item().AlignRight().Hyperlink(model.PaymentUrl)
-                                .Text("Pay Securely Online").FontColor(Color.FromHex("#2563EB")).FontSize(10);
-                            pay.Item().AlignRight().Hyperlink(model.PaymentUrl)
-                                .Text(DisplayPaymentUrl(model.PaymentUrl)).FontColor(Color.FromHex("#2563EB")).FontSize(9);
-                        });
-                    }
                 });
             });
 
@@ -234,27 +229,82 @@ public class InvoicePdfGenerator
                 });
             });
 
-            if (!string.IsNullOrWhiteSpace(model.PaymentUrl))
+            if (!string.IsNullOrWhiteSpace(model.InvoiceNotes))
             {
-                col.Item().AlignRight().Width(220).PaddingTop(16).Background(AmountBand).Padding(12).Column(pay =>
+                col.Item().PaddingTop(28).Column(invoiceNotes =>
                 {
-                    pay.Spacing(6);
-                    pay.Item().AlignCenter().Hyperlink(model.PaymentUrl)
-                        .Text("Pay Securely Online").FontColor(Color.FromHex("#2563EB")).SemiBold();
-                    pay.Item().AlignCenter().Hyperlink(model.PaymentUrl)
-                        .Text(DisplayPaymentUrl(model.PaymentUrl)).FontColor(Color.FromHex("#2563EB")).FontSize(9);
+                    invoiceNotes.Spacing(4);
+                    invoiceNotes.Item().Text("Invoice Notes").FontSize(9).Bold();
+                    invoiceNotes.Item().Text(model.InvoiceNotes).FontSize(10);
                 });
             }
 
             if (!string.IsNullOrWhiteSpace(model.Notes))
             {
-                col.Item().PaddingTop(28).Column(notes =>
+                col.Item().PaddingTop(string.IsNullOrWhiteSpace(model.InvoiceNotes) ? 28 : 12).Column(notes =>
                 {
                     notes.Spacing(4);
                     notes.Item().Text("Notes / Terms").FontSize(9).Bold();
                     notes.Item().Text(model.Notes).FontSize(9).FontColor(Muted);
                 });
             }
+        });
+    }
+
+    private void ComposePaymentFooter(IContainer container, InvoicePdfModel model)
+    {
+        var linkBlue = Color.FromHex("#2563EB");
+        container.PaddingTop(8).Column(block =>
+        {
+            block.Item().LineHorizontal(1).LineColor(Line);
+            block.Item().PaddingTop(8).Text(WaveOptions.PaymentChangeNotice)
+                .FontSize(9).Bold().FontColor(Colors.Black);
+            block.Item().PaddingTop(8).Row(row =>
+            {
+                row.RelativeItem().PaddingRight(10).Column(mail =>
+                {
+                    mail.Spacing(2);
+                    mail.Item().Text("By mail").FontSize(9).Bold();
+                    mail.Item().Text("Make checks payable to Ad-Rack Services LLC and include your invoice number. Mail payment to:")
+                        .FontSize(8);
+                    mail.Item().PaddingTop(4).Text(CompanyText(_options.InvoiceCompanyName, WaveOptions.DefaultCompanyName))
+                        .FontSize(8).Bold();
+                    mail.Item().Text("7608 KY-146, STE 104").FontSize(8);
+                    mail.Item().Text("Pewee Valley, KY 40056").FontSize(8);
+                });
+
+                row.RelativeItem().BorderLeft(1).BorderColor(Line).PaddingHorizontal(10).Column(ach =>
+                {
+                    ach.Spacing(2);
+                    ach.Item().Text("By ACH transfer").FontSize(9).Bold();
+                    ach.Item().Text("Please use our new ACH information and include your invoice number in the payment memo.")
+                        .FontSize(8);
+                    ach.Item().PaddingTop(4).Text($"Account name: {WaveOptions.AchAccountName}").FontSize(8);
+                    ach.Item().Text($"Routing number: {WaveOptions.AchRoutingNumber}").FontSize(8);
+                    ach.Item().Text($"Account number: {WaveOptions.AchAccountNumber}").FontSize(8);
+                });
+
+                row.RelativeItem().BorderLeft(1).BorderColor(Line).PaddingLeft(10).Column(paper =>
+                {
+                    paper.Spacing(2);
+                    if (!string.IsNullOrWhiteSpace(model.PaymentUrl))
+                    {
+                        paper.Item().Text("Pay online").FontSize(9).Bold();
+                        paper.Item().Hyperlink(model.PaymentUrl)
+                            .Text("Pay securely online").FontColor(linkBlue).FontSize(8);
+                        paper.Item().Hyperlink(model.PaymentUrl)
+                            .Text(DisplayPaymentUrl(model.PaymentUrl)).FontColor(linkBlue).FontSize(7.5f);
+                    }
+
+                    paper.Item().PaddingTop(string.IsNullOrWhiteSpace(model.PaymentUrl) ? 0 : 6)
+                        .Text("Go paperless").FontSize(9).Bold();
+                    paper.Item().Text(text =>
+                    {
+                        text.Span("To receive future invoices by email, send your request to ").FontSize(8);
+                        text.Span(WaveOptions.PaperlessEmail).FontSize(8).FontColor(linkBlue);
+                    });
+                });
+            });
         });
     }
 

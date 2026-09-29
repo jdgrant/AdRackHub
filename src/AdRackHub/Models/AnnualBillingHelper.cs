@@ -77,6 +77,19 @@ public static class AnnualBillingHelper
     public static decimal ToAnnualPrice(decimal billingPeriodAmount, CustomerContract contract) =>
         ToAnnualPrice(billingPeriodAmount, BillingMonths(contract));
 
+    /// <summary>
+    /// Annual revenue for a contract using the monthly rate times selected service months.
+    /// </summary>
+    public static decimal ToSeasonalAnnual(decimal billingPeriodAmount, CustomerContract contract)
+    {
+        var serviceMonths = SubscribedMonths.Count(contract.ServiceMonthMask);
+        if (serviceMonths == 0)
+            return 0m;
+
+        var billingMonths = Math.Max(BillingMonths(contract), 1);
+        return Math.Round(billingPeriodAmount * serviceMonths / billingMonths, 2, MidpointRounding.AwayFromZero);
+    }
+
     public static decimal BillingPeriodAmountToMonthlyRate(decimal billingPeriodAmount, int months) =>
         Math.Round(billingPeriodAmount / Math.Max(months, 1), 2, MidpointRounding.AwayFromZero);
 

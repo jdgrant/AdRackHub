@@ -43,6 +43,16 @@
             </div>
         </div>
         <div class="mb-3">
+            <label asp-for="Contract.InvoiceNotes" class="form-label"></label>
+            <textarea asp-for="Contract.InvoiceNotes" class="form-control" rows="3" maxlength="1000"></textarea>
+            <div class="form-text">Printed on the invoice PDF.</div>
+        </div>
+        <div class="mb-3">
+            <label asp-for="Contract.DriversNotes" class="form-label"></label>
+            <input asp-for="Contract.DriversNotes" class="form-control" maxlength="200" />
+            <div class="form-text">Shown on the hotel and rest-area route PDFs for the driver.</div>
+        </div>
+        <div class="mb-3">
             <label asp-for="Contract.Notes" class="form-label"></label>
             <textarea asp-for="Contract.Notes" class="form-control" rows="3"></textarea>
         </div>

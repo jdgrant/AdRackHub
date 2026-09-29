@@ -10,29 +10,45 @@ public static class BillingDueCalculator
         if (month is < 1 or > 12)
             return false;
 
-        if (!contract.ContractRoutes.Any())
-            return false;
-
         var periodStart = new DateOnly(year, month, 1);
         var periodEnd = new DateOnly(year, month, DateTime.DaysInMonth(year, month));
-
-        if (contract.ContractEndDate.HasValue && contract.ContractEndDate.Value < periodStart)
-            return false;
 
         // Due only when NextBillDate falls in the selected billing period (date picker).
         if (contract.NextBillDate < periodStart || contract.NextBillDate > periodEnd)
             return false;
 
-        if (!HasServiceForBillingPeriod(contract.ServiceMonthMask, AnnualBillingHelper.BillingMonths(contract), contract.NextBillDate))
+        return WouldBeDueOn(contract, contract.NextBillDate);
+    }
+
+    public static bool WouldBeDueOn(CustomerContract contract, DateOnly billDate, bool ignoreEndDate = false)
+    {
+        if (!contract.ContractRoutes.Any())
             return false;
 
-        return true;
+        if (!ignoreEndDate)
+        {
+            var periodStart = new DateOnly(billDate.Year, billDate.Month, 1);
+            if (contract.ContractEndDate.HasValue && contract.ContractEndDate.Value < periodStart)
+                return false;
+        }
+
+        return HasServiceForBillingPeriod(
+            contract.ServiceMonthMask,
+            AnnualBillingHelper.BillingMonths(contract),
+            billDate);
     }
 
     public static bool HasServiceForBillingPeriod(int serviceMonthMask, int monthCount, DateOnly billDate)
     {
+        if (serviceMonthMask == 0)
+            return false;
+
         var months = GetBillingPeriodMonths(monthCount, billDate);
-        return months.Any(m => IsMonthInService(serviceMonthMask, m));
+        if (months.Any(m => IsMonthInService(serviceMonthMask, m)))
+            return true;
+
+        // Pre-season bill: NextBillDate is the month immediately before the next selected service month.
+        return IsMonthInService(serviceMonthMask, billDate.AddMonths(1).Month);
     }
 
     public static bool HasServiceForBillingPeriod(int serviceMonthMask, BillingFrequency term, DateOnly billDate) =>
@@ -54,10 +70,47 @@ public static class BillingDueCalculator
         AdvanceNextBillDate(current, AnnualBillingHelper.MonthsInTerm(term));
 
     public static DateOnly AdvanceNextBillDate(DateOnly current, CustomerContract contract) =>
-        AdvanceNextBillDate(current, AnnualBillingHelper.BillingMonths(contract));
+        SnapToMonthBeforeNextService(
+            AdvanceNextBillDate(current, AnnualBillingHelper.BillingMonths(contract)),
+            contract.ServiceMonthMask);
 
     public static DateOnly RewindNextBillDate(DateOnly current, int monthCount) =>
         current.AddMonths(-Math.Max(monthCount, 1));
+
+    public static DateOnly RewindNextBillDate(DateOnly current, CustomerContract contract) =>
+        RewindToServiceMonth(
+            RewindNextBillDate(current, AnnualBillingHelper.BillingMonths(contract)),
+            contract.ServiceMonthMask);
+
+    public static DateOnly SnapToMonthBeforeNextService(DateOnly date, int serviceMonthMask)
+    {
+        if (serviceMonthMask == 0 || IsMonthInService(serviceMonthMask, date.Month))
+            return date;
+
+        for (var i = 1; i <= 12; i++)
+        {
+            var nextSelected = date.AddMonths(i);
+            if (IsMonthInService(serviceMonthMask, nextSelected.Month))
+                return nextSelected.AddMonths(-1);
+        }
+
+        return date;
+    }
+
+    static DateOnly RewindToServiceMonth(DateOnly date, int serviceMonthMask)
+    {
+        if (serviceMonthMask == 0 || IsMonthInService(serviceMonthMask, date.Month))
+            return date;
+
+        for (var i = 1; i <= 12; i++)
+        {
+            var previousSelected = date.AddMonths(-i);
+            if (IsMonthInService(serviceMonthMask, previousSelected.Month))
+                return previousSelected;
+        }
+
+        return date;
+    }
 
     public static int InclusiveMonthCount(DateOnly start, DateOnly end)
     {

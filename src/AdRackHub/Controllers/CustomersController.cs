@@ -21,6 +21,8 @@ public class CustomersController : Controller
     private readonly HighValueProspectProximityService _highValueProximity;
     private readonly CustomerGeocodeService _geocodeService;
     private readonly CustomerNeedsMoreInfoService _needsMoreInfoService;
+    private readonly BrochureLabelIdService _brochureLabelIds;
+    private readonly BrochureWarehouseSheetService _warehouseSheet;
     private readonly UserManager<ApplicationUser> _userManager;
 
     public CustomersController(
@@ -32,6 +34,8 @@ public class CustomersController : Controller
         HighValueProspectProximityService highValueProximity,
         CustomerGeocodeService geocodeService,
         CustomerNeedsMoreInfoService needsMoreInfoService,
+        BrochureLabelIdService brochureLabelIds,
+        BrochureWarehouseSheetService warehouseSheet,
         UserManager<ApplicationUser> userManager)
     {
         _context = context;
@@ -42,6 +46,8 @@ public class CustomersController : Controller
         _highValueProximity = highValueProximity;
         _geocodeService = geocodeService;
         _needsMoreInfoService = needsMoreInfoService;
+        _brochureLabelIds = brochureLabelIds;
+        _warehouseSheet = warehouseSheet;
         _userManager = userManager;
     }
 
@@ -147,7 +153,7 @@ public class CustomersController : Controller
     private static CustomerIndexSummary BuildSummary(IReadOnlyList<Customer> customers)
     {
         var withContracts = customers.Where(c => c.Contracts.Count > 0).ToList();
-        var totalRevenue = withContracts.Sum(CustomerRevenue.GetAnnual);
+        var totalRevenue = withContracts.Sum(c => CustomerRevenue.GetAnnual(c));
         return new CustomerIndexSummary
         {
             ClientCount = customers.Count,
@@ -177,6 +183,7 @@ public class CustomersController : Controller
                         .ThenInclude(r => r.Stops)
             .Include(c => c.BrochureScans.OrderByDescending(s => s.UploadedAt))
             .Include(c => c.BrochureInventories.OrderByDescending(i => i.InventoryDate).ThenByDescending(i => i.CreatedAt))
+            .Include(c => c.WarehouseLocations.OrderBy(l => l.SortOrder).ThenBy(l => l.Id))
             .Include(c => c.Notes.OrderByDescending(n => n.CreatedAt))
                 .ThenInclude(n => n.SubNotes.OrderBy(s => s.CreatedAt))
             .Include(c => c.AccountManager)
@@ -337,18 +344,57 @@ public class CustomersController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> SaveWarehouseLocation(int customerId, string? rack, string? bin)
+    public async Task<IActionResult> AddWarehouseLocation(int customerId, string? warehouse, string? rack, string? bin, string? shelf)
     {
-        var customer = await _context.Customers.FirstOrDefaultAsync(c => c.Id == customerId);
+        var customer = await _context.Customers
+            .Include(c => c.WarehouseLocations)
+            .FirstOrDefaultAsync(c => c.Id == customerId);
         if (customer == null)
             return NotFound();
 
-        customer.WarehouseRack = WarehouseLocation.NullIfEmpty(rack);
-        customer.WarehouseBin = WarehouseLocation.NullIfEmpty(bin);
+        rack = WarehouseLocation.NullIfEmpty(rack);
+        bin = WarehouseLocation.NullIfEmpty(bin);
+        if (rack == null && bin == null)
+        {
+            TempData["Error"] = "Enter a rack or bin for this location.";
+            return RedirectToAction(nameof(Details), new { id = customerId, tab = "brochures" });
+        }
+
+        var beforeCount = customer.WarehouseLocations.Count;
+        var location = WarehouseLocation.Upsert(
+            customer,
+            WarehouseLocation.Parse(warehouse),
+            rack,
+            bin,
+            WarehouseLocation.ParseShelf(shelf));
         await _context.SaveChangesAsync();
-        TempData["Message"] = customer.WarehouseLocationLabel == null
-            ? "Warehouse location cleared."
-            : $"Warehouse location set to {customer.WarehouseLocationLabel}.";
+        TempData["Message"] = beforeCount == customer.WarehouseLocations.Count
+            ? $"Location {location?.Label} is already saved."
+            : $"Added warehouse location {location?.Label}.";
+        return RedirectToAction(nameof(Details), new { id = customerId, tab = "brochures" });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteWarehouseLocation(int id, int customerId)
+    {
+        var customer = await _context.Customers
+            .Include(c => c.WarehouseLocations)
+            .FirstOrDefaultAsync(c => c.Id == customerId);
+        if (customer == null)
+            return NotFound();
+
+        var location = customer.WarehouseLocations.FirstOrDefault(l => l.Id == id);
+        if (location != null)
+        {
+            customer.WarehouseLocations.Remove(location);
+            WarehouseLocation.SyncPrimary(customer);
+            await _context.SaveChangesAsync();
+            TempData["Message"] = location.Label == null
+                ? "Warehouse location removed."
+                : $"Removed warehouse location {location.Label}.";
+        }
+
         return RedirectToAction(nameof(Details), new { id = customerId, tab = "brochures" });
     }
 
@@ -358,11 +404,15 @@ public class CustomersController : Controller
         int customerId,
         DateOnly? inventoryDate,
         int? quantity,
+        string? warehouse,
         string? rack,
         string? bin,
+        string? shelf,
         string? notes)
     {
-        var customer = await _context.Customers.FirstOrDefaultAsync(c => c.Id == customerId);
+        var customer = await _context.Customers
+            .Include(c => c.WarehouseLocations)
+            .FirstOrDefaultAsync(c => c.Id == customerId);
         if (customer == null)
             return NotFound();
 
@@ -372,26 +422,35 @@ public class CustomersController : Controller
             return RedirectToAction(nameof(Details), new { id = customerId, tab = "brochures" });
         }
 
-        var locationRack = WarehouseLocation.NullIfEmpty(rack) ?? customer.WarehouseRack;
-        var locationBin = WarehouseLocation.NullIfEmpty(bin) ?? customer.WarehouseBin;
+        var locationRack = WarehouseLocation.NullIfEmpty(rack);
+        var locationBin = WarehouseLocation.NullIfEmpty(bin);
+        var locationWarehouse = WarehouseLocation.Parse(warehouse);
+        var locationShelf = WarehouseLocation.ParseShelf(shelf);
+        if (locationRack == null && locationBin == null)
+        {
+            var primary = customer.OrderedWarehouseLocations.FirstOrDefault();
+            locationWarehouse = primary?.Warehouse ?? customer.Warehouse ?? locationWarehouse;
+            locationRack = primary?.Rack ?? customer.WarehouseRack;
+            locationBin = primary?.Bin ?? customer.WarehouseBin;
+            locationShelf = locationShelf ?? primary?.Shelf ?? customer.WarehouseShelf;
+        }
+
+        locationWarehouse = WarehouseLocation.DefaultKy(locationWarehouse, locationRack, locationBin);
+        WarehouseLocation.Upsert(customer, locationWarehouse, locationRack, locationBin, locationShelf);
 
         _context.CustomerBrochureInventories.Add(new CustomerBrochureInventory
         {
             CustomerId = customerId,
             Quantity = quantity.Value,
             InventoryDate = inventoryDate ?? DateOnly.FromDateTime(DateTime.Today),
+            Warehouse = locationWarehouse,
             Rack = locationRack,
             Bin = locationBin,
+            Shelf = locationShelf,
             Notes = WarehouseLocation.NullIfEmpty(notes),
             CreatedAt = DateTime.UtcNow,
             CreatedBy = await GetCurrentUserLabelAsync()
         });
-
-        if (WarehouseLocation.NullIfEmpty(rack) != null || WarehouseLocation.NullIfEmpty(bin) != null)
-        {
-            customer.WarehouseRack = locationRack;
-            customer.WarehouseBin = locationBin;
-        }
 
         await _context.SaveChangesAsync();
         TempData["Message"] = "Inventory recorded.";
@@ -405,8 +464,10 @@ public class CustomersController : Controller
         int customerId,
         DateOnly? inventoryDate,
         int? quantity,
+        string? warehouse,
         string? rack,
         string? bin,
+        string? shelf,
         string? notes)
     {
         var inventory = await _context.CustomerBrochureInventories
@@ -424,14 +485,18 @@ public class CustomersController : Controller
         inventory.InventoryDate = inventoryDate ?? inventory.InventoryDate;
         inventory.Rack = WarehouseLocation.NullIfEmpty(rack);
         inventory.Bin = WarehouseLocation.NullIfEmpty(bin);
+        inventory.Warehouse = WarehouseLocation.DefaultKy(
+            WarehouseLocation.Parse(warehouse),
+            inventory.Rack,
+            inventory.Bin);
+        inventory.Shelf = WarehouseLocation.ParseShelf(shelf);
         inventory.Notes = WarehouseLocation.NullIfEmpty(notes);
 
-        var customer = await _context.Customers.FirstOrDefaultAsync(c => c.Id == customerId);
-        if (customer != null && (inventory.Rack != null || inventory.Bin != null))
-        {
-            customer.WarehouseRack = inventory.Rack;
-            customer.WarehouseBin = inventory.Bin;
-        }
+        var customer = await _context.Customers
+            .Include(c => c.WarehouseLocations)
+            .FirstOrDefaultAsync(c => c.Id == customerId);
+        if (customer != null && (inventory.Warehouse != null || inventory.Rack != null || inventory.Bin != null || inventory.Shelf != null))
+            WarehouseLocation.Upsert(customer, inventory.Warehouse, inventory.Rack, inventory.Bin, inventory.Shelf);
 
         await _context.SaveChangesAsync();
         TempData["Message"] = "Inventory record updated.";
@@ -581,19 +646,18 @@ public class CustomersController : Controller
 
     public async Task<IActionResult> Create(CustomerType type = CustomerType.Customer, int? routeId = null)
     {
-        if (!Enum.IsDefined(type))
-            type = CustomerType.Customer;
+        if (!Enum.IsDefined(type) || type == CustomerType.ExpandedProspect)
+            type = type == CustomerType.ExpandedProspect ? CustomerType.Prospect : CustomerType.Customer;
 
         var currentUser = await _userManager.GetUserAsync(User);
         await PopulateAccountManagersAsync(currentUser?.Id);
-        await PopulateExpandedProspectRoutesAsync(type == CustomerType.ExpandedProspect ? routeId : null);
+        PopulateCustomerTypes(type);
         return View(new Customer
         {
             Status = CustomerStatus.Active,
             Type = type,
             AccountManagerId = currentUser?.Id,
-            InvoiceReceiptMethod = InvoiceReceiptMethod.Mail,
-            ExpandedProspectRouteId = type == CustomerType.ExpandedProspect ? routeId : null
+            InvoiceReceiptMethod = InvoiceReceiptMethod.Mail
         });
     }
 
@@ -601,8 +665,8 @@ public class CustomersController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(Customer customer)
     {
-        if (!Enum.IsDefined(customer.Type))
-            customer.Type = CustomerType.Customer;
+        if (!Enum.IsDefined(customer.Type) || customer.Type == CustomerType.ExpandedProspect)
+            customer.Type = customer.Type == CustomerType.ExpandedProspect ? CustomerType.Prospect : CustomerType.Customer;
 
         if (string.IsNullOrWhiteSpace(customer.AccountManagerId))
             customer.AccountManagerId = (await _userManager.GetUserAsync(User))?.Id;
@@ -612,6 +676,8 @@ public class CustomersController : Controller
             customer.NeedsMoreInfo = CustomerContactCompleteness.NeedsMoreInfo(customer);
             _context.Add(customer);
             await _context.SaveChangesAsync();
+            if (customer.Type == CustomerType.Customer)
+                await _brochureLabelIds.AssignIfMissingAsync(customer.Id);
             if (CustomerAddressHelper.HasGeocodableAddress(customer))
                 await _geocodeService.UpdateCoordinatesOnlyAsync(customer.Id);
             await _needsMoreInfoService.RefreshAsync(customer.Id);
@@ -621,7 +687,7 @@ public class CustomersController : Controller
             return RedirectToAction(nameof(Details), new { id = customer.Id });
         }
         await PopulateAccountManagersAsync(customer.AccountManagerId);
-        await PopulateExpandedProspectRoutesAsync(customer.ExpandedProspectRouteId);
+        PopulateCustomerTypes(customer.Type);
         return View(customer);
     }
 
@@ -631,7 +697,7 @@ public class CustomersController : Controller
         var customer = await _context.Customers.FindAsync(id);
         if (customer == null) return NotFound();
         await PopulateAccountManagersAsync(customer.AccountManagerId);
-        await PopulateExpandedProspectRoutesAsync(customer.ExpandedProspectRouteId);
+        PopulateCustomerTypes(customer.Type);
         return View(customer);
     }
 
@@ -648,6 +714,11 @@ public class CustomersController : Controller
                 return NotFound();
 
             var addressChanged = CustomerAddressHelper.AddressChanged(existing, customer);
+            customer.BrochureCode = existing.BrochureCode;
+            customer.Warehouse = existing.Warehouse;
+            customer.WarehouseRack = existing.WarehouseRack;
+            customer.WarehouseBin = existing.WarehouseBin;
+            customer.WarehouseShelf = existing.WarehouseShelf;
 
             if (addressChanged)
             {
@@ -679,7 +750,7 @@ public class CustomersController : Controller
             return RedirectToAction(nameof(Details), new { id = customer.Id });
         }
         await PopulateAccountManagersAsync(customer.AccountManagerId);
-        await PopulateExpandedProspectRoutesAsync(customer.ExpandedProspectRouteId);
+        PopulateCustomerTypes(customer.Type);
         return View(customer);
     }
 
@@ -700,17 +771,13 @@ public class CustomersController : Controller
             selectedId);
     }
 
-    private async Task PopulateExpandedProspectRoutesAsync(int? selectedId = null)
+    private void PopulateCustomerTypes(CustomerType selected)
     {
-        var routes = await _context.Routes
-            .AsNoTracking()
-            .Where(r => r.Status == RouteStatus.Active
-                || (selectedId.HasValue && r.Id == selectedId.Value))
-            .OrderBy(r => r.RouteName)
-            .Select(r => new { r.Id, r.RouteName })
-            .ToListAsync();
-
-        ViewBag.ExpandedProspectRoutes = new SelectList(routes, "Id", "RouteName", selectedId);
+        var types = Enum.GetValues<CustomerType>()
+            .Where(type => type != CustomerType.ExpandedProspect || type == selected)
+            .Select(type => new { Id = type, Name = CustomerTypeLabels.Singular(type) })
+            .ToList();
+        ViewBag.CustomerTypes = new SelectList(types, "Id", "Name", selected);
     }
 
     [HttpPost]
@@ -720,12 +787,15 @@ public class CustomersController : Controller
         var customer = await _context.Customers.FindAsync(id);
         if (customer == null) return NotFound();
 
+        if (toType == CustomerType.ExpandedProspect)
+            toType = CustomerType.Prospect;
+
         if (toType.HasValue && Enum.IsDefined(toType.Value) && toType.Value != customer.Type)
             customer.Type = toType.Value;
         else if (!toType.HasValue)
-            customer.Type = customer.Type == CustomerType.Prospect
-                ? CustomerType.Customer
-                : CustomerType.Prospect;
+            customer.Type = customer.Type == CustomerType.Customer
+                ? CustomerType.Prospect
+                : CustomerType.Customer;
 
         if (customer.Type == CustomerType.Customer)
         {
@@ -737,6 +807,9 @@ public class CustomersController : Controller
         }
 
         await _context.SaveChangesAsync();
+
+        if (customer.Type == CustomerType.Customer)
+            await _brochureLabelIds.AssignIfMissingAsync(customer.Id);
 
         await _needsMoreInfoService.RefreshAsync(customer.Id);
 
@@ -918,5 +991,49 @@ public class CustomersController : Controller
             stream,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             CustomerRouteMatrixService.SampleFileName);
+    }
+
+    public IActionResult ImportWarehouse()
+    {
+        return View();
+    }
+
+    public async Task<IActionResult> DownloadWarehouseSheet(CancellationToken cancellationToken)
+    {
+        var stream = new MemoryStream();
+        await _warehouseSheet.ExportAsync(stream, cancellationToken);
+        stream.Position = 0;
+        return File(
+            stream,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            BrochureWarehouseSheetService.FileName);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ImportWarehouse(IFormFile? file, CancellationToken cancellationToken)
+    {
+        if (file == null || file.Length == 0)
+        {
+            ModelState.AddModelError("", "Choose an Excel file to import.");
+            return View();
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var result = await _warehouseSheet.ImportAsync(stream, await GetCurrentUserLabelAsync(), cancellationToken);
+            var message =
+                $"Imported warehouse sheet: {result.LocationsUpdated} locations updated, {result.InventoryLogged} inventory counts logged, {result.Unchanged} unchanged.";
+            if (result.Unmatched.Count > 0)
+                message += $" Unmatched names: {string.Join(", ", result.Unmatched.Take(12))}{(result.Unmatched.Count > 12 ? "…" : "")}.";
+            TempData["Message"] = message;
+            return RedirectToAction(nameof(Index));
+        }
+        catch (Exception ex)
+        {
+            ModelState.AddModelError("", ex.Message);
+            return View();
+        }
     }
 }

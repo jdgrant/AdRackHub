@@ -27,8 +27,8 @@
                         {
                             <li class="nav-item"><a class="nav-link" asp-controller="Customers" asp-action="Index">Customers</a></li>
                             <li class="nav-item"><a class="nav-link" asp-controller="Prospects" asp-action="Index">Prospects</a></li>
-                            <li class="nav-item"><a class="nav-link" asp-controller="ExpandedProspects" asp-action="Index">Expanded Prospects</a></li>
                             <li class="nav-item"><a class="nav-link" asp-controller="Billing" asp-action="Index">Billing</a></li>
+                            <li class="nav-item"><a class="nav-link" asp-controller="Billing" asp-action="Forecast">Forecast</a></li>
                         }
                         @if (User.IsInRole(AppRoles.RoutesStops) || User.IsInRole(AppRoles.Admin))
                         {

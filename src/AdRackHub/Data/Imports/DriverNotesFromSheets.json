@@ -1,0 +1,746 @@
+[
+  {
+    "sheet": "hotel",
+    "title": "CINCINNATI CUSTOMERS",
+    "brochureName": "BUTLER COUNTY VB MAGAZINE *in LOU",
+    "notes": "DBL (S.1/2 NoRT)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "CINCINNATI CUSTOMERS",
+    "brochureName": "CINCY REGION VISITORS GUIDE- MAG",
+    "notes": "DBL"
+  },
+  {
+    "sheet": "hotel",
+    "title": "CINCINNATI CUSTOMERS",
+    "brochureName": "GREAT MIAMI RIVERWAY **LOU & TIC",
+    "notes": "(S.1/2 NoRT)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "CINCINNATI CUSTOMERS",
+    "brochureName": "MEDINA COUNTY CVB DBL",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "hotel",
+    "title": "CINCINNATI CUSTOMERS",
+    "brochureName": "NATIONAL UNDERGROUND RAILROAD FREEDOM CENTER",
+    "notes": "??? OUT??"
+  },
+  {
+    "sheet": "hotel",
+    "title": "CINCINNATI CUSTOMERS",
+    "brochureName": "OHIO AMISH COUNTRY-HolmesCO- DIGEST",
+    "notes": "DBL (W/2025 MAG)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "CINCINNATI CUSTOMERS",
+    "brochureName": "SQUIRE BOONE CAVERNS",
+    "notes": "(1-12 LOU) (4-9 Lex, Cin, co, No"
+  },
+  {
+    "sheet": "hotel",
+    "title": "CINCINNATI CUSTOMERS",
+    "brochureName": "STEPHEN FOSTER THE MUSICAL",
+    "notes": "add N.Rte & KY/TN I"
+  },
+  {
+    "sheet": "hotel",
+    "title": "LOUISVILLE CUSTOMERS",
+    "brochureName": "HOLIDAY WORLD",
+    "notes": "(1-12 LOU) (4-9 LEX, I-65) '2026"
+  },
+  {
+    "sheet": "hotel",
+    "title": "LOUISVILLE CUSTOMERS",
+    "brochureName": "KENTUCKY KINGDOM",
+    "notes": "LOU 5-12'26, LEX 5-10'26"
+  },
+  {
+    "sheet": "hotel",
+    "title": "LOUISVILLE CUSTOMERS",
+    "brochureName": "LOST RIVER CAVE & UNDERGROUND BOAT TOURS",
+    "notes": "(1-12 I-65) (3-9 LOU)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "LOUISVILLE CUSTOMERS",
+    "brochureName": "LOUISVILLE Z0O",
+    "notes": "(1-12 LOU, LEX) (5-10 NO Rt)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "LOUISVILLE CUSTOMERS",
+    "brochureName": "OHIO AMISH COUNTRY-HolmesCO- DIGEST",
+    "notes": "DBL (W/2025 MAG)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "LOUISVILLE CUSTOMERS",
+    "brochureName": "SIP Ohio Wine Industries",
+    "notes": "DBL- add N.RT 5'26"
+  },
+  {
+    "sheet": "hotel",
+    "title": "LOUISVILLE CUSTOMERS",
+    "brochureName": "SQUIRE BOONE CAVERNS",
+    "notes": "(1-12 LOU) (4-9 Lex, Cin, Co, No"
+  },
+  {
+    "sheet": "hotel",
+    "title": "LOUISVILLE CUSTOMERS",
+    "brochureName": "STEPHEN FOSTER THE MUSICAL",
+    "notes": "add N.Rte & KY/TN I-"
+  },
+  {
+    "sheet": "hotel",
+    "title": "LEXINGTON CUSTOMERS",
+    "brochureName": "CINCY REGION VISITORS GUIDE- MAG",
+    "notes": "DBL"
+  },
+  {
+    "sheet": "hotel",
+    "title": "LEXINGTON CUSTOMERS",
+    "brochureName": "HARRISON CO/ V.GUIDE ***magazine***",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "hotel",
+    "title": "LEXINGTON CUSTOMERS",
+    "brochureName": "HOLIDAY WORLD",
+    "notes": "(1-12 LOU) (4-9 LEX, I-65) ' 2026"
+  },
+  {
+    "sheet": "hotel",
+    "title": "LEXINGTON CUSTOMERS",
+    "brochureName": "KENTUCKY KINGDOM",
+    "notes": "LOU 5-12'26, LEX 5-10'26"
+  },
+  {
+    "sheet": "hotel",
+    "title": "LEXINGTON CUSTOMERS",
+    "brochureName": "LOUISVILLE Z00",
+    "notes": "(1-12 LOU, LEX) (5-10 NO Rt)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "LEXINGTON CUSTOMERS",
+    "brochureName": "OHIO AMISH COUNTRY-HolmesCO- DIGEST",
+    "notes": "DBL (W/2025 MAG)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "LEXINGTON CUSTOMERS",
+    "brochureName": "SQUIRE BOONE CAVERNS",
+    "notes": "(1-12 LOU) (4-9 Lex, Cin, co, NO"
+  },
+  {
+    "sheet": "hotel",
+    "title": "LEXINGTON CUSTOMERS",
+    "brochureName": "STEPHEN FOSTER THE MUSICAL",
+    "notes": "add N.Rte & KY/IN I-"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHERN INTERSTATE ROUTE CUSTOMERS",
+    "brochureName": "BUTLER COUNTY VB MAGAZINE *in LOU",
+    "notes": "DBL (S.1/2 NORT)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHERN INTERSTATE ROUTE CUSTOMERS",
+    "brochureName": "DARKE COUNTY CVB **TIC WHSE**",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHERN INTERSTATE ROUTE CUSTOMERS",
+    "brochureName": "GREAT MIAMI RIVERWAY **LOU & TIC",
+    "notes": "(S.1/2 NoRT)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHERN INTERSTATE ROUTE CUSTOMERS",
+    "brochureName": "HARRISON CO/ V.GUIDE ***magazine***",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHERN INTERSTATE ROUTE CUSTOMERS",
+    "brochureName": "HIDDEN RIVER CAVE & MUSEUM",
+    "notes": "(8.1/2 NoRT)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHERN INTERSTATE ROUTE CUSTOMERS",
+    "brochureName": "LOUISVILLE ZOO",
+    "notes": "(1-12 LOU, LEX) (5-10 NO Rt)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHERN INTERSTATE ROUTE CUSTOMERS",
+    "brochureName": "MAUMEE ANTIQUE MALL **TIC WHSE**",
+    "notes": "(N.1/2 NoRt)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHERN INTERSTATE ROUTE CUSTOMERS",
+    "brochureName": "MEDINA COUNTY CVB DBL",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHERN INTERSTATE ROUTE CUSTOMERS",
+    "brochureName": "MIAMI CO CVB mags **TIC WHSE/LOU WHSE 7'24**",
+    "notes": "(N.1/2NoRt DBL, NEO sng]"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHERN INTERSTATE ROUTE CUSTOMERS",
+    "brochureName": "MILLER FERRIES/PUT-IN-BAY",
+    "notes": "(N.1/2 NORT)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHERN INTERSTATE ROUTE CUSTOMERS",
+    "brochureName": "/NATIONAL UNDERGROUND RAILROAD FREEDOM CENTER",
+    "notes": "223 OUT??"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHERN INTERSTATE ROUTE CUSTOMERS",
+    "brochureName": "SENECA CAVERNS **2026 Lou whse**",
+    "notes": "N.Rte ONLY"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHERN INTERSTATE ROUTE CUSTOMERS",
+    "brochureName": "SIP Ohio Wine Industries MAG",
+    "notes": "DBL- add N.RT 5'26"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHERN INTERSTATE ROUTE CUSTOMERS",
+    "brochureName": "SQUIRE BOONE CAVERNS",
+    "notes": "(1-12 LOU) (4-9 Lex, Cin, CO, NO"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHERN INTERSTATE ROUTE CUSTOMERS",
+    "brochureName": "STAN HYWET HALL & GARDENS",
+    "notes": "? LATE SUMMER RE:XMAS BROCH"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHERN INTERSTATE ROUTE CUSTOMERS",
+    "brochureName": "STEPHEN FOSTER THE MUSICAL",
+    "notes": "add N.Rte & KY/TN I"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHEAST OHIO ROUTE CUSTOMERS",
+    "brochureName": "CAMBRIDGE/GUERNSEY COUNTY *in LOU",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHEAST OHIO ROUTE CUSTOMERS",
+    "brochureName": "CANTON Travel Guide- mags ***AT TIC WHSE***",
+    "notes": "DBL"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHEAST OHIO ROUTE CUSTOMERS",
+    "brochureName": "GALLIA COUNTY OH VISITORS GUIDE",
+    "notes": "ADD NEO"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHEAST OHIO ROUTE CUSTOMERS",
+    "brochureName": "MIAMI CO CVB mags **TIC WHSE/LOU WHSE 7'24**",
+    "notes": "(N.1/2NoRt DBL, NEO sng"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHEAST OHIO ROUTE CUSTOMERS",
+    "brochureName": "MILLER FERRIES/PUT-IN-BAY",
+    "notes": "(N. 1/2 NoRT)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHEAST OHIO ROUTE CUSTOMERS",
+    "brochureName": "RABBIT RUN THEATER **TIC WHSE**",
+    "notes": "(add CO)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHEAST OHIO ROUTE CUSTOMERS",
+    "brochureName": "TUSCARAWAS COUNTY CVB **TIC WHSE**",
+    "notes": "DOUBLE (1-12ok)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "NORTHEAST OHIO ROUTE CUSTOMERS",
+    "brochureName": "ZANESVILLE-MUSKINGUM COUNTY CVB mag",
+    "notes": "DBL- NEO"
+  },
+  {
+    "sheet": "hotel",
+    "title": "CENTRAL OHIO ROUTE CUSTOMERS",
+    "brochureName": "BUTLER COUNTY VB MAGAZINE *in LOU",
+    "notes": "DBL (S.1/2 NoRT)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "CENTRAL OHIO ROUTE CUSTOMERS",
+    "brochureName": "CAMBRIDGE/GUERNSEY COUNTY *in LOU",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "hotel",
+    "title": "CENTRAL OHIO ROUTE CUSTOMERS",
+    "brochureName": "CANTON Travel Guide- mags ***AT TIC WHSE***",
+    "notes": "DBL"
+  },
+  {
+    "sheet": "hotel",
+    "title": "CENTRAL OHIO ROUTE CUSTOMERS",
+    "brochureName": "DARKE COUNTY CVB **TIC WHSE**",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "hotel",
+    "title": "CENTRAL OHIO ROUTE CUSTOMERS",
+    "brochureName": "LOGAN COUNTY VG- OHIO (MAG) **TIC WHSE**",
+    "notes": "DBL"
+  },
+  {
+    "sheet": "hotel",
+    "title": "CENTRAL OHIO ROUTE CUSTOMERS",
+    "brochureName": "MILLER FERRIES/PUT-IN-BAY",
+    "notes": "(N.1/2 NORT)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "CENTRAL OHIO ROUTE CUSTOMERS",
+    "brochureName": "NATIONAL UNDERGROUND RAILROAD FREEDOM CENTER",
+    "notes": "??? OUT??"
+  },
+  {
+    "sheet": "hotel",
+    "title": "CENTRAL OHIO ROUTE CUSTOMERS",
+    "brochureName": "NOBLE COUNTY OHIO VG MAG- **TIC WHSE**",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "hotel",
+    "title": "CENTRAL OHIO ROUTE CUSTOMERS",
+    "brochureName": "OHIO AMISH COUNTRY-HolmesCO- DIGEST",
+    "notes": "DBL (W/2025 MAG)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "CENTRAL OHIO ROUTE CUSTOMERS",
+    "brochureName": "OHIO'S AMISH COUNTRY MAG- **TIC whse**",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "hotel",
+    "title": "CENTRAL OHIO ROUTE CUSTOMERS",
+    "brochureName": "RABBIT RUN THEATER **TIC WESE**",
+    "notes": "(add CO)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "CENTRAL OHIO ROUTE CUSTOMERS",
+    "brochureName": "SPRINGFIELD OH VISITORS GUIDE **TIC WHSE***",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "hotel",
+    "title": "CENTRAL OHIO ROUTE CUSTOMERS",
+    "brochureName": "SQUIRE BOONE CAVERNS",
+    "notes": "(1-12 LOU) (4-9 Lex, Cin, Co, NO"
+  },
+  {
+    "sheet": "hotel",
+    "title": "I-75 ROUTE CUSTOMERS",
+    "brochureName": "SIP Ohio Wine Industries MAG",
+    "notes": "DBL- add N.RT 5'26"
+  },
+  {
+    "sheet": "hotel",
+    "title": "I-75 ROUTE CUSTOMERS",
+    "brochureName": "STEPHEN FOSTER THE MUSICAL",
+    "notes": "add N.Rte & KY/TN I-75"
+  },
+  {
+    "sheet": "hotel",
+    "title": "I-65 ROUTE CUSTOMERS",
+    "brochureName": "CINCY REGION VISITORS GUIDE- MAG",
+    "notes": "DBL"
+  },
+  {
+    "sheet": "hotel",
+    "title": "I-65 ROUTE CUSTOMERS",
+    "brochureName": "GALLIA COUNTY OH VISITORS GUIDE",
+    "notes": "ADD NEO"
+  },
+  {
+    "sheet": "hotel",
+    "title": "I-65 ROUTE CUSTOMERS",
+    "brochureName": "HIDDEN RIVER CAVE & MUSEUM",
+    "notes": "(S.1/2 NORT)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "I-65 ROUTE CUSTOMERS",
+    "brochureName": "HOLIDAY WORLD",
+    "notes": "(1-12 LOU) (4-9 LEX, I- 65) ' 202"
+  },
+  {
+    "sheet": "hotel",
+    "title": "I-65 ROUTE CUSTOMERS",
+    "brochureName": "LOST RIVER CAVE & UNDERGROUND BOAT TOURS",
+    "notes": "(1-12 I-65) (3-9 LOU)"
+  },
+  {
+    "sheet": "hotel",
+    "title": "I-65 ROUTE CUSTOMERS",
+    "brochureName": "SIP Ohio Wine Industries",
+    "notes": "DBL- add N.RT 5'26"
+  },
+  {
+    "sheet": "hotel",
+    "title": "I-65 ROUTE CUSTOMERS",
+    "brochureName": "STEPHEN FOSTER THE MUSICAL",
+    "notes": "add N.Rte & KY/TN I"
+  },
+  {
+    "sheet": "hotel",
+    "title": "MID-TN CUSTOMERS",
+    "brochureName": "STEPHEN FOSTER THE MUSICAL",
+    "notes": "add N.Rte & KY/TN I-75"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #1- POWELL CO- MIN PKWY",
+    "brochureName": "KENTUCKY KINGDOM",
+    "notes": "(5-8'26 ALL) (9-12'26 #17,18)"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #1- POWELL CO- MIN PKWY",
+    "brochureName": "KENTUCKY VISITOR'S GUIDES",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #1- POWELL CO- MIN PKWY",
+    "brochureName": "STEPHEN FOSTER STORY",
+    "notes": "add #1"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #5- CLARK CO/WINCESTER I-64 EAST (CLOSING )",
+    "brochureName": "KENTUCKY KINGDOM",
+    "notes": "(5-8'26 ALL) (9-12'26 #17,18)"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #5- CLARK CO/WINCESTER I-64 EAST (CLOSING )",
+    "brochureName": "KENTUCKY VISITOR'S GUIDES",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #7- ROWAN CO / MOREHEAD I-64 EAST",
+    "brochureName": "KENTUCKY KINGDOM",
+    "notes": "(5-8'26 ALL) (9-12'26 #17,18)"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #7- ROWAN CO / MOREHEAD I-64 EAST",
+    "brochureName": "KENTUCKY VISITOR'S GUIDES",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #8- ROWAN CO / MOREHEAD I-64 WEST",
+    "brochureName": "KENTUCKY KINGDOM",
+    "notes": "(5-8'26 ALL) (9-12'26 #17,18)"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #8- ROWAN CO / MOREHEAD I-64 WEST",
+    "brochureName": "KENTUCKY VISITOR'S GUIDES",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #8- ROWAN CO / MOREHEAD I-64 WEST",
+    "brochureName": "STEPHEN FOSTER STORY",
+    "notes": "add #1"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #9- CARTER CO / GRAYSON I-64 EAST",
+    "brochureName": "KENTUCKY KINGDOM",
+    "notes": "(5-8'26 ALL) (9-12'26 #17,18)"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #9- CARTER CO / GRAYSON I-64 EAST",
+    "brochureName": "KENTUCKY VISITOR'S GUIDES",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #3- WOODFORD CO / MIDWAY I-64 EAST",
+    "brochureName": "KENTUCKY KINGDOM",
+    "notes": "(5-8'26 ALL) (9-12'26 #17,18)"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #3- WOODFORD CO / MIDWAY I-64 EAST",
+    "brochureName": "KENTUCKY VISITOR'S GUIDES",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #3- WOODFORD CO / MIDWAY I-64 EAST",
+    "brochureName": "LICKING VALLEY ADVENTURES",
+    "notes": "(OUT 11'26)"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #3- WOODFORD CO / MIDWAY I-64 EAST",
+    "brochureName": "MARKET AMERICA (REG KY) *RED BOOK*",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #3- WOODFORD CO / MIDWAY I-64 EAST",
+    "brochureName": "STEPHEN FOSTER STORY",
+    "notes": "add #1"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #4- WOODFORD CO / MIDWAY I-64 WEST 91-7/24",
+    "brochureName": "KENTUCKY KINGDOM",
+    "notes": "(5-8'26 ALL) (9-12'26 #17,18)"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #4- WOODFORD CO / MIDWAY I-64 WEST 91-7/24",
+    "brochureName": "KENTUCKY VISITOR'S GUIDES",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #4- WOODFORD CO / MIDWAY I-64 WEST 91-7/24",
+    "brochureName": "LICKING VALLEY ADVENTURES",
+    "notes": "(OUT 11'26)"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #4- WOODFORD CO / MIDWAY I-64 WEST 91-7/24",
+    "brochureName": "MARKET AMERICA (REG KY) *RED BOOK*",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #4- WOODFORD CO / MIDWAY I-64 WEST 91-7/24",
+    "brochureName": "STEPHEN FOSTER STORY",
+    "notes": "add #-"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #22- SCOTT CO / GEORGETOWN I-75 NORTH",
+    "brochureName": "CINCY REGION VISITORS GUIDE- MAG",
+    "notes": "DBL PKT"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #22- SCOTT CO / GEORGETOWN I-75 NORTH",
+    "brochureName": "KENTUCKY KINGDOM",
+    "notes": "(5-8'26 ALL) (9-12'26 #17,18)"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #22- SCOTT CO / GEORGETOWN I-75 NORTH",
+    "brochureName": "KENTUCKY VISITOR'S GUIDES",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #22- SCOTT CO / GEORGETOWN I-75 NORTH",
+    "brochureName": "MARKET AMERICA (REG KY) *RED BOOK*",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #23- SCOTT CO / GEORGETOWN I-75 SOUTH",
+    "brochureName": "CLINTON CO/DALE HOLLOW-LAKE CUM *MAG*",
+    "notes": "thru 9'2026 DBL"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #23- SCOTT CO / GEORGETOWN I-75 SOUTH",
+    "brochureName": "KENTUCKY KINGDOM",
+    "notes": "(5-8'26 ALL) (9-12'26 #17,18)"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #23- SCOTT CO / GEORGETOWN I-75 SOUTH",
+    "brochureName": "KENTUCKY VISITOR'S GUIDES",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #23- SCOTT CO / GEORGETOWN I-75 SOUTH",
+    "brochureName": "MARKET AMERICA (REG KY) *RED BOOK*",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #23- SCOTT CO / GEORGETOWN I-75 SOUTH",
+    "brochureName": "STEPHEN FOSTER STORY",
+    "notes": "add #1"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #24- BOONE CO WALTON/FLORENCE I-75 NORTH",
+    "brochureName": "CINCY REGION VISITORS GUIDE- MAG",
+    "notes": "DBL PKT"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #24- BOONE CO WALTON/FLORENCE I-75 NORTH",
+    "brochureName": "KENTUCKY KINGDOM",
+    "notes": "(5-8'26 ALL) (9-12'26 #17,18)"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #24- BOONE CO WALTON/FLORENCE I-75 NORTH",
+    "brochureName": "KENTUCKY VISITOR'S GUIDES",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #25- BOONE CO WALTON/FLORENCE I-75 SOUTH",
+    "brochureName": "CLINTON CO/DALE HOLLOW-LAKE CUM *MAG*",
+    "notes": "thru 9'2026 DBL"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #25- BOONE CO WALTON/FLORENCE I-75 SOUTH",
+    "brochureName": "FRANKFORT- \"BOURBON ON THE BANKS\"",
+    "notes": "7-912026"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #25- BOONE CO WALTON/FLORENCE I-75 SOUTH",
+    "brochureName": "BRANKEORT-LIBERTY HALL ER./ AMERICA 250",
+    "notes": "ONLY"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #25- BOONE CO WALTON/FLORENCE I-75 SOUTH",
+    "brochureName": "KENTUCKY VISITOR'S GUIDES",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #25- BOONE CO WALTON/FLORENCE I-75 SOUTH",
+    "brochureName": "KENTUCKY'S Caveland- was MAMMOTH FUN",
+    "notes": "(OUT 10'26)"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #25- BOONE CO WALTON/FLORENCE I-75 SOUTH",
+    "brochureName": "MARKET AMERICA (REG KY) *RED BOOK*",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #25- BOONE CO WALTON/FLORENCE I-75 SOUTH",
+    "brochureName": "STEPHEN FOSTER STORY",
+    "notes": "add #1"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #15- HART CO MUNFORDVILLE I-65 NORTH",
+    "brochureName": "CINCY REGION VISITORS GUIDE- MAG",
+    "notes": "DBL PKT"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #15- HART CO MUNFORDVILLE I-65 NORTH",
+    "brochureName": "FRANKFORT-LIBERTY HALL ER./ AMERICA 250",
+    "notes": "ONLY"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #15- HART CO MUNFORDVILLE I-65 NORTH",
+    "brochureName": "KENTUCKY KINGDOM",
+    "notes": "(5-8'26 ALL) (9-12'26 #17,18)"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #15- HART CO MUNFORDVILLE I-65 NORTH",
+    "brochureName": "KENTUCKY VISITOR'S GUIDES",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #15- HART CO MUNFORDVILLE I-65 NORTH",
+    "brochureName": "LICKING VALLEY ADVENTURES",
+    "notes": "(OUT 11'26)"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #15- HART CO MUNFORDVILLE I-65 NORTH",
+    "brochureName": "MARKET AMERICA (REG KY) *RED BOOK*",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #15- HART CO MUNFORDVILLE I-65 NORTH",
+    "brochureName": "STEPHEN FOSTER STORY",
+    "notes": "add #1"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #16- HART CO MUNFORDVILLE I-65 SOUTH",
+    "brochureName": "CLINTON CO/DALE HOLLOW-LAKE CUM *MAG*",
+    "notes": "thru 9'2026 DBL"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #16- HART CO MUNFORDVILLE I-65 SOUTH",
+    "brochureName": "KENTUCKY KINGDOM",
+    "notes": "(5-8'26 ALL) (9-12'26 #17,18)"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #16- HART CO MUNFORDVILLE I-65 SOUTH",
+    "brochureName": "KENTUCKY VISITOR'S GUIDES",
+    "notes": "DOUBLE"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #16- HART CO MUNFORDVILLE I-65 SOUTH",
+    "brochureName": "LICKING VALLEY ADVENTURES",
+    "notes": "(OUT 11'26)"
+  },
+  {
+    "sheet": "rest",
+    "title": "REST AREA #16- HART CO MUNFORDVILLE I-65 SOUTH",
+    "brochureName": "MARKET AMERICA (REG KY) *RED BOOK*",
+    "notes": "DOUBLE"
+  }
+]

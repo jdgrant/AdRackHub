@@ -44,6 +44,14 @@ public class CustomerContract
     [StringLength(1000)]
     public string? Notes { get; set; }
 
+    [StringLength(1000)]
+    [Display(Name = "Invoice Notes")]
+    public string? InvoiceNotes { get; set; }
+
+    [StringLength(200)]
+    [Display(Name = "Drivers Notes")]
+    public string? DriversNotes { get; set; }
+
     [Display(Name = "Wave Recurring Invoice ID")]
     [StringLength(100)]
     [BindNever]

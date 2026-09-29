@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 
 namespace AdRackHub.Models;
@@ -82,6 +83,9 @@ public class Customer
     [Display(Name = "Web URL")]
     public string? WebUrl { get; set; }
 
+    [Display(Name = "Warehouse")]
+    public BrochureWarehouse? Warehouse { get; set; }
+
     [StringLength(50)]
     [Display(Name = "Warehouse Rack")]
     public string? WarehouseRack { get; set; }
@@ -90,14 +94,42 @@ public class Customer
     [Display(Name = "Warehouse Bin")]
     public string? WarehouseBin { get; set; }
 
+    [Display(Name = "Top/Bottom")]
+    public BrochureShelf? WarehouseShelf { get; set; }
+
+    [StringLength(8)]
+    [Display(Name = "Brochure ID")]
+    [BindNever]
+    public string? BrochureCode { get; set; }
+
     [NotMapped]
-    public string? WarehouseLocationLabel => WarehouseLocation.Format(WarehouseRack, WarehouseBin);
+    public string? WarehouseLocationLabel
+    {
+        get
+        {
+            var labels = OrderedWarehouseLocations
+                .Select(l => l.Label)
+                .Where(l => !string.IsNullOrWhiteSpace(l))
+                .ToList();
+            if (labels.Count > 0)
+                return string.Join("; ", labels);
+            return WarehouseLocation.Format(Warehouse, WarehouseRack, WarehouseBin, WarehouseShelf);
+        }
+    }
+
+    [NotMapped]
+    public IReadOnlyList<CustomerWarehouseLocation> OrderedWarehouseLocations =>
+        WarehouseLocations
+            .OrderBy(l => l.SortOrder)
+            .ThenBy(l => l.Id)
+            .ToList();
 
     public ICollection<Contact> Contacts { get; set; } = new List<Contact>();
     public ICollection<CustomerRoute> CustomerRoutes { get; set; } = new List<CustomerRoute>();
     public ICollection<CustomerContract> Contracts { get; set; } = new List<CustomerContract>();
     public ICollection<CustomerBrochureScan> BrochureScans { get; set; } = new List<CustomerBrochureScan>();
     public ICollection<CustomerBrochureInventory> BrochureInventories { get; set; } = new List<CustomerBrochureInventory>();
+    public ICollection<CustomerWarehouseLocation> WarehouseLocations { get; set; } = new List<CustomerWarehouseLocation>();
     public ICollection<CustomerNote> Notes { get; set; } = new List<CustomerNote>();
     public ICollection<CustomerTask> Tasks { get; set; } = new List<CustomerTask>();
 }

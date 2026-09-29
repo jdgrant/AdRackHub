@@ -1,0 +1,128 @@
+@using AdRackHub.Models
+@model BillingForecastPageViewModel
+@{
+    ViewData["Title"] = "Billing forecast";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Billing forecast</h1>
+    <div class="d-flex flex-wrap gap-3 align-items-center">
+        <form method="get" asp-action="Forecast" class="form-check form-switch mb-0">
+            <input type="hidden" name="year" value="@Model.Year" />
+            <input type="hidden" name="month" value="@Model.Month" />
+            <input class="form-check-input" type="checkbox" role="switch" id="ignoreEndDate" name="ignoreEndDate" value="true"
+                   @(Model.IgnoreEndDate ? "checked" : null) onchange="this.form.submit()" />
+            <label class="form-check-label" for="ignoreEndDate">Ignore end dates (assume renewals)</label>
+        </form>
+        <a asp-action="Index" asp-route-year="@Model.Year" asp-route-month="@Model.Month" class="btn btn-outline-secondary">Back to Billing</a>
+    </div>
+</div>
+
+<p class="text-muted mb-4">Expected invoices for each of the next 12 months, including invoices already sent and invoices still due@(Model.IgnoreEndDate ? ". End dates are ignored, so contracts are treated as if they renew." : ".")</p>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">12-month total</div>
+                <div class="display-6">@Model.ForecastTotal.ToString("C0")</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Invoices</div>
+                <div class="display-6">@Model.ForecastInvoiceCount</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">@Model.PeriodLabel</div>
+                <div class="display-6">@(Model.Selected?.Amount.ToString("C0") ?? "$0")</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-2 billing-forecast mb-4">
+    @foreach (var month in Model.Months)
+    {
+        <div class="col-6 col-sm-4 col-lg-2">
+            <a asp-action="Forecast" asp-route-year="@month.Year" asp-route-month="@month.Month" asp-route-ignoreEndDate="@(Model.IgnoreEndDate ? "true" : null)" class="text-decoration-none">
+                <div class="card h-100 billing-forecast-month@(month.IsSelectedPeriod ? " billing-forecast-month-selected" : "")@(month.IsCurrentMonth ? " billing-forecast-month-current" : "")">
+                    <div class="card-body py-2 px-3">
+                        <div class="small text-muted">@month.Label</div>
+                        <div class="fw-semibold">@month.Amount.ToString("C0")</div>
+                        <div class="small text-muted">@month.InvoiceCount invoice@(month.InvoiceCount == 1 ? "" : "s") · @month.CustomerCount customer@(month.CustomerCount == 1 ? "" : "s")</div>
+                    </div>
+                </div>
+            </a>
+        </div>
+    }
+</div>
+
+<div class="card">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <strong>@Model.PeriodLabel</strong>
+        <a asp-action="Index" asp-route-year="@Model.Year" asp-route-month="@Model.Month" class="btn btn-sm btn-outline-primary">Open in Billing</a>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle">
+            <thead>
+                <tr>
+                    <th>Customer</th>
+                    <th>Contract</th>
+                    <th>Type</th>
+                    <th>Ends</th>
+                    <th>Status</th>
+                    <th class="text-end">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+            @if (Model.Selected == null || Model.Selected.Lines.Count == 0)
+            {
+                <tr>
+                    <td colspan="6" class="text-muted">No invoices in this month.</td>
+                </tr>
+            }
+            else
+            {
+                foreach (var line in Model.Selected.Lines)
+                {
+                    <tr>
+                        <td>
+                            <a asp-controller="Customers" asp-action="Details" asp-route-id="@line.CustomerId">@line.CustomerName</a>
+                        </td>
+                        <td>@line.ContractName</td>
+                        <td>@line.TermLabel</td>
+                        <td>@(line.ContractEndDate?.ToString("MMM d, yyyy") ?? "—")</td>
+                        <td>
+                            @if (line.Sent)
+                            {
+                                <span class="badge bg-success">Sent</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Due</span>
+                            }
+                        </td>
+                        <td class="text-end">@line.Amount.ToString("C")</td>
+                    </tr>
+                }
+            }
+            </tbody>
+            @if (Model.Selected != null && Model.Selected.Lines.Count > 0)
+            {
+                <tfoot>
+                    <tr>
+                        <th colspan="5">Total</th>
+                        <th class="text-end">@Model.Selected.Amount.ToString("C")</th>
+                    </tr>
+                </tfoot>
+            }
+        </table>
+    </div>
+</div>

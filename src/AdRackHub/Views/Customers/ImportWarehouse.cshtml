@@ -1,0 +1,39 @@
+@{
+    ViewData["Title"] = "Brochure warehouse spreadsheet";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Brochure warehouse spreadsheet</h1>
+    <a asp-action="Index" class="btn btn-outline-secondary">Back</a>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="h6">Spreadsheet layout</h2>
+        <ul class="mb-0">
+            <li><strong>Brochure Name</strong> — leave the existing names as they are so they match customers. Repeat the same name on extra rows for additional rack/bin locations.</li>
+            <li><strong>Warehouse</strong> — K or O.</li>
+            <li><strong>Rack</strong> and <strong>Bin</strong>.</li>
+            <li><strong>Top/Bottom</strong> — Top or Bottom.</li>
+            <li><strong>Qty</strong> — current count. Leave blank to update location only.</li>
+        </ul>
+    </div>
+</div>
+
+<div class="mb-4">
+    <a asp-action="DownloadWarehouseSheet" class="btn btn-outline-primary">Download spreadsheet</a>
+</div>
+
+<form asp-action="ImportWarehouse" method="post" enctype="multipart/form-data">
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+    <div class="mb-3">
+        <label for="file" class="form-label">Excel file</label>
+        <input type="file" name="file" id="file" class="form-control" accept=".xlsx" required />
+    </div>
+    <button type="submit" class="btn btn-primary">Import</button>
+    <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

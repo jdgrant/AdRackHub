@@ -13,23 +13,30 @@ public class WaveOptions
     public string TokenUrl { get; set; } = "https://api.waveapps.com/oauth2/token/";
     public string DefaultCurrency { get; set; } = "USD";
     public string DefaultCountryCode { get; set; } = "US";
-    public const string DefaultInvoiceFromAddress = "invoices@ad-rack.net";
+    public const string DefaultInvoiceFromAddress = "billing@ad-rack.net";
 
     public const string DefaultInvoiceEmailSubject =
-        "Invoice #{{Invoice number}} from {{Your business name}}";
+        "Invoice #{{Invoice number}} from Ad-Rack Services";
 
     public const string DefaultInvoiceEmailMessage =
         """
         Hi {{Client company name}},
 
-        Here's Invoice #{{Invoice number}} for the amount of {{Invoice amount}}.
+        Here’s Invoice #{{Invoice number}} for the amount of {{Invoice amount}}.
+
+        View and pay this invoice: {{Invoice link}}
+
 
         Please note the new payment address of:Ad-Rack Services LLC
         7608 KY-146
         STE 104
-        Pewee Valley, Kentucky 40056
+        Pewee Valley, KY 40056
 
         If you have any questions, feel free to reach out.
+
+        Thank you,
+
+        {{Your business name}}
         """;
 
     public string InvoiceFromAddress { get; set; } = DefaultInvoiceFromAddress;
@@ -41,21 +48,21 @@ public class WaveOptions
     public const string DefaultCompanyName = "Ad-Rack Services LLC";
     public const string DefaultCompanyAddress1 = "7608 KY-146";
     public const string DefaultCompanyAddress2 = "STE 104";
-    public const string DefaultCompanyCityStateZip = "Pewee Valley, Kentucky 40056";
+    public const string DefaultCompanyCityStateZip = "Pewee Valley, KY 40056";
     public const string DefaultCompanyCountry = "United States";
     public const string DefaultCompanyPhone = "(502) 253-5454";
     public const string DefaultCompanyWebsite = "www.ad-rack.com";
-    public const string DefaultAddressNotice = "PLEASE NOTE THE NEW ADDRESS";
+    public const string DefaultAddressNotice = "PLEASE NOTE NEW PAYMENT INFORMATION";
     public const string DefaultInvoiceTerms =
-        """
-        Payment of this invoice constitutes acceptance of and agreement to Terms and Conditions.
+        "Payment of this invoice constitutes acceptance of and agreement to Terms and Conditions. Please note new payment information below.";
 
-        Please mail payment to:
-        Ad-Rack Services LLC
-        7608 KY-146
-        STE 104
-        Pewee Valley, Kentucky 40056
-        """;
+    public const string PaymentChangeNotice =
+        "Please note: Our mailing address and ACH payment account have changed. To avoid delays, please update any payment information you have saved and use the details below for future payments.";
+
+    public const string AchAccountName = "Ad-Rack Services LLC";
+    public const string AchRoutingNumber = "125109019";
+    public const string AchAccountNumber = "875113400472";
+    public const string PaperlessEmail = "billing@ad-rack.net";
 
     public string InvoiceCompanyName { get; set; } = DefaultCompanyName;
     public string InvoiceCompanyAddress1 { get; set; } = DefaultCompanyAddress1;
@@ -66,6 +73,16 @@ public class WaveOptions
     public string InvoiceCompanyWebsite { get; set; } = DefaultCompanyWebsite;
     public string InvoiceAddressNotice { get; set; } = DefaultAddressNotice;
     public string InvoiceTerms { get; set; } = DefaultInvoiceTerms;
+
+    /// <summary>Wave Cash &amp; Bank account used when marking an invoice paid.</summary>
+    public string? PaymentAccountId { get; set; }
+
+    /// <summary>Prefer a Wave bank account whose name or notes include this last-4.</summary>
+    public string PaymentAccountLast4 { get; set; } = "4345";
+
+    public string PaymentAccountHint { get; set; } = "Ad-Rack Services LLC (345)";
+
+    public string PaymentMethod { get; set; } = "BANK_TRANSFER";
 
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(AccessToken) && !string.IsNullOrWhiteSpace(BusinessId);

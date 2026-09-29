@@ -40,6 +40,7 @@
         @if (!isProspect)
         {
             <a asp-controller="Customers" asp-action="ImportMatrix" class="btn btn-outline-primary">Import Route Matrix</a>
+            <a asp-controller="Customers" asp-action="ImportWarehouse" class="btn btn-outline-primary">Warehouse spreadsheet</a>
         }
         <a asp-controller="@(isProspect ? "Prospects" : "Customers")" asp-action="Create" asp-route-type="@Model.ListType" class="btn btn-primary">@addLabel</a>
     </div>

@@ -184,6 +184,38 @@ public class CustomerContractsController : Controller
         return View(vm);
     }
 
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveDriversNotes(int id, string? driversNotes)
+    {
+        var contract = await _context.CustomerContracts.FirstOrDefaultAsync(c => c.Id == id);
+        if (contract == null)
+            return NotFound();
+
+        contract.DriversNotes = WarehouseLocation.NullIfEmpty(driversNotes);
+        await _context.SaveChangesAsync();
+        TempData["Message"] = string.IsNullOrEmpty(contract.DriversNotes)
+            ? "Drivers notes cleared."
+            : "Drivers notes saved.";
+        return RedirectToAction("Details", "Customers", new { id = contract.CustomerId, tab = "contracts" });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveInvoiceNotes(int id, string? invoiceNotes)
+    {
+        var contract = await _context.CustomerContracts.FirstOrDefaultAsync(c => c.Id == id);
+        if (contract == null)
+            return NotFound();
+
+        contract.InvoiceNotes = WarehouseLocation.NullIfEmpty(invoiceNotes);
+        await _context.SaveChangesAsync();
+        TempData["Message"] = string.IsNullOrEmpty(contract.InvoiceNotes)
+            ? "Invoice notes cleared."
+            : "Invoice notes saved.";
+        return RedirectToAction("Details", "Customers", new { id = contract.CustomerId, tab = "contracts" });
+    }
+
     public async Task<IActionResult> Delete(int? id)
     {
         if (id == null) return NotFound();
@@ -313,6 +345,8 @@ public class CustomerContractsController : Controller
             ModelState.AddModelError("", "Select at least one month of service.");
 
         vm.Contract.ContractName = (vm.Contract.ContractName ?? string.Empty).Trim();
+        vm.Contract.InvoiceNotes = WarehouseLocation.NullIfEmpty(vm.Contract.InvoiceNotes);
+        vm.Contract.DriversNotes = WarehouseLocation.NullIfEmpty(vm.Contract.DriversNotes);
         vm.Contract.ServiceMonthMask = SubscribedMonths.BuildMask(vm.SelectedMonthNumbers ?? new List<int>());
         vm.Contract.BillingAnchorMonth = vm.Contract.NextBillDate.Month;
         if (vm.Contract.BillingMonthCount is < 1 or > 36)

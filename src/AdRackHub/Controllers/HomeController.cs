@@ -44,7 +44,7 @@ public class HomeController : Controller
 
         var highValueProspects = await _context.Customers
             .AsNoTracking()
-            .Where(c => c.Type == CustomerType.Prospect && c.IsHighValueProspect)
+            .Where(c => (c.Type == CustomerType.Prospect || c.Type == CustomerType.ExpandedProspect) && c.IsHighValueProspect)
             .OrderBy(c => c.CustomerName)
             .Select(c => new DashboardCustomerItem
             {
@@ -115,7 +115,7 @@ public class HomeController : Controller
             ActiveCustomerCount = await _context.Customers.CountAsync(c =>
                 c.Status == CustomerStatus.Active && c.Type == CustomerType.Customer),
             ProspectCount = await _context.Customers.CountAsync(c =>
-                c.Status == CustomerStatus.Active && c.Type == CustomerType.Prospect),
+                c.Status == CustomerStatus.Active && (c.Type == CustomerType.Prospect || c.Type == CustomerType.ExpandedProspect)),
             HighValueProspectCount = highValueProspects.Count,
             AtRiskCustomerCount = atRiskCustomers.Count,
             ActiveRouteCount = routeRows.Count,

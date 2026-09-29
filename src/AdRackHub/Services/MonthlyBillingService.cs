@@ -27,6 +27,74 @@ public class MonthlyBillingService
     public Task<List<DueContractItem>> GetDueContractsAsync(int year, int month, CancellationToken cancellationToken = default) =>
         GetDueBillingsAsync(year, month, cancellationToken);
 
+    public async Task<IReadOnlyList<BillingMonthForecast>> GetForecastAsync(
+        DateOnly fromMonth,
+        int months,
+        int selectedYear,
+        int selectedMonth,
+        bool ignoreEndDate = false,
+        CancellationToken cancellationToken = default)
+    {
+        var contracts = await _context.CustomerContracts
+            .AsNoTracking()
+            .Include(c => c.Customer)
+            .Include(c => c.ContractRoutes)
+                .ThenInclude(cr => cr.Route)
+            .Where(c => c.Customer.Status == CustomerStatus.Active && c.Customer.Type == CustomerType.Customer)
+            .Where(c => c.ContractRoutes.Any())
+            .ToListAsync(cancellationToken);
+
+        var horizon = new DateOnly(fromMonth.Year, fromMonth.Month, 1).AddMonths(Math.Clamp(months, 1, 24));
+        var sentRows = await _context.BillingRunInvoiceLines
+            .AsNoTracking()
+            .Where(l => l.BillingRunInvoice.Status == BillingRunInvoiceStatus.Submitted
+                        || l.BillingRunInvoice.Status == BillingRunInvoiceStatus.Received)
+            .Where(l =>
+                (l.BillingRunInvoice.BillingRun.Year > fromMonth.Year
+                    || (l.BillingRunInvoice.BillingRun.Year == fromMonth.Year
+                        && l.BillingRunInvoice.BillingRun.Month >= fromMonth.Month))
+                && (l.BillingRunInvoice.BillingRun.Year < horizon.Year
+                    || (l.BillingRunInvoice.BillingRun.Year == horizon.Year
+                        && l.BillingRunInvoice.BillingRun.Month < horizon.Month)))
+            .Select(l => new
+            {
+                l.BillingRunInvoice.BillingRun.Year,
+                l.BillingRunInvoice.BillingRun.Month,
+                l.BillingRunInvoice.CustomerId,
+                CustomerName = l.BillingRunInvoice.Customer.CustomerName,
+                l.CustomerContractId,
+                l.ContractName,
+                l.Term,
+                l.BillingMonthCount,
+                l.Amount
+            })
+            .ToListAsync(cancellationToken);
+
+        var endDates = contracts.ToDictionary(c => c.Id, c => c.ContractEndDate);
+        var sent = sentRows
+            .GroupBy(l => (l.Year, l.Month, l.CustomerContractId))
+            .Select(g =>
+            {
+                var first = g.First();
+                return new SentForecastInvoice
+                {
+                    Year = first.Year,
+                    Month = first.Month,
+                    CustomerId = first.CustomerId,
+                    CustomerName = first.CustomerName,
+                    ContractId = first.CustomerContractId,
+                    ContractName = first.ContractName,
+                    Term = first.Term,
+                    BillingMonthCount = first.BillingMonthCount,
+                    ContractEndDate = endDates.GetValueOrDefault(first.CustomerContractId),
+                    Amount = g.Sum(x => x.Amount)
+                };
+            })
+            .ToList();
+
+        return BillingForecastCalculator.Build(contracts, fromMonth, months, selectedYear, selectedMonth, sent, ignoreEndDate);
+    }
+
     public async Task<List<DueContractItem>> GetDueBillingsAsync(int year, int month, CancellationToken cancellationToken = default)
     {
         var billedContractIds = await GetBilledContractIdsForPeriodAsync(year, month, cancellationToken);
@@ -185,7 +253,7 @@ public class MonthlyBillingService
         {
             throw new InvalidOperationException(_waveSession.NeedsBusinessReset
                 ? WaveSessionService.SessionExpiredReconnectMessage
-                : "Connect to Wave on the Admin Wave proof page before sending invoices.");
+                : "Connect to Wave on the Billing page before sending invoices.");
         }
 
         var credentials = await _waveSession.GetCredentialsAsync(cancellationToken);
@@ -195,7 +263,7 @@ public class MonthlyBillingService
         {
             throw new InvalidOperationException(_waveSession.NeedsBusinessReset
                 ? WaveSessionService.SessionExpiredReconnectMessage
-                : "Connect to Wave on the Admin Wave proof page before sending invoices.");
+                : "Connect to Wave on the Billing page before sending invoices.");
         }
 
         var invoiceDate = new DateOnly(run.Year, run.Month, 1);
@@ -314,7 +382,7 @@ public class MonthlyBillingService
         {
             return (false, _waveSession.NeedsBusinessReset
                 ? WaveSessionService.SessionExpiredReconnectMessage
-                : "Connect to Wave on the Admin Wave proof page before sending invoices.", null);
+                : "Connect to Wave on the Billing page before sending invoices.", null);
         }
 
         var dueItems = (await GetDueContractsAsync(year, month, cancellationToken))
@@ -574,6 +642,26 @@ public class MonthlyBillingService
         if (invoice == null)
             return (false, "Invoice not found.");
 
+        string? waveMessage = null;
+        if (status == BillingRunInvoiceStatus.Received)
+        {
+            var paymentDate = receivedDate ?? DateOnly.FromDateTime(DateTime.Today);
+            var wave = await _waveInvoices.RecordPaymentAsync(
+                FirstNonEmpty(waveInvoiceId, invoice.WaveInvoiceId),
+                FirstNonEmpty(waveInvoiceNumber, invoice.WaveInvoiceNumber),
+                invoice.TotalAmount,
+                paymentDate,
+                cancellationToken);
+            if (!wave.Success)
+                return (false, wave.Message);
+            waveMessage = wave.Message;
+            if (!string.IsNullOrWhiteSpace(wave.Invoice?.WaveInvoiceId))
+                invoice.WaveInvoiceId = wave.Invoice.WaveInvoiceId;
+            if (!string.IsNullOrWhiteSpace(wave.Invoice?.InvoiceNumber))
+                invoice.WaveInvoiceNumber = wave.Invoice.InvoiceNumber;
+            invoice.WaveInvoiceUrl = FirstNonEmpty(wave.Invoice?.WaveInvoiceUrl, invoice.WaveInvoiceUrl);
+        }
+
         if (!string.IsNullOrWhiteSpace(waveInvoiceNumber))
             invoice.WaveInvoiceNumber = waveInvoiceNumber.Trim();
 
@@ -602,6 +690,7 @@ public class MonthlyBillingService
 
         var message = status == BillingRunInvoiceStatus.Received
             ? $"Invoice {invoice.Id} marked Received on {invoice.ReceivedDate:MMM d, yyyy}."
+              + (string.IsNullOrWhiteSpace(waveMessage) ? "" : $" {waveMessage}")
             : $"Invoice {invoice.Id} marked {status}.";
         return (true, message);
     }
@@ -663,9 +752,7 @@ public class MonthlyBillingService
             if (contract == null)
                 continue;
 
-            var months = group.Max(l =>
-                l.BillingMonthCount > 0 ? l.BillingMonthCount : AnnualBillingHelper.MonthsInTerm(l.Term));
-            contract.NextBillDate = BillingDueCalculator.RewindNextBillDate(contract.NextBillDate, months);
+            contract.NextBillDate = BillingDueCalculator.RewindNextBillDate(contract.NextBillDate, contract);
         }
     }
 

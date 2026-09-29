@@ -14,7 +14,7 @@ public class WaveApiService
     public const int InvoiceDueDays = 30;
 
     public const string DefaultOAuthScopes =
-        "business:read customer:read customer:write invoice:read invoice:write invoice:send user:read";
+        "business:read customer:read customer:write invoice:read invoice:write invoice:send account:read user:read";
 
     public const string SessionExpiredReconnectMessage =
         "Your Wave session expired. Reset the business, then send the contract again.";
@@ -563,6 +563,179 @@ public class WaveApiService
         }
     }
 
+    public async Task<WaveInvoiceResult> FindInvoiceByNumberAsync(
+        string invoiceNumber,
+        CancellationToken cancellationToken = default,
+        string? accessToken = null,
+        string? businessId = null)
+    {
+        if (!HasApiCredentials(accessToken, businessId))
+            return WaveInvoiceResult.Failed("Wave API is not configured.");
+        if (string.IsNullOrWhiteSpace(invoiceNumber))
+            return WaveInvoiceResult.Failed("A Wave invoice number is required.");
+
+        const string query = """
+            query ($businessId: ID!, $invoiceNumber: String!) {
+              business(id: $businessId) {
+                name
+                invoices(page: 1, pageSize: 20, invoiceNumber: $invoiceNumber) {
+                  edges {
+                    node {
+                      id
+                      viewUrl
+                      invoiceNumber
+                      status
+                      pdfUrl
+                      dueDate
+                      customer { name }
+                      total { value }
+                      amountDue { value }
+                    }
+                  }
+                }
+              }
+            }
+            """;
+
+        var response = await ExecuteGraphQlAsync(
+            new
+            {
+                query,
+                variables = new
+                {
+                    businessId = ResolveBusinessId(businessId),
+                    invoiceNumber = invoiceNumber.Trim()
+                }
+            },
+            cancellationToken,
+            accessToken);
+        if (!response.Success || response.Data == null)
+            return WaveInvoiceResult.Failed(response.ErrorMessage ?? "Wave invoice lookup failed.");
+
+        try
+        {
+            if (!response.Data.Value.TryGetProperty("business", out var business)
+                || business.ValueKind != JsonValueKind.Object
+                || !business.TryGetProperty("invoices", out var invoices)
+                || !invoices.TryGetProperty("edges", out var edges))
+                return WaveInvoiceResult.Failed("Wave invoice was not found.");
+
+            var wanted = invoiceNumber.Trim();
+            JsonElement? exact = null;
+            foreach (var edge in edges.EnumerateArray())
+            {
+                if (!edge.TryGetProperty("node", out var node) || node.ValueKind != JsonValueKind.Object)
+                    continue;
+                var number = node.TryGetProperty("invoiceNumber", out var n) ? n.GetString() : null;
+                if (string.Equals(number, wanted, StringComparison.OrdinalIgnoreCase))
+                {
+                    exact = node;
+                    break;
+                }
+            }
+
+            if (exact == null)
+                return WaveInvoiceResult.Failed($"No Wave invoice numbered {wanted} was found.");
+
+            return FromInvoiceNode(exact.Value, businessName: ReadString(business, "name"));
+        }
+        catch (Exception ex)
+        {
+            return WaveInvoiceResult.Failed($"Failed to parse Wave invoice lookup: {ex.Message}");
+        }
+    }
+
+    public async Task<WavePaymentResult> RecordInvoicePaymentAsync(
+        string waveInvoiceId,
+        decimal amount,
+        DateOnly paymentDate,
+        CancellationToken cancellationToken = default,
+        string? accessToken = null,
+        string? businessId = null)
+    {
+        if (!HasApiCredentials(accessToken, businessId))
+            return WavePaymentResult.Failed("Connect to Wave before recording a payment.");
+        if (string.IsNullOrWhiteSpace(waveInvoiceId))
+            return WavePaymentResult.Failed("A Wave invoice id is required to record a payment.");
+        if (amount <= 0)
+            return WavePaymentResult.Failed("Payment amount must be greater than zero.");
+
+        var accountId = await ResolvePaymentAccountIdAsync(cancellationToken, accessToken, businessId);
+        if (string.IsNullOrWhiteSpace(accountId))
+        {
+            return WavePaymentResult.Failed(
+                "Wave could not record the payment because no Cash & Bank account is available. "
+                + "On the Billing page, reset the business and connect to Wave again, then click Receive.");
+        }
+
+        const string mutation = """
+            mutation ($input: InvoicePaymentCreateManualInput!) {
+              invoicePaymentCreateManual(input: $input) {
+                didSucceed
+                inputErrors {
+                  message
+                  code
+                  path
+                }
+                invoicePayment {
+                  id
+                  amount
+                }
+              }
+            }
+            """;
+
+        var method = string.IsNullOrWhiteSpace(_options.PaymentMethod)
+            ? "BANK_TRANSFER"
+            : _options.PaymentMethod.Trim().ToUpperInvariant();
+
+        var payload = new
+        {
+            query = mutation,
+            variables = new
+            {
+                input = new
+                {
+                    invoiceId = waveInvoiceId,
+                    paymentAccountId = accountId,
+                    amount,
+                    paymentDate = paymentDate.ToString("yyyy-MM-dd"),
+                    paymentMethod = method,
+                    exchangeRate = 1m,
+                    memo = "AdRackHub received to Bluevine 4345"
+                }
+            }
+        };
+
+        var response = await ExecuteGraphQlAsync(payload, cancellationToken, accessToken);
+        if (!response.Success)
+            return WavePaymentResult.Failed(response.ErrorMessage ?? "Wave invoicePaymentCreateManual failed.");
+
+        try
+        {
+            var created = response.Data!.Value.GetProperty("invoicePaymentCreateManual");
+            if (!created.GetProperty("didSucceed").GetBoolean())
+            {
+                var errors = created.GetProperty("inputErrors").EnumerateArray()
+                    .Select(e => e.GetProperty("message").GetString())
+                    .Where(m => !string.IsNullOrWhiteSpace(m));
+                return WavePaymentResult.Failed(string.Join("; ", errors));
+            }
+
+            string? paymentId = null;
+            if (created.TryGetProperty("invoicePayment", out var payment)
+                && payment.ValueKind == JsonValueKind.Object
+                && payment.TryGetProperty("id", out var id))
+                paymentId = id.GetString();
+
+            return WavePaymentResult.Succeeded(paymentId, amount);
+        }
+        catch (Exception ex)
+        {
+            return WavePaymentResult.Failed($"Failed to parse Wave payment response: {ex.Message}");
+        }
+    }
+
     public async Task<byte[]?> DownloadInvoicePdfAsync(
         string waveInvoiceId,
         CancellationToken cancellationToken = default,
@@ -811,7 +984,7 @@ public class WaveApiService
         var resolvedClientId = FirstNonEmpty(clientId, _options.ClientId);
         var resolvedClientSecret = FirstNonEmpty(clientSecret, _options.ClientSecret);
         if (string.IsNullOrWhiteSpace(resolvedClientId) || string.IsNullOrWhiteSpace(resolvedClientSecret))
-            return WaveOAuthTokenResult.Failed("Paste the Wave Client ID and Client Secret on the proof page first.");
+            return WaveOAuthTokenResult.Failed("Paste the Wave Client ID and Client Secret on the Billing page first.");
 
         using var request = new HttpRequestMessage(HttpMethod.Post, _options.TokenUrl);
         request.Content = new FormUrlEncodedContent(new Dictionary<string, string>
@@ -1062,6 +1235,184 @@ public class WaveApiService
 
     private string? ResolveBusinessId(string? businessId) =>
         string.IsNullOrWhiteSpace(businessId) ? _options.BusinessId : businessId;
+
+    private async Task<string?> ResolvePaymentAccountIdAsync(
+        CancellationToken cancellationToken,
+        string? accessToken,
+        string? businessId)
+    {
+        if (!string.IsNullOrWhiteSpace(_options.PaymentAccountId))
+            return _options.PaymentAccountId.Trim();
+
+        var fromSession = await ListCashAndBankAccountsAsync(cancellationToken, accessToken, businessId);
+        var picked = PickPaymentAccount(fromSession);
+        if (!string.IsNullOrWhiteSpace(picked))
+            return picked;
+
+        if (!string.IsNullOrWhiteSpace(_options.AccessToken)
+            && !string.Equals(accessToken, _options.AccessToken, StringComparison.Ordinal))
+        {
+            var fromApiToken = await ListCashAndBankAccountsAsync(cancellationToken, _options.AccessToken, businessId);
+            picked = PickPaymentAccount(fromApiToken);
+            if (!string.IsNullOrWhiteSpace(picked))
+                return picked;
+        }
+
+        return await PaymentAccountFromPaidInvoicesAsync(cancellationToken, accessToken, businessId);
+    }
+
+    private async Task<IReadOnlyList<(string Id, string Name, string Description)>> ListCashAndBankAccountsAsync(
+        CancellationToken cancellationToken,
+        string? accessToken,
+        string? businessId)
+    {
+        const string query = """
+            query ($businessId: ID!) {
+              business(id: $businessId) {
+                accounts(page: 1, pageSize: 50, subtypes: [CASH_AND_BANK], isArchived: false) {
+                  edges {
+                    node {
+                      id
+                      name
+                      description
+                    }
+                  }
+                }
+              }
+            }
+            """;
+
+        var response = await ExecuteGraphQlAsync(
+            new { query, variables = new { businessId = ResolveBusinessId(businessId) } },
+            cancellationToken,
+            accessToken);
+        if (!response.Success || response.Data == null)
+            return Array.Empty<(string, string, string)>();
+
+        try
+        {
+            if (!response.Data.Value.TryGetProperty("business", out var business)
+                || !business.TryGetProperty("accounts", out var accounts)
+                || !accounts.TryGetProperty("edges", out var edges))
+                return Array.Empty<(string, string, string)>();
+
+            return edges.EnumerateArray()
+                .Select(edge => edge.TryGetProperty("node", out var node) ? node : default)
+                .Where(node => node.ValueKind == JsonValueKind.Object)
+                .Select(node => (
+                    Id: node.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "",
+                    Name: node.TryGetProperty("name", out var name) ? name.GetString() ?? "" : "",
+                    Description: node.TryGetProperty("description", out var description) ? description.GetString() ?? "" : ""))
+                .Where(item => !string.IsNullOrWhiteSpace(item.Id))
+                .ToList();
+        }
+        catch
+        {
+            return Array.Empty<(string, string, string)>();
+        }
+    }
+
+    private string? PickPaymentAccount(IReadOnlyList<(string Id, string Name, string Description)> accounts)
+    {
+        if (accounts.Count == 0)
+            return null;
+
+        var last4 = (_options.PaymentAccountLast4 ?? "").Trim();
+        var hint = (_options.PaymentAccountHint ?? "Ad-Rack Services LLC (345)").Trim();
+        var last3 = last4.Length >= 3 ? last4[^3..] : last4;
+
+        if (!string.IsNullOrWhiteSpace(last4))
+        {
+            var exactLast4 = accounts.FirstOrDefault(item =>
+                AccountBlob(item).Contains(last4, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(exactLast4.Id))
+                return exactLast4.Id;
+        }
+
+        if (!string.IsNullOrWhiteSpace(hint))
+        {
+            var hinted = accounts.FirstOrDefault(item =>
+                AccountBlob(item).Contains(hint, StringComparison.OrdinalIgnoreCase)
+                && (string.IsNullOrWhiteSpace(last3)
+                    || item.Name.Contains($"({last3})", StringComparison.OrdinalIgnoreCase)));
+            if (!string.IsNullOrWhiteSpace(hinted.Id))
+                return hinted.Id;
+        }
+
+        var checking = accounts.FirstOrDefault(item =>
+            ContainsAny(item.Name, "checking", "operating", "business checking"));
+        if (!string.IsNullOrWhiteSpace(checking.Id))
+            return checking.Id;
+
+        return accounts[0].Id;
+    }
+
+    private static string AccountBlob((string Id, string Name, string Description) account) =>
+        $"{account.Name} {account.Description}";
+
+    private async Task<string?> PaymentAccountFromPaidInvoicesAsync(
+        CancellationToken cancellationToken,
+        string? accessToken,
+        string? businessId)
+    {
+        const string query = """
+            query ($businessId: ID!) {
+              business(id: $businessId) {
+                invoices(page: 1, pageSize: 50, sort: [CREATED_AT_DESC]) {
+                  edges {
+                    node {
+                      payments {
+                        account { id name }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            """;
+
+        var response = await ExecuteGraphQlAsync(
+            new { query, variables = new { businessId = ResolveBusinessId(businessId) } },
+            cancellationToken,
+            accessToken);
+        if (!response.Success || response.Data == null)
+            return null;
+
+        try
+        {
+            if (!response.Data.Value.TryGetProperty("business", out var business)
+                || !business.TryGetProperty("invoices", out var invoices)
+                || !invoices.TryGetProperty("edges", out var edges))
+                return null;
+
+            foreach (var edge in edges.EnumerateArray())
+            {
+                if (!edge.TryGetProperty("node", out var node)
+                    || !node.TryGetProperty("payments", out var payments)
+                    || payments.ValueKind != JsonValueKind.Array)
+                    continue;
+                foreach (var payment in payments.EnumerateArray())
+                {
+                    if (!payment.TryGetProperty("account", out var account)
+                        || account.ValueKind != JsonValueKind.Object
+                        || !account.TryGetProperty("id", out var id))
+                        continue;
+                    var accountId = id.GetString();
+                    if (!string.IsNullOrWhiteSpace(accountId))
+                        return accountId;
+                }
+            }
+        }
+        catch
+        {
+            return null;
+        }
+
+        return null;
+    }
+
+    private static bool ContainsAny(string value, params string[] needles) =>
+        needles.Any(needle => value.Contains(needle, StringComparison.OrdinalIgnoreCase));
 
     private async Task<WaveGraphQlResponse> ExecuteGraphQlAsync(
         object payload,
@@ -1332,6 +1683,21 @@ public sealed class WaveSendResult
         new() { Success = true, Recipients = recipients };
 
     public static WaveSendResult Failed(string message) =>
+        new() { Success = false, ErrorMessage = message };
+}
+
+public sealed class WavePaymentResult
+{
+    public bool Success { get; init; }
+    public bool AlreadyPaid { get; init; }
+    public string? PaymentId { get; init; }
+    public decimal Amount { get; init; }
+    public string? ErrorMessage { get; init; }
+
+    public static WavePaymentResult Succeeded(string? paymentId, decimal amount, bool alreadyPaid = false) =>
+        new() { Success = true, PaymentId = paymentId, Amount = amount, AlreadyPaid = alreadyPaid };
+
+    public static WavePaymentResult Failed(string message) =>
         new() { Success = false, ErrorMessage = message };
 }
 

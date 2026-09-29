@@ -17,17 +17,26 @@ public class RoutesController : Controller
     private readonly StopImportService _stopImportService;
     private readonly RouteSheetSyncService _routeSheetSyncService;
     private readonly StopVisitService _visitService;
+    private readonly RouteCustomerReportPdfGenerator _routeCustomerReportPdf;
+    private readonly BrochureLabelPdfGenerator _brochureLabelPdf;
+    private readonly BrochureWarehouseSheetService _warehouseSheet;
 
     public RoutesController(
         ApplicationDbContext context,
         StopImportService stopImportService,
         RouteSheetSyncService routeSheetSyncService,
-        StopVisitService visitService)
+        StopVisitService visitService,
+        RouteCustomerReportPdfGenerator routeCustomerReportPdf,
+        BrochureLabelPdfGenerator brochureLabelPdf,
+        BrochureWarehouseSheetService warehouseSheet)
     {
         _context = context;
         _stopImportService = stopImportService;
         _routeSheetSyncService = routeSheetSyncService;
         _visitService = visitService;
+        _routeCustomerReportPdf = routeCustomerReportPdf;
+        _brochureLabelPdf = brochureLabelPdf;
+        _warehouseSheet = warehouseSheet;
     }
 
     public async Task<IActionResult> Index(RouteStatus? status, RouteProduct? product)
@@ -48,6 +57,35 @@ public class RoutesController : Controller
         ViewBag.Status = status;
         ViewBag.Product = product;
         return View(await query.OrderBy(r => r.RouteName).ToListAsync());
+    }
+
+    public async Task<IActionResult> HotelCustomersPdf(CancellationToken cancellationToken)
+    {
+        var pdf = await _routeCustomerReportPdf.BuildHotelAsync(cancellationToken);
+        return File(pdf, "application/pdf", $"Hotel-customers-by-route-{DateTime.Today:yyyyMMdd}.pdf");
+    }
+
+    public async Task<IActionResult> RestAreaCustomersPdf(CancellationToken cancellationToken)
+    {
+        var pdf = await _routeCustomerReportPdf.BuildRestAreaAsync(cancellationToken);
+        return File(pdf, "application/pdf", $"Rest-area-customers-by-location-{DateTime.Today:yyyyMMdd}.pdf");
+    }
+
+    public async Task<IActionResult> BrochureLabelsPdf(CancellationToken cancellationToken)
+    {
+        var pdf = await _brochureLabelPdf.BuildAsync(cancellationToken);
+        return File(pdf, "application/pdf", $"Brochure-labels-nametags-{DateTime.Today:yyyyMMdd}.pdf");
+    }
+
+    public async Task<IActionResult> DownloadWarehouseSheet(CancellationToken cancellationToken)
+    {
+        var stream = new MemoryStream();
+        await _warehouseSheet.ExportAsync(stream, cancellationToken);
+        stream.Position = 0;
+        return File(
+            stream,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            BrochureWarehouseSheetService.FileName);
     }
 
     public async Task<IActionResult> Details(int? id)

@@ -11,6 +11,10 @@ public class BillingPageViewModel
     public bool WaveConfigured { get; set; }
     public bool CreateOnSendConfigured { get; set; }
     public bool WaveSessionExpired { get; set; }
+    public bool WaveOAuthConfigured { get; set; }
+    public bool WaveConnected { get; set; }
+    public string? WaveBusinessName { get; set; }
+    public string? WaveClientId { get; set; }
     public BillingRun? Run { get; set; }
     public List<DueContractItem> DueContracts { get; set; } = new();
     public List<BillingRunInvoice> SubmittedInvoices { get; set; } = new();
@@ -93,4 +97,16 @@ public class MissingBillingContactAlert
     public bool IsEmailWarning { get; init; }
     public int DueContractCount { get; init; }
     public decimal DueAmount { get; init; }
+}
+
+public class BillingForecastPageViewModel
+{
+    public int Year { get; set; }
+    public int Month { get; set; }
+    public bool IgnoreEndDate { get; set; }
+    public IReadOnlyList<BillingMonthForecast> Months { get; set; } = Array.Empty<BillingMonthForecast>();
+    public BillingMonthForecast? Selected { get; set; }
+    public decimal ForecastTotal => Months.Sum(m => m.Amount);
+    public int ForecastInvoiceCount => Months.Sum(m => m.InvoiceCount);
+    public string PeriodLabel => BillingDueCalculator.PeriodLabel(Year, Month);
 }

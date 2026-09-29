@@ -9,6 +9,14 @@
             <input asp-for="CustomerName" class="form-control" />
             <span asp-validation-for="CustomerName" class="text-danger"></span>
         </div>
+        @if (!string.IsNullOrWhiteSpace(Model.BrochureCode))
+        {
+            <div class="mb-3">
+                <label asp-for="BrochureCode" class="form-label"></label>
+                <input asp-for="BrochureCode" class="form-control" readonly />
+                <div class="form-text">Assigned for brochure nametag labels. First letter of the name plus sequence, e.g. P001.</div>
+            </div>
+        }
         <div class="mb-3">
             <label asp-for="Address" class="form-label"></label>
             <input asp-for="Address" class="form-control" />
@@ -73,15 +81,8 @@
         </div>
         <div class="mb-3">
             <label asp-for="Type" class="form-label"></label>
-            <select asp-for="Type" class="form-select" asp-items="Html.GetEnumSelectList<CustomerType>()" id="customerType"></select>
-            <div class="form-text">Use Type to move a record between Customers, Prospects, and Expanded Prospects.</div>
-        </div>
-        <div class="mb-3" id="expandedRouteField">
-            <label asp-for="ExpandedProspectRouteId" class="form-label"></label>
-            <select asp-for="ExpandedProspectRouteId" class="form-select" asp-items="ViewBag.ExpandedProspectRoutes">
-                <option value="">— Select route —</option>
-            </select>
-            <div class="form-text">Groups this attraction on the Expanded Prospects grid for that route.</div>
+            <select asp-for="Type" class="form-select" asp-items="ViewBag.CustomerTypes" id="customerType"></select>
+            <div class="form-text">Use Type to move a record between Customers and Prospects.</div>
         </div>
         <div class="mb-3">
             <label asp-for="Status" class="form-label"></label>
@@ -114,15 +115,3 @@
     </div>
 </div>
 
-<script>
-    (function () {
-        var type = document.getElementById('customerType');
-        var field = document.getElementById('expandedRouteField');
-        if (!type || !field) return;
-        function sync() {
-            field.style.display = type.value === 'ExpandedProspect' ? '' : 'none';
-        }
-        type.addEventListener('change', sync);
-        sync();
-    })();
-</script>

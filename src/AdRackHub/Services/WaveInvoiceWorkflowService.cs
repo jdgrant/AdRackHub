@@ -1,3 +1,4 @@
+using System.Globalization;
 using AdRackHub.Data;
 using AdRackHub.Models;
 using Microsoft.Extensions.Logging;
@@ -22,6 +23,7 @@ public class WaveInvoiceWorkflowService
     private readonly WaveSessionService _session;
     private readonly InvoicePdfStorageService _invoicePdfs;
     private readonly InvoicePdfGenerator _invoicePdf;
+    private readonly MailgunInvoiceEmailService _mailgun;
     private readonly ILogger<WaveInvoiceWorkflowService> _logger;
 
     public WaveInvoiceWorkflowService(
@@ -30,6 +32,7 @@ public class WaveInvoiceWorkflowService
         WaveSessionService session,
         InvoicePdfStorageService invoicePdfs,
         InvoicePdfGenerator invoicePdf,
+        MailgunInvoiceEmailService mailgun,
         ILogger<WaveInvoiceWorkflowService> logger)
     {
         _context = context;
@@ -37,6 +40,7 @@ public class WaveInvoiceWorkflowService
         _session = session;
         _invoicePdfs = invoicePdfs;
         _invoicePdf = invoicePdf;
+        _mailgun = mailgun;
         _logger = logger;
     }
 
@@ -102,7 +106,7 @@ public class WaveInvoiceWorkflowService
         {
             return Fail(_session.NeedsBusinessReset
                 ? WaveSessionService.SessionExpiredReconnectMessage
-                : "Connect to Wave on the Admin Wave proof page before sending invoices.");
+                : "Connect to Wave on the Billing page before sending invoices.");
         }
 
         if (lineItems.Count == 0)
@@ -160,7 +164,7 @@ public class WaveInvoiceWorkflowService
             credentials.BusinessId,
             cancellationToken);
 
-        var pdfSaved = await PersistOnContractsAsync(
+        var (pdfSaved, pdfBytes) = await PersistOnContractsAsync(
             customer,
             persistOnContracts,
             lineItems,
@@ -172,9 +176,8 @@ public class WaveInvoiceWorkflowService
 
         var sendMessage = await SendIfEmailAsync(
             customer,
-            approved.WaveInvoiceId ?? invoice.WaveInvoiceId,
-            credentials.AccessToken,
-            credentials.BusinessId,
+            approved,
+            pdfBytes,
             cancellationToken);
 
         var invoiceNumber = approved.InvoiceNumber ?? invoice.InvoiceNumber;
@@ -253,7 +256,7 @@ public class WaveInvoiceWorkflowService
             })
             .ToList();
 
-        var pdfSaved = await PersistOnContractsAsync(
+        var (pdfSaved, pdfBytes) = await PersistOnContractsAsync(
             contract.Customer,
             new[] { contract },
             lineItems,
@@ -264,9 +267,8 @@ public class WaveInvoiceWorkflowService
             cancellationToken);
         var sendMessage = await SendIfEmailAsync(
             contract.Customer,
-            approved.WaveInvoiceId ?? waveInvoiceId,
-            credentials.AccessToken,
-            credentials.BusinessId,
+            approved,
+            pdfBytes,
             cancellationToken);
 
         return new WaveInvoiceWorkflowResult
@@ -279,6 +281,108 @@ public class WaveInvoiceWorkflowService
             Message =
                 $"Approved the Wave invoice{(string.IsNullOrWhiteSpace(approved.Status) ? "" : $" ({approved.Status})")}. {sendMessage}"
         };
+    }
+
+    public async Task<WaveInvoiceWorkflowResult> RecordPaymentAsync(
+        string? waveInvoiceId,
+        string? waveInvoiceNumber,
+        decimal fallbackAmount,
+        DateOnly paymentDate,
+        CancellationToken cancellationToken = default)
+    {
+        var credentials = await _session.GetCredentialsAsync(cancellationToken);
+        if (credentials == null
+            || string.IsNullOrWhiteSpace(credentials.AccessToken)
+            || string.IsNullOrWhiteSpace(credentials.BusinessId))
+        {
+            return Fail(_session.NeedsBusinessReset
+                ? WaveSessionService.SessionExpiredReconnectMessage
+                : "Connect to Wave on the Billing page before recording a payment.");
+        }
+
+        WaveInvoiceResult? invoice = null;
+        if (!string.IsNullOrWhiteSpace(waveInvoiceId))
+        {
+            invoice = await _waveApi.GetInvoiceAsync(
+                waveInvoiceId,
+                cancellationToken,
+                credentials.AccessToken,
+                credentials.BusinessId);
+        }
+
+        if ((invoice == null || !invoice.Success) && !string.IsNullOrWhiteSpace(waveInvoiceNumber))
+        {
+            invoice = await _waveApi.FindInvoiceByNumberAsync(
+                waveInvoiceNumber,
+                cancellationToken,
+                credentials.AccessToken,
+                credentials.BusinessId);
+        }
+
+        if (invoice == null || !invoice.Success || string.IsNullOrWhiteSpace(invoice.WaveInvoiceId))
+        {
+            return Fail(invoice?.ErrorMessage
+                ?? "This invoice has no Wave invoice to mark paid.");
+        }
+
+        var status = invoice.Status ?? string.Empty;
+        if (status.Equals("PAID", StringComparison.OrdinalIgnoreCase)
+            || status.Equals("OVERPAID", StringComparison.OrdinalIgnoreCase))
+        {
+            return new WaveInvoiceWorkflowResult
+            {
+                Success = true,
+                Invoice = invoice,
+                Message = $"Wave invoice {invoice.InvoiceNumber ?? invoice.WaveInvoiceId} is already paid."
+            };
+        }
+
+        var amount = ParseAmount(invoice.Amount);
+        if (amount <= 0)
+            amount = fallbackAmount;
+        if (amount <= 0)
+            return Fail("Could not determine the amount due on the Wave invoice.");
+
+        var paid = await _waveApi.RecordInvoicePaymentAsync(
+            invoice.WaveInvoiceId,
+            amount,
+            paymentDate,
+            cancellationToken,
+            credentials.AccessToken,
+            credentials.BusinessId);
+        if (!paid.Success)
+        {
+            return new WaveInvoiceWorkflowResult
+            {
+                Success = false,
+                SessionExpired = WaveSessionService.IsSessionExpiredMessage(paid.ErrorMessage),
+                Invoice = invoice,
+                Message = paid.ErrorMessage ?? "Wave payment failed."
+            };
+        }
+
+        _logger.LogInformation(
+            "Recorded Wave payment {Amount} on invoice {InvoiceNumber} ({InvoiceId}).",
+            paid.Amount,
+            invoice.InvoiceNumber,
+            invoice.WaveInvoiceId);
+
+        return new WaveInvoiceWorkflowResult
+        {
+            Success = true,
+            Invoice = invoice,
+            Message = $"Recorded {paid.Amount:C} in Wave on invoice {invoice.InvoiceNumber ?? invoice.WaveInvoiceId}."
+        };
+    }
+
+    private static decimal ParseAmount(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return 0;
+        var trimmed = value.Trim().Replace("$", "", StringComparison.Ordinal).Replace(",", "", StringComparison.Ordinal);
+        return decimal.TryParse(trimmed, NumberStyles.Number, CultureInfo.InvariantCulture, out var amount)
+            ? amount
+            : 0;
     }
 
     private async Task<(string? WaveCustomerId, string? ErrorMessage)> EnsureCustomerAsync(
@@ -315,7 +419,7 @@ public class WaveInvoiceWorkflowService
         return (created.WaveCustomerId, null);
     }
 
-    private async Task<bool> PersistOnContractsAsync(
+    private async Task<(bool Saved, byte[]? PdfBytes)> PersistOnContractsAsync(
         Customer customer,
         IReadOnlyList<CustomerContract> contracts,
         IReadOnlyList<WaveInvoiceLineItem> lineItems,
@@ -326,14 +430,15 @@ public class WaveInvoiceWorkflowService
         CancellationToken cancellationToken)
     {
         if (contracts.Count == 0)
-            return false;
+            return (false, null);
 
         var dueDate = invoiceDate.AddDays(WaveApiService.InvoiceDueDays);
         if (!string.IsNullOrWhiteSpace(invoice.DueDate) && DateOnly.TryParse(invoice.DueDate, out var parsedDue))
             dueDate = parsedDue;
 
         string? payUrl = invoice.WaveInvoiceUrl;
-        byte[]? bytes = TryGeneratePdf(customer, lineItems, invoice.InvoiceNumber, invoiceDate, dueDate, payUrl);
+        var invoiceNotes = CombinedInvoiceNotes(contracts);
+        byte[]? bytes = TryGeneratePdf(customer, lineItems, invoice.InvoiceNumber, invoiceDate, dueDate, payUrl, invoiceNotes);
 
         if (!string.IsNullOrWhiteSpace(invoice.WaveInvoiceId) && !WaveApiService.IsWaveShortPayUrl(payUrl))
         {
@@ -352,7 +457,7 @@ public class WaveInvoiceWorkflowService
                     && !string.Equals(resolved, payUrl, StringComparison.OrdinalIgnoreCase))
                 {
                     payUrl = resolved;
-                    var withShortUrl = TryGeneratePdf(customer, lineItems, invoice.InvoiceNumber, invoiceDate, dueDate, payUrl);
+                    var withShortUrl = TryGeneratePdf(customer, lineItems, invoice.InvoiceNumber, invoiceDate, dueDate, payUrl, invoiceNotes);
                     if (withShortUrl is { Length: > 0 })
                         bytes = withShortUrl;
                 }
@@ -409,7 +514,17 @@ public class WaveInvoiceWorkflowService
         await _context.SaveChangesAsync(cancellationToken);
         foreach (var (previous, current) in replaced)
             _invoicePdfs.DeleteReplaced(previous, current);
-        return savedPdf;
+        return (savedPdf, bytes);
+    }
+
+    private static string? CombinedInvoiceNotes(IReadOnlyList<CustomerContract> contracts)
+    {
+        var notes = contracts
+            .Select(c => WarehouseLocation.NullIfEmpty(c.InvoiceNotes))
+            .Where(n => n != null)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        return notes.Count == 0 ? null : string.Join("\n\n", notes!);
     }
 
     private byte[]? TryGeneratePdf(
@@ -418,7 +533,8 @@ public class WaveInvoiceWorkflowService
         string? invoiceNumber,
         DateOnly invoiceDate,
         DateOnly dueDate,
-        string? payUrl)
+        string? payUrl,
+        string? invoiceNotes)
     {
         try
         {
@@ -428,7 +544,8 @@ public class WaveInvoiceWorkflowService
                 invoiceNumber,
                 invoiceDate,
                 dueDate,
-                payUrl));
+                payUrl,
+                invoiceNotes));
         }
         catch (Exception ex)
         {
@@ -439,9 +556,8 @@ public class WaveInvoiceWorkflowService
 
     private async Task<string> SendIfEmailAsync(
         Customer customer,
-        string waveInvoiceId,
-        string? accessToken,
-        string? businessId,
+        WaveInvoiceResult invoice,
+        byte[]? pdfBytes,
         CancellationToken cancellationToken)
     {
         if (!customer.InvoiceReceiptMethod.IncludesEmail())
@@ -452,19 +568,20 @@ public class WaveInvoiceWorkflowService
         if (emails.Count == 0)
             return "No contacts have an email, so the invoice was not emailed.";
 
-        var sent = await _waveApi.SendInvoiceAsync(
-            waveInvoiceId,
-            emails,
-            cancellationToken,
-            accessToken,
-            businessId,
-            customer.CustomerName);
-        if (!sent.Success)
-            return "Wave invoice email failed: "
-                + (sent.ErrorMessage ?? "Unknown error")
-                + ". Disconnect and Connect to Wave again if this is a permission error.";
+        if (pdfBytes is not { Length: > 0 })
+            return "Ad-Rack invoice PDF was not generated, so the invoice was not emailed.";
 
-        return "Emailed to " + string.Join(", ", sent.Recipients) + ".";
+        var sent = await _mailgun.SendInvoiceAsync(
+            emails,
+            invoice,
+            customer.CustomerName,
+            pdfBytes,
+            InvoicePdfStorageService.BuildFileName(invoice.InvoiceNumber),
+            cancellationToken);
+        if (!sent.Success)
+            return "Invoice email failed: " + (sent.ErrorMessage ?? "Unknown error");
+
+        return "Emailed Ad-Rack PDF to " + string.Join(", ", sent.Recipients) + ".";
     }
 
     private async Task<WaveInvoiceResult> EnsureInvoicePdfUrlAsync(

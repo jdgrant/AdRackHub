@@ -110,13 +110,13 @@ public class AdminController : Controller
         if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
         {
             TempData["Error"] = "Paste both the Wave Client ID and Client Secret, then save.";
-            return RedirectToAction(nameof(WaveProof));
+            return RedirectToBilling();
         }
 
         HttpContext.Session.SetString(WavePocClientIdKey, clientId.Trim());
         HttpContext.Session.SetString(WavePocClientSecretKey, clientSecret.Trim());
-        TempData["Message"] = "Wave app credentials saved for this browser session. Click Connect to Wave.";
-        return RedirectToAction(nameof(WaveProof));
+        TempData["Message"] = "Wave app credentials saved. Click Connect to Wave.";
+        return RedirectToBilling();
     }
 
     public IActionResult WaveOAuthStart()
@@ -124,8 +124,8 @@ public class AdminController : Controller
         var (clientId, clientSecret) = WavePocAppCredentials();
         if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
         {
-            TempData["Error"] = "Paste the Wave Client ID and Client Secret below, then Connect to Wave.";
-            return RedirectToAction(nameof(WaveProof));
+            TempData["Error"] = "Paste the Wave Client ID and Client Secret, then Connect to Wave.";
+            return RedirectToBilling();
         }
 
         var state = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
@@ -138,14 +138,14 @@ public class AdminController : Controller
         if (!string.IsNullOrWhiteSpace(error))
         {
             TempData["Error"] = $"Wave authorization failed: {error}";
-            return RedirectToAction(nameof(WaveProof));
+            return RedirectToBilling();
         }
 
         var expectedState = HttpContext.Session.GetString(WavePocStateKey);
         if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(state) || state != expectedState)
         {
             TempData["Error"] = "Wave authorization state did not match. Try Connect to Wave again.";
-            return RedirectToAction(nameof(WaveProof));
+            return RedirectToBilling();
         }
 
         var (clientId, clientSecret) = WavePocAppCredentials();
@@ -158,7 +158,7 @@ public class AdminController : Controller
         if (!tokenResult.Success || string.IsNullOrWhiteSpace(tokenResult.AccessToken))
         {
             TempData["Error"] = tokenResult.ErrorMessage ?? "Wave token exchange failed.";
-            return RedirectToAction(nameof(WaveProof));
+            return RedirectToBilling();
         }
 
         HttpContext.Session.SetString(WavePocTokenKey, tokenResult.AccessToken);
@@ -187,7 +187,7 @@ public class AdminController : Controller
         TempData["Message"] = business == null
             ? "Connected to Wave. No businesses were returned for this login."
             : $"Connected to Wave business {business.Name}.";
-        return RedirectToAction(nameof(WaveProof));
+        return RedirectToBilling();
     }
 
     [HttpPost]
@@ -195,8 +195,8 @@ public class AdminController : Controller
     public IActionResult WaveOAuthDisconnect()
     {
         ClearWaveLogin();
-        TempData["Message"] = "Disconnected the Wave proof-of-concept login.";
-        return RedirectToAction(nameof(WaveProof));
+        TempData["Message"] = "Disconnected from Wave.";
+        return RedirectToBilling();
     }
 
     [HttpPost]
@@ -204,10 +204,10 @@ public class AdminController : Controller
     public IActionResult WaveOAuthResetBusiness()
     {
         ClearWaveLogin();
-        TempData["Message"] = "Wave business connection was reset. Connect to Wave, then send the contract again.";
+        TempData["Message"] = "Wave business connection was reset. Connect to Wave, then send invoices again.";
         if (WavePocOAuthConfigured())
-            return RedirectToAction(nameof(WaveOAuthStart));
-        return RedirectToAction(nameof(WaveProof));
+            return RedirectToAction(nameof(WaveOAuthStart), "Billing");
+        return RedirectToBilling();
     }
 
     [HttpPost]
@@ -224,7 +224,7 @@ public class AdminController : Controller
                 return RedirectToAction(nameof(WaveProof), new { contractId });
             }
 
-            model.ResultMessage = "Connect to Wave (or set Wave:AccessToken and Wave:BusinessId) before creating a draft invoice.";
+            model.ResultMessage = "Connect to Wave on the Billing page before creating a draft invoice.";
             return View("WaveProof", model);
         }
 
@@ -655,6 +655,15 @@ public class AdminController : Controller
     }
 
     private string WaveOAuthRedirectUri() => $"{PublicBaseUrl()}/Admin/WaveOAuthCallback";
+
+    private IActionResult RedirectToBilling()
+    {
+        int? year = int.TryParse(HttpContext.Session.GetString("WaveOAuthReturnYear"), out var y) ? y : null;
+        int? month = int.TryParse(HttpContext.Session.GetString("WaveOAuthReturnMonth"), out var m) ? m : null;
+        HttpContext.Session.Remove("WaveOAuthReturnYear");
+        HttpContext.Session.Remove("WaveOAuthReturnMonth");
+        return RedirectToAction("Index", "Billing", new { year, month });
+    }
 
     private string PublicBaseUrl()
     {

@@ -22,63 +22,11 @@
 
 <div class="card mb-4">
     <div class="card-body">
-        <h2 class="h5">OAuth redirect URI</h2>
-        <p class="mb-2">
-            In the Wave application settings, add this exact Redirect URI (login redirect hook):
+        <h2 class="h5">Wave connection</h2>
+        <p class="mb-0">
+            Connect to Wave on the <a asp-controller="Billing" asp-action="Index">Billing</a> page.
+            This proof page only creates a test invoice for a contract ID after Wave is connected.
         </p>
-        <p class="mb-2"><code>@Model.RedirectUri</code></p>
-        <p class="small text-muted mb-3">
-            For local development also register <code>@Model.LocalRedirectUri</code>.
-            Host and port must match exactly. Wave requires the callback path to sit under a registered URI.
-        </p>
-        <form asp-action="WaveOAuthSaveCredentials" method="post" class="row g-2 align-items-end mb-3">
-            @Html.AntiForgeryToken()
-            <div class="col-md-5">
-                <label class="form-label" for="clientId">Client ID</label>
-                <input class="form-control" id="clientId" name="clientId" value="@Model.ClientId" autocomplete="off" required />
-            </div>
-            <div class="col-md-5">
-                <label class="form-label" for="clientSecret">Client Secret</label>
-                <input class="form-control" id="clientSecret" name="clientSecret" type="password" value="" autocomplete="off" required
-                       placeholder="@(Model.OAuthConfigured ? "Saved for this session — paste again to replace" : "Paste from the Wave application")" />
-            </div>
-            <div class="col-md-2">
-                <button type="submit" class="btn btn-outline-primary w-100">Save</button>
-            </div>
-        </form>
-        <p class="small text-muted">
-            After you Connect to Wave once, this server keeps the login (including a refresh token) so it survives app restarts.
-            Access tokens still expire; they are refreshed automatically. If a send fails because the session expired, reset the business and Connect to Wave again.
-            Emailing invoices needs Wave's <code>invoice:send</code> permission — Disconnect and Connect again if send fails after this update.
-        </p>
-        <div class="d-flex flex-wrap gap-2 align-items-center">
-            @if (Model.NeedsBusinessReset)
-            {
-                <span class="badge bg-warning text-dark">Session expired</span>
-                <form asp-action="WaveOAuthResetBusiness" method="post" class="d-inline">
-                    @Html.AntiForgeryToken()
-                    <button type="submit" class="btn btn-warning"
-                            onclick="return confirm('Your Wave session expired. Reset the business now?');">Reset business</button>
-                </form>
-            }
-            else if (Model.Connected)
-            {
-                <span class="badge bg-success">Connected@(string.IsNullOrWhiteSpace(Model.BusinessName) ? "" : $" — {Model.BusinessName}")</span>
-                <form asp-action="WaveOAuthDisconnect" method="post" class="d-inline">
-                    @Html.AntiForgeryToken()
-                    <button type="submit" class="btn btn-sm btn-outline-secondary">Disconnect</button>
-                </form>
-            }
-            else
-            {
-                <span class="badge bg-secondary">Not connected</span>
-            }
-            <a asp-action="WaveOAuthStart" class="btn btn-primary">Connect to Wave</a>
-            @if (!Model.OAuthConfigured)
-            {
-                <span class="text-muted small">Save Client ID and Client Secret first.</span>
-            }
-        </div>
     </div>
 </div>
 
@@ -163,7 +111,7 @@
             }
             @if (Model.NeedsBusinessReset)
             {
-                <form asp-action="WaveOAuthResetBusiness" method="post" class="mt-3">
+                <form asp-controller="Billing" asp-action="WaveOAuthResetBusiness" method="post" class="mt-3">
                     @Html.AntiForgeryToken()
                     <button type="submit" class="btn btn-warning"
                             onclick="return confirm('Your Wave session expired. Reset the business now?');">Reset business</button>

@@ -30,6 +30,26 @@ public class WaveSessionService
     }
 
     public const string SessionExpiredReconnectMessage = WaveApiService.SessionExpiredReconnectMessage;
+    public const string TokenKey = "WavePocAccessToken";
+    public const string BusinessIdKey = "WavePocBusinessId";
+    public const string BusinessNameKey = "WavePocBusinessName";
+    public const string StateKey = "WavePocOAuthState";
+    public const string ClientIdKey = "WavePocClientId";
+    public const string ClientSecretKey = "WavePocClientSecret";
+
+    public string? ConnectedBusinessName => _tokens.Load()?.BusinessName;
+
+    public bool IsOAuthConfigured
+    {
+        get
+        {
+            var request = _httpContextAccessor.HttpContext;
+            var sessionClientId = request?.Session.GetString(ClientIdKey);
+            var sessionClientSecret = request?.Session.GetString(ClientSecretKey);
+            return (!string.IsNullOrWhiteSpace(sessionClientId) || !string.IsNullOrWhiteSpace(_options.ClientId))
+                && (!string.IsNullOrWhiteSpace(sessionClientSecret) || !string.IsNullOrWhiteSpace(_options.ClientSecret));
+        }
+    }
 
     public bool IsReady
     {

@@ -50,10 +50,12 @@ builder.Services.Configure<GoogleSheetsOptions>(builder.Configuration.GetSection
 builder.Services.AddSingleton<GoogleSheetsService>();
 builder.Services.AddScoped<RouteSheetSyncService>();
 builder.Services.Configure<WaveOptions>(builder.Configuration.GetSection(WaveOptions.SectionName));
+builder.Services.Configure<MailgunOptions>(builder.Configuration.GetSection(MailgunOptions.SectionName));
 builder.Services.Configure<WaveSyncOptions>(builder.Configuration.GetSection(WaveSyncOptions.SectionName));
 builder.Services.Configure<DataForSeoOptions>(builder.Configuration.GetSection(DataForSeoOptions.SectionName));
 builder.Services.AddHttpClient();
 builder.Services.AddHttpClient<WaveApiService>();
+builder.Services.AddHttpClient<MailgunInvoiceEmailService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<WavePocTokenStore>();
 builder.Services.AddScoped<WaveSessionService>();
@@ -67,6 +69,10 @@ builder.Services.AddScoped<StopVisitService>();
 builder.Services.AddScoped<BrochureScanService>();
 builder.Services.AddSingleton<InvoicePdfStorageService>();
 builder.Services.AddSingleton<InvoicePdfGenerator>();
+builder.Services.AddScoped<RouteCustomerReportPdfGenerator>();
+builder.Services.AddScoped<BrochureLabelIdService>();
+builder.Services.AddScoped<BrochureLabelPdfGenerator>();
+builder.Services.AddScoped<DriverNotesSheetImportService>();
 builder.Services.AddScoped<BrochureOptimizeService>();
 builder.Services.AddScoped<ProspectHotelDiscoveryService>();
 builder.Services.AddSingleton<ProspectHotelDiscoveryJobService>();
@@ -76,7 +82,8 @@ builder.Services.AddScoped<CustomerGeocodeService>();
 builder.Services.AddScoped<StopGeocodeService>();
 builder.Services.AddScoped<CustomerNeedsMoreInfoService>();
 builder.Services.AddScoped<HighValueProspectProximityService>();
-builder.Services.AddScoped<CustomerRouteMatrixService>();
+        builder.Services.AddScoped<CustomerRouteMatrixService>();
+        builder.Services.AddScoped<BrochureWarehouseSheetService>();
 builder.Services.AddScoped<Sept2026ContractImportService>();
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
 {
@@ -146,6 +153,124 @@ using (var scope = app.Services.CreateScope())
         return;
     }
 
+    var testInvoiceEmailArg = args.FirstOrDefault(a => a.StartsWith("--test-invoice-email", StringComparison.OrdinalIgnoreCase));
+    if (testInvoiceEmailArg != null)
+    {
+        var to = testInvoiceEmailArg.StartsWith("--test-invoice-email=", StringComparison.OrdinalIgnoreCase)
+            ? testInvoiceEmailArg["--test-invoice-email=".Length..].Trim()
+            : "billing@ad-rack.net";
+        if (string.IsNullOrWhiteSpace(to))
+            to = "billing@ad-rack.net";
+
+        var generator = scope.ServiceProvider.GetRequiredService<InvoicePdfGenerator>();
+        var mailgun = scope.ServiceProvider.GetRequiredService<MailgunInvoiceEmailService>();
+        var bytes = generator.Generate(InvoicePdfGenerator.Sample());
+        var invoice = WaveInvoiceResult.Succeeded(
+            "test",
+            "https://link.waveapps.com/drzg2t-te6axe",
+            "SAMPLE",
+            "SAVED",
+            null,
+            DateOnly.FromDateTime(DateTime.Today).AddDays(30).ToString("yyyy-MM-dd"),
+            "Sample Customer",
+            "123.45",
+            "Ad-Rack Services LLC");
+        var sent = await mailgun.SendInvoiceAsync(
+            new[] { to },
+            invoice,
+            "Sample Customer",
+            bytes,
+            "AdRack-sample.pdf");
+        Console.WriteLine(sent.Success
+            ? $"Mailed sample Hub invoice PDF to {string.Join(", ", sent.Recipients)}."
+            : $"Mailgun test failed: {sent.ErrorMessage}");
+        return;
+    }
+
+    if (args.Contains("--route-customer-pdfs"))
+    {
+        var generator = scope.ServiceProvider.GetRequiredService<RouteCustomerReportPdfGenerator>();
+        var outDir = Path.Combine(Path.GetTempPath(), "adrackhub-route-reports");
+        Directory.CreateDirectory(outDir);
+        var hotelPath = Path.Combine(outDir, "hotel.pdf");
+        var restPath = Path.Combine(outDir, "rest.pdf");
+        File.WriteAllBytes(hotelPath, await generator.BuildHotelAsync());
+        File.WriteAllBytes(restPath, await generator.BuildRestAreaAsync());
+        Console.WriteLine(hotelPath);
+        Console.WriteLine(restPath);
+        return;
+    }
+
+    if (args.Contains("--brochure-labels-pdf"))
+    {
+        var generator = scope.ServiceProvider.GetRequiredService<BrochureLabelPdfGenerator>();
+        var outPath = Path.Combine(Path.GetTempPath(), "adrackhub-brochure-labels.pdf");
+        File.WriteAllBytes(outPath, await generator.BuildAsync());
+        Console.WriteLine(outPath);
+        return;
+    }
+
+    var warehouseSheetArg = args.FirstOrDefault(a => a.StartsWith("--brochure-warehouse-xlsx", StringComparison.OrdinalIgnoreCase));
+    if (warehouseSheetArg != null)
+    {
+        var sheetService = scope.ServiceProvider.GetRequiredService<BrochureWarehouseSheetService>();
+        var outPath = warehouseSheetArg.Contains('=', StringComparison.Ordinal)
+            ? warehouseSheetArg[(warehouseSheetArg.IndexOf('=') + 1)..]
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", BrochureWarehouseSheetService.FileName);
+        await using var file = File.Create(outPath);
+        await sheetService.ExportAsync(file);
+        Console.WriteLine(outPath);
+        return;
+    }
+
+    var warehouseImportArg = args.FirstOrDefault(a => a.StartsWith("--import-warehouse-locations", StringComparison.OrdinalIgnoreCase));
+    if (warehouseImportArg != null)
+    {
+        var sheetService = scope.ServiceProvider.GetRequiredService<BrochureWarehouseSheetService>();
+        var inPath = warehouseImportArg.Contains('=', StringComparison.Ordinal)
+            ? warehouseImportArg[(warehouseImportArg.IndexOf('=') + 1)..]
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "customer-warehouse-locations.xlsx");
+        await using var importFile = File.OpenRead(inPath);
+        var importResult = await sheetService.ImportWalkthroughAsync(importFile);
+        Console.WriteLine($"Warehouse walkthrough: {inPath}");
+        Console.WriteLine($"Rows with rack/bin: {importResult.SourceRows}. Customers updated: {importResult.CustomersUpdated}. Locations saved: {importResult.LocationsUpdated}. Old locations removed: {importResult.LocationsRemoved}.");
+        if (importResult.Unmatched.Count > 0)
+        {
+            Console.WriteLine("Unmatched:");
+            foreach (var line in importResult.Unmatched.Distinct())
+                Console.WriteLine($"  {line}");
+        }
+        return;
+    }
+
+    if (args.Contains("--import-driver-notes"))
+    {
+        var importer = scope.ServiceProvider.GetRequiredService<DriverNotesSheetImportService>();
+        var result = await importer.ImportAsync();
+        Console.WriteLine($"Driver notes rows: {result.SourceRows}. Contracts updated: {result.Updated}. Unchanged: {result.Unchanged}.");
+        foreach (var line in result.UpdatedNames)
+            Console.WriteLine($"  {line}");
+        if (result.UnmatchedCustomers.Count > 0)
+        {
+            Console.WriteLine("Unmatched customers:");
+            foreach (var line in result.UnmatchedCustomers.Distinct())
+                Console.WriteLine($"  {line}");
+        }
+        if (result.UnmatchedRoutes.Count > 0)
+        {
+            Console.WriteLine("Unmatched routes:");
+            foreach (var line in result.UnmatchedRoutes.Distinct())
+                Console.WriteLine($"  {line}");
+        }
+        if (result.NoContract.Count > 0)
+        {
+            Console.WriteLine("Matched customer but no contract on that route:");
+            foreach (var line in result.NoContract.Distinct())
+                Console.WriteLine($"  {line}");
+        }
+        return;
+    }
+
     if (args.Contains("--cleanup-wave-test-invoices"))
     {
         var session = scope.ServiceProvider.GetRequiredService<WaveSessionService>();
@@ -153,7 +278,7 @@ using (var scope = app.Services.CreateScope())
         var credentials = await session.GetCredentialsAsync();
         if (credentials == null || string.IsNullOrWhiteSpace(credentials.AccessToken))
         {
-            Console.WriteLine("Connect to Wave on Admin → Wave proof first.");
+            Console.WriteLine("Connect to Wave on Billing first.");
             return;
         }
 

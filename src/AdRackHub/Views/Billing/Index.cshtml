@@ -11,7 +11,34 @@
 
 <div class="page-header">
     <h1 class="h2 mb-0">Billing</h1>
-    <div class="d-flex flex-wrap gap-2">
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+        @if (Model.WaveSessionExpired)
+        {
+            <span class="badge bg-warning text-dark">Wave session expired</span>
+            <form asp-action="WaveOAuthResetBusiness" method="post" class="d-inline">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="year" value="@Model.Year" />
+                <input type="hidden" name="month" value="@Model.Month" />
+                <button type="submit" class="btn btn-warning"
+                        onclick="return confirm('Your Wave session expired. Reset the business now?');">Reset Wave</button>
+            </form>
+        }
+        else if (Model.WaveConnected)
+        {
+            <span class="badge bg-success">Wave connected@(string.IsNullOrWhiteSpace(Model.WaveBusinessName) ? "" : $" — {Model.WaveBusinessName}")</span>
+            <form asp-action="WaveOAuthDisconnect" method="post" class="d-inline">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="year" value="@Model.Year" />
+                <input type="hidden" name="month" value="@Model.Month" />
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Disconnect</button>
+            </form>
+        }
+        else
+        {
+            <span class="badge bg-secondary">Wave not connected</span>
+        }
+        <a asp-action="Forecast" class="btn btn-outline-secondary">Forecast</a>
+        <a asp-action="WaveOAuthStart" asp-route-year="@Model.Year" asp-route-month="@Model.Month" class="btn btn-outline-primary">Connect to Wave</a>
         @if (Model.CanSendToWave)
         {
             <form asp-action="SendToWave" method="post" class="d-inline">
@@ -117,14 +144,38 @@
     <div class="alert alert-warning">
         <strong>@Model.MissingBillingEmailAlerts.Count</strong>
         @(Model.MissingBillingEmailAlerts.Count == 1 ? "customer has" : "customers have")
-        no billing email. You can still Create On Send; Wave will skip email when the receipt method is Mail.
+        no billing email. You can still Create On Send; Mail-only customers are not emailed.
     </div>
 }
 
-@if (!Model.CreateOnSendConfigured)
+@if (!Model.CreateOnSendConfigured && !Model.WaveOAuthConfigured)
 {
     <div class="alert alert-info">
-        Connect to Wave on <a asp-controller="Admin" asp-action="WaveProof">Admin → Wave proof</a> to create, approve, and send invoices.
+        <form asp-action="WaveOAuthSaveCredentials" method="post" class="row g-2 align-items-end">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="year" value="@Model.Year" />
+            <input type="hidden" name="month" value="@Model.Month" />
+            <div class="col-12">
+                Save the Wave Client ID and Client Secret, then Connect to Wave above.
+            </div>
+            <div class="col-md-5">
+                <label class="form-label" for="clientId">Client ID</label>
+                <input class="form-control" id="clientId" name="clientId" value="@Model.WaveClientId" autocomplete="off" required />
+            </div>
+            <div class="col-md-5">
+                <label class="form-label" for="clientSecret">Client Secret</label>
+                <input class="form-control" id="clientSecret" name="clientSecret" type="password" autocomplete="off" required />
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-outline-primary w-100">Save</button>
+            </div>
+        </form>
+    </div>
+}
+else if (!Model.CreateOnSendConfigured)
+{
+    <div class="alert alert-info">
+        Connect to Wave above to create, approve, and email invoices.
     </div>
 }
 @if (Model.WaveSessionExpired)
@@ -223,7 +274,7 @@
                     @if (Model.WaveSessionExpired)
                     {
                         <button type="submit" class="btn btn-sm btn-warning"
-                                formaction="@Url.Action("WaveOAuthResetBusiness", "Admin")"
+                                formaction="@Url.Action("WaveOAuthResetBusiness")"
                                 onclick="return confirm('Your Wave session expired. Reset the business now?');">
                             Create On Send
                         </button>
@@ -349,7 +400,8 @@ else
                                 <input type="hidden" name="waveInvoiceNumber" value="@invoice.WaveInvoiceNumber" />
                                 <input type="date" name="receivedDate" class="form-control form-control-sm"
                                        value="@today.ToString("yyyy-MM-dd")" style="width: 9.5rem;" />
-                                <button type="submit" class="btn btn-sm btn-success">Receive</button>
+                                <button type="submit" class="btn btn-sm btn-success"
+                                        title="Mark paid in Wave to Bluevine 4345. Exclude the matching bank deposit so it is not income.">Receive</button>
                             </form>
                         }
                         <form asp-action="UpdateInvoiceStatus" method="post" class="d-flex flex-wrap gap-1 align-items-center">
