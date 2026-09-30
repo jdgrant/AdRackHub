@@ -654,7 +654,7 @@ public class AdminController : Controller
         return !string.IsNullOrWhiteSpace(clientId) && !string.IsNullOrWhiteSpace(clientSecret);
     }
 
-    private string WaveOAuthRedirectUri() => $"{PublicBaseUrl()}/Admin/WaveOAuthCallback";
+    private string WaveOAuthRedirectUri() => _waveOptions.OAuthRedirectUri(Request);
 
     private IActionResult RedirectToBilling()
     {

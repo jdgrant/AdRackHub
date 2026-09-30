@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Http;
+
 namespace AdRackHub.Services;
 
 public class WaveOptions
@@ -84,9 +86,30 @@ public class WaveOptions
 
     public string PaymentMethod { get; set; } = "BANK_TRANSFER";
 
+    /// <summary>Public site origin for Wave OAuth (e.g. https://hub.ad-rack.net). Empty uses the current request.</summary>
+    public string? PublicBaseUrl { get; set; }
+
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(AccessToken) && !string.IsNullOrWhiteSpace(BusinessId);
 
     public bool IsOAuthConfigured =>
         !string.IsNullOrWhiteSpace(ClientId) && !string.IsNullOrWhiteSpace(ClientSecret);
+
+    public string OAuthRedirectUri(HttpRequest? request)
+    {
+        var configured = (PublicBaseUrl ?? "").Trim().TrimEnd('/');
+        if (!string.IsNullOrWhiteSpace(configured))
+            return $"{configured}/Admin/WaveOAuthCallback";
+
+        if (request == null)
+            return "/Admin/WaveOAuthCallback";
+
+        var scheme = request.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? request.Scheme;
+        if (scheme.Contains(',', StringComparison.Ordinal))
+            scheme = scheme.Split(',')[0].Trim();
+        var host = request.Headers["X-Forwarded-Host"].FirstOrDefault() ?? request.Host.ToString();
+        if (host.Contains(',', StringComparison.Ordinal))
+            host = host.Split(',')[0].Trim();
+        return $"{scheme}://{host}/Admin/WaveOAuthCallback";
+    }
 }

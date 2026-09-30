@@ -148,13 +148,7 @@ public class WaveSessionService
     private string? CurrentRedirectUri()
     {
         var request = _httpContextAccessor.HttpContext?.Request;
-        if (request == null)
-            return null;
-
-        var scheme = request.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? request.Scheme;
-        if (scheme.Contains(',', StringComparison.Ordinal))
-            scheme = scheme.Split(',')[0].Trim();
-        return $"{scheme}://{request.Host}/Admin/WaveOAuthCallback";
+        return _options.OAuthRedirectUri(request);
     }
 
     private static string? FirstNonEmpty(params string?[] values) =>

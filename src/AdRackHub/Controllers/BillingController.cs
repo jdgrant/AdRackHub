@@ -656,15 +656,7 @@ public class BillingController : Controller
             string.IsNullOrWhiteSpace(sessionClientSecret) ? _waveOptions.ClientSecret : sessionClientSecret);
     }
 
-    private string WaveOAuthRedirectUri() => $"{PublicBaseUrl()}/Admin/WaveOAuthCallback";
-
-    private string PublicBaseUrl()
-    {
-        var scheme = Request.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? Request.Scheme;
-        if (scheme.Contains(',', StringComparison.Ordinal))
-            scheme = scheme.Split(',')[0].Trim();
-        return $"{scheme}://{Request.Host}";
-    }
+    private string WaveOAuthRedirectUri() => _waveOptions.OAuthRedirectUri(Request);
 
     private static List<int> ParseIdList(string? raw) =>
         (raw ?? string.Empty)
