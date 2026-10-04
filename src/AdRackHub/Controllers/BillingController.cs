@@ -19,6 +19,7 @@ public class BillingController : Controller
     private readonly WaveApiService _waveApi;
     private readonly WavePocTokenStore _wavePocTokens;
     private readonly WaveOptions _waveOptions;
+    private readonly MailgunOptions _mailgunOptions;
 
     public BillingController(
         ApplicationDbContext context,
@@ -27,7 +28,8 @@ public class BillingController : Controller
         InvoicePdfStorageService invoicePdfs,
         WaveApiService waveApi,
         WavePocTokenStore wavePocTokens,
-        IOptions<WaveOptions> waveOptions)
+        IOptions<WaveOptions> waveOptions,
+        IOptions<MailgunOptions> mailgunOptions)
     {
         _context = context;
         _billingService = billingService;
@@ -36,6 +38,7 @@ public class BillingController : Controller
         _waveApi = waveApi;
         _wavePocTokens = wavePocTokens;
         _waveOptions = waveOptions.Value;
+        _mailgunOptions = mailgunOptions.Value;
     }
 
     public async Task<IActionResult> Index(int? year, int? month)
@@ -59,6 +62,7 @@ public class BillingController : Controller
             WaveConnected = _waveSession.IsReady && !_waveSession.NeedsBusinessReset,
             WaveBusinessName = _waveSession.ConnectedBusinessName,
             WaveClientId = WaveAppCredentials().ClientId,
+            MailgunConfigured = _mailgunOptions.IsConfigured,
             BatchPdfContractIds = ParseIdList(TempData["BatchPdfContractIds"] as string)
         };
 
@@ -218,6 +222,19 @@ public class BillingController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RegenerateInvoicePdfs(int year, int month)
+    {
+        var (saved, failed, message) = await _billingService.RegenerateInvoicePdfsAsync(year, month);
+        if (failed > 0 && saved == 0)
+            TempData["Error"] = message;
+        else
+            TempData["Message"] = message;
+
+        return RedirectToAction(nameof(Index), new { year, month });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> ResetInvoice(int year, int month, int invoiceId)
     {
         var (success, message) = await _billingService.ResetInvoiceForResendAsync(invoiceId);
@@ -290,6 +307,27 @@ public class BillingController : Controller
             return RedirectToAction(nameof(Index), new { year, month });
         }
 
+        return CombinedPdfResult(year, month, files);
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> CombinedPdf(int year, int month)
+    {
+        var files = await CollectInvoicePdfsAsync(year, month, null, null);
+        if (files.Count == 0)
+        {
+            TempData["Error"] = "No invoice PDFs are saved for this billing period.";
+            return RedirectToAction(nameof(Index), new { year, month });
+        }
+
+        return CombinedPdfResult(year, month, files);
+    }
+
+    private IActionResult CombinedPdfResult(
+        int year,
+        int month,
+        List<(string Path, string EntryName)> files)
+    {
         byte[] bytes;
         try
         {

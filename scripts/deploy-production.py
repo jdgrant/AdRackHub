@@ -12,6 +12,7 @@ import os
 import subprocess
 import sys
 import time
+import json
 from ftplib import FTP
 from pathlib import Path
 
@@ -19,6 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_PATHS = ("src", "scripts")
 
 SKIP_FILENAMES = {"appsettings.Production.json"}
+SECRET_SETTING_FILES = {"appsettings.json", "appsettings.Production.json"}
 SKIP_REMOTE_PREFIXES = (
     "App_Data/Uploads/",
     "Data/Uploads/",
@@ -75,9 +77,35 @@ def require_checked_in() -> str | None:
 def should_skip(remote_path: str) -> bool:
     normalized = remote_path.replace("\\", "/")
     name = normalized.rsplit("/", 1)[-1]
-    if name in SKIP_FILENAMES or name.endswith(".pdb"):
+    if name in SKIP_FILENAMES or name.endswith(".pdb") or name.endswith(".local.json"):
         return True
     return any(normalized.startswith(prefix) for prefix in SKIP_REMOTE_PREFIXES)
+
+
+def mailgun_key_present(settings: dict) -> bool:
+    mailgun = settings.get("Mailgun") if isinstance(settings, dict) else None
+    if not isinstance(mailgun, dict):
+        return False
+    key = mailgun.get("ApiKey")
+    return isinstance(key, str) and bool(key.strip())
+
+
+def refuse_published_secrets(local_root: Path) -> str | None:
+    """Keep Mailgun keys out of git-published appsettings.json."""
+    for name in SECRET_SETTING_FILES:
+        path = local_root / name
+        if not path.is_file():
+            continue
+        try:
+            settings = json.loads(path.read_text())
+        except json.JSONDecodeError:
+            return f"{name} is not valid JSON."
+        if name != "appsettings.Production.json" and mailgun_key_present(settings):
+            return (
+                f"{name} contains a Mailgun API key. Remove it before publishing. "
+                "Production keeps the key in gitignored appsettings.Production.json."
+            )
+    return None
 
 
 def ensure_remote_dir(ftp: FTP, path: str) -> None:
@@ -182,6 +210,11 @@ def main() -> int:
     local_root = Path(args.local)
     if not local_root.is_dir():
         print(f"Publish folder not found: {local_root}", file=sys.stderr)
+        return 1
+
+    secret_error = refuse_published_secrets(local_root)
+    if secret_error:
+        print(secret_error, file=sys.stderr)
         return 1
 
     ftp = FTP(args.host, timeout=120)

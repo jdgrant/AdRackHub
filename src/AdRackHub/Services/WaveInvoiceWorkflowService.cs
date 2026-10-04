@@ -1,6 +1,7 @@
 using System.Globalization;
 using AdRackHub.Data;
 using AdRackHub.Models;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace AdRackHub.Services;
@@ -283,6 +284,127 @@ public class WaveInvoiceWorkflowService
         };
     }
 
+    public async Task<(int Saved, int Failed, string Message)> RegenerateSavedPdfsAsync(
+        int year,
+        int month,
+        CancellationToken cancellationToken = default)
+    {
+        var invoices = await _context.BillingRunInvoices
+            .Include(i => i.BillingRun)
+            .Include(i => i.Lines)
+            .Include(i => i.Customer)
+                .ThenInclude(c => c.Contacts)
+            .Where(i => i.BillingRun.Year == year && i.BillingRun.Month == month)
+            .Where(i => i.Status == BillingRunInvoiceStatus.Submitted
+                        || i.Status == BillingRunInvoiceStatus.Received)
+            .OrderBy(i => i.Customer.CustomerName)
+            .ThenBy(i => i.Id)
+            .ToListAsync(cancellationToken);
+
+        if (invoices.Count == 0)
+            return (0, 0, $"No submitted invoices for {BillingDueCalculator.PeriodLabel(year, month)}.");
+
+        var contractIds = invoices
+            .SelectMany(i => i.Lines.Select(l => l.CustomerContractId))
+            .Distinct()
+            .ToList();
+        var contracts = await _context.CustomerContracts
+            .Where(c => contractIds.Contains(c.Id))
+            .ToListAsync(cancellationToken);
+        var byId = contracts.ToDictionary(c => c.Id);
+
+        var invoiceDate = new DateOnly(year, month, 1);
+        var saved = 0;
+        var failed = 0;
+        var errors = new List<string>();
+
+        foreach (var invoice in invoices)
+        {
+            var persistContracts = invoice.Lines
+                .Select(l => byId.GetValueOrDefault(l.CustomerContractId))
+                .Where(c => c != null)
+                .Cast<CustomerContract>()
+                .Distinct()
+                .ToList();
+            if (persistContracts.Count == 0)
+            {
+                failed++;
+                errors.Add($"{invoice.Customer.CustomerName}: no contracts on the invoice.");
+                continue;
+            }
+
+            var lineItems = invoice.Lines
+                .OrderBy(l => l.RouteName)
+                .Select(l =>
+                {
+                    var months = l.BillingMonthCount > 0
+                        ? l.BillingMonthCount
+                        : AnnualBillingHelper.MonthsInTerm(l.Term);
+                    var content = InvoiceLineFormatter.Build(
+                        l.RouteName,
+                        invoiceDate,
+                        months,
+                        l.Amount);
+                    return new WaveInvoiceLineItem
+                    {
+                        ProductName = RouteNaming.DisplayName(l.RouteName),
+                        Description = content.Description,
+                        Quantity = 1,
+                        UnitPrice = l.Amount
+                    };
+                })
+                .ToList();
+
+            var wave = WaveInvoiceResult.Succeeded(
+                invoice.WaveInvoiceId ?? "",
+                invoice.WaveInvoiceUrl,
+                invoice.WaveInvoiceNumber);
+
+            try
+            {
+                var (ok, _) = await PersistOnContractsAsync(
+                    invoice.Customer,
+                    persistContracts,
+                    lineItems,
+                    invoiceDate,
+                    wave,
+                    accessToken: null,
+                    businessId: null,
+                    cancellationToken,
+                    resolvePayUrl: false);
+                if (ok)
+                    saved++;
+                else
+                {
+                    failed++;
+                    errors.Add($"{invoice.Customer.CustomerName}: Ad-Rack PDF was not generated.");
+                }
+            }
+            catch (Exception ex)
+            {
+                failed++;
+                errors.Add($"{invoice.Customer.CustomerName}: {ex.Message}");
+                _logger.LogWarning(
+                    ex,
+                    "Failed regenerating Ad-Rack PDF for billing invoice {InvoiceId}.",
+                    invoice.Id);
+            }
+        }
+
+        var period = BillingDueCalculator.PeriodLabel(year, month);
+        var message = $"Rebuilt {saved} Ad-Rack invoice PDF(s) for {period}.";
+        if (failed > 0)
+            message += $" {failed} failed. {string.Join(" ", errors.Take(3))}";
+
+        _logger.LogInformation(
+            "Regenerated Ad-Rack invoice PDFs for {Period}: saved {Saved}, failed {Failed}.",
+            period,
+            saved,
+            failed);
+
+        return (saved, failed, message);
+    }
+
     public async Task<WaveInvoiceWorkflowResult> RecordPaymentAsync(
         string? waveInvoiceId,
         string? waveInvoiceNumber,
@@ -427,7 +549,8 @@ public class WaveInvoiceWorkflowService
         WaveInvoiceResult invoice,
         string? accessToken,
         string? businessId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool resolvePayUrl = true)
     {
         if (contracts.Count == 0)
             return (false, null);
@@ -440,7 +563,10 @@ public class WaveInvoiceWorkflowService
         var invoiceNotes = CombinedInvoiceNotes(contracts);
         byte[]? bytes = TryGeneratePdf(customer, lineItems, invoice.InvoiceNumber, invoiceDate, dueDate, payUrl, invoiceNotes);
 
-        if (!string.IsNullOrWhiteSpace(invoice.WaveInvoiceId) && !WaveApiService.IsWaveShortPayUrl(payUrl))
+        if (resolvePayUrl
+            && !string.IsNullOrWhiteSpace(accessToken)
+            && !string.IsNullOrWhiteSpace(invoice.WaveInvoiceId)
+            && !WaveApiService.IsWaveShortPayUrl(payUrl))
         {
             try
             {

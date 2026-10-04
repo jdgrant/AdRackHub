@@ -473,6 +473,12 @@ public class MonthlyBillingService
         return (true, $"{result.Message} Invoice ID: {invoice.Id}. Next bill date: {nextBill}.", invoice.Id);
     }
 
+    public Task<(int Saved, int Failed, string Message)> RegenerateInvoicePdfsAsync(
+        int year,
+        int month,
+        CancellationToken cancellationToken = default) =>
+        _waveInvoices.RegenerateSavedPdfsAsync(year, month, cancellationToken);
+
     public async Task<(bool Success, string Message)> ResetInvoiceForResendAsync(
         int invoiceId,
         CancellationToken cancellationToken = default)

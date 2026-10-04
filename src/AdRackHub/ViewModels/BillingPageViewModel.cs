@@ -15,6 +15,7 @@ public class BillingPageViewModel
     public bool WaveConnected { get; set; }
     public string? WaveBusinessName { get; set; }
     public string? WaveClientId { get; set; }
+    public bool MailgunConfigured { get; set; }
     public BillingRun? Run { get; set; }
     public List<DueContractItem> DueContracts { get; set; } = new();
     public List<BillingRunInvoice> SubmittedInvoices { get; set; } = new();

@@ -16,6 +16,7 @@
     <PackageReference Include="Google.Apis.Sheets.v4" Version="1.68.0.3547" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.11" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.11" />
+    <PackageReference Include="PDFsharp" Version="6.2.4" />
     <PackageReference Include="PDFtoImage" Version="5.2.1" />
     <PackageReference Include="QuestPDF" Version="2024.12.3" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
@@ -29,6 +30,8 @@
   <ItemGroup>
     <Content Remove="App_Data\Uploads\**" />
     <Content Remove="Data\Uploads\**" />
+    <Content Update="appsettings.Production.json" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
+    <Content Update="appsettings.*.local.json" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
     <None Remove="App_Data\Uploads\**" />
     <None Remove="Data\Uploads\**" />
   </ItemGroup>
@@ -37,8 +40,11 @@
     <ItemGroup>
       <PublishedUploadFiles Include="$(PublishDir)App_Data\Uploads\**\*" />
       <PublishedUploadFiles Include="$(PublishDir)Data\Uploads\**\*" />
+      <PublishedSecretSettings Include="$(PublishDir)appsettings.Production.json" />
+      <PublishedSecretSettings Include="$(PublishDir)appsettings.*.local.json" />
     </ItemGroup>
     <Delete Files="@(PublishedUploadFiles)" />
+    <Delete Files="@(PublishedSecretSettings)" />
   </Target>
 
   <ItemGroup>

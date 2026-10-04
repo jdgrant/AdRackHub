@@ -182,6 +182,15 @@ else if (!Model.CreateOnSendConfigured)
 {
     <partial name="_WaveResetBusinessAlert" />
 }
+@if (!Model.MailgunConfigured)
+{
+    <div class="alert alert-warning">
+        Invoice email is off: Mailgun SMTP has no API key. Local sending reads
+        <code>appsettings.Development.local.json</code> (gitignored) or
+        <code>MAILGUN_API_KEY</code>. Production keeps the key in
+        <code>appsettings.Production.json</code>.
+    </div>
+}
 
 @if (Model.BatchPdfContractIds.Count > 0)
 {
@@ -313,21 +322,37 @@ else
 
 <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between mt-4 mb-2">
     <h2 class="h5 mb-0">Submitted invoices — @Model.PeriodLabel</h2>
-    @if (Model.InvoicesWithInvoicePdf.Count > 0)
-    {
-        <form asp-action="DownloadPdfs" method="post" class="mb-0" id="submitted-pdf-form">
-            <input type="hidden" name="year" value="@Model.Year" />
-            <input type="hidden" name="month" value="@Model.Month" />
-            <div class="d-flex flex-wrap gap-2 align-items-center">
-                <button type="submit" class="btn btn-sm btn-outline-secondary" id="download-selected-submitted" disabled
-                        name="downloadSelected" value="1">
-                    Download selected PDFs
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+        @if (Model.SubmittedInvoices.Any())
+        {
+            <form asp-action="RegenerateInvoicePdfs" method="post" class="mb-0">
+                <input type="hidden" name="year" value="@Model.Year" />
+                <input type="hidden" name="month" value="@Model.Month" />
+                <button type="submit" class="btn btn-sm btn-outline-primary"
+                        onclick="return confirm('Rebuild the Ad-Rack branded PDF for every submitted invoice this period? This does not create invoices in Wave or email customers.');">
+                    Rebuild Ad-Rack PDFs
                 </button>
-                <button type="submit" class="btn btn-sm btn-outline-secondary">Download all PDFs</button>
-                <span class="text-muted small" id="submitted-selected-count">0 selected</span>
-            </div>
-        </form>
-    }
+            </form>
+        }
+        @if (Model.InvoicesWithInvoicePdf.Count > 0)
+        {
+            <form asp-action="DownloadPdfs" method="post" class="mb-0" id="submitted-pdf-form">
+                <input type="hidden" name="year" value="@Model.Year" />
+                <input type="hidden" name="month" value="@Model.Month" />
+                <div class="d-flex flex-wrap gap-2 align-items-center">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary" id="download-selected-submitted" disabled
+                            name="downloadSelected" value="1">
+                        Download selected PDFs
+                    </button>
+                    <button type="submit" class="btn btn-sm btn-primary"
+                            title="Combine saved Hub invoice PDFs for this period. Use this if the download after send failed.">
+                        Rebuild combined PDF
+                    </button>
+                    <span class="text-muted small" id="submitted-selected-count">0 selected</span>
+                </div>
+            </form>
+        }
+    </div>
 </div>
 @if (Model.SubmittedInvoices.Any())
 {

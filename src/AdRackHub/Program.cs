@@ -4,8 +4,13 @@ using AdRackHub.Services;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddJsonFile(
+    $"appsettings.{builder.Environment.EnvironmentName}.local.json",
+    optional: true,
+    reloadOnChange: true);
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"), sql =>
@@ -52,6 +57,18 @@ builder.Services.AddSingleton<GoogleSheetsService>();
 builder.Services.AddScoped<RouteSheetSyncService>();
 builder.Services.Configure<WaveOptions>(builder.Configuration.GetSection(WaveOptions.SectionName));
 builder.Services.Configure<MailgunOptions>(builder.Configuration.GetSection(MailgunOptions.SectionName));
+builder.Services.PostConfigure<MailgunOptions>(options =>
+{
+    if (!string.IsNullOrWhiteSpace(options.ApiKey))
+        return;
+    var fallback = new[]
+    {
+        builder.Configuration["MAILGUN_API_KEY"],
+        Environment.GetEnvironmentVariable("MAILGUN_API_KEY"),
+        Environment.GetEnvironmentVariable("ADRACKHUB_MAILGUN_API_KEY")
+    };
+    options.ApiKey = fallback.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+});
 builder.Services.Configure<WaveSyncOptions>(builder.Configuration.GetSection(WaveSyncOptions.SectionName));
 builder.Services.Configure<DataForSeoOptions>(builder.Configuration.GetSection(DataForSeoOptions.SectionName));
 builder.Services.AddHttpClient();
@@ -126,6 +143,8 @@ using (var scope = app.Services.CreateScope())
     var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
     logger.LogInformation("Brochure uploads directory: {UploadRoot}", uploadRoot);
     logger.LogInformation("Invoice PDF uploads directory: {UploadRoot}", invoiceUploadRoot);
+    var mailgunConfigured = scope.ServiceProvider.GetRequiredService<IOptions<MailgunOptions>>().Value.IsConfigured;
+    logger.LogInformation("Mailgun invoice email is {Status}.", mailgunConfigured ? "configured" : "not configured");
 
     if (args.Contains("--set-invoice-receipt-both"))
     {
@@ -157,6 +176,165 @@ using (var scope = app.Services.CreateScope())
         var samplePath = Path.Combine(invoiceUploadRoot, "AdRack-sample.pdf");
         File.WriteAllBytes(samplePath, bytes);
         Console.WriteLine(samplePath);
+        return;
+    }
+
+    var mergePdfsArg = args.FirstOrDefault(a =>
+        a.StartsWith("--merge-pdfs=", StringComparison.OrdinalIgnoreCase));
+    if (mergePdfsArg != null)
+    {
+        var rest = mergePdfsArg["--merge-pdfs=".Length..];
+        var folder = rest;
+        var outPath = "";
+        var split = rest.IndexOf('=', StringComparison.Ordinal);
+        if (split >= 0)
+        {
+            folder = rest[..split];
+            outPath = rest[(split + 1)..];
+        }
+
+        if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
+        {
+            Console.WriteLine("Use --merge-pdfs=/path/to/pdf-folder or --merge-pdfs=/path/to/pdf-folder=/path/out.pdf");
+            return;
+        }
+
+        var files = Directory.GetFiles(folder, "*.pdf")
+            .Where(path => !Path.GetFileName(path).StartsWith("AdRack-invoices-", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (files.Count == 0)
+        {
+            Console.WriteLine($"No PDF files in {folder}.");
+            return;
+        }
+
+        var pdfStore = scope.ServiceProvider.GetRequiredService<InvoicePdfStorageService>();
+        var bytes = pdfStore.Merge(files);
+        if (string.IsNullOrWhiteSpace(outPath))
+            outPath = Path.Combine(folder, "AdRack-invoices-combined.pdf");
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath))!);
+        File.WriteAllBytes(outPath, bytes);
+        Console.WriteLine($"Merged {files.Count} PDF(s) into {outPath} ({bytes.Length} bytes).");
+        return;
+    }
+
+    var rebuildCombinedPdfArg = args.FirstOrDefault(a =>
+        a.StartsWith("--rebuild-combined-pdf", StringComparison.OrdinalIgnoreCase));
+    if (rebuildCombinedPdfArg != null)
+    {
+        var rest = rebuildCombinedPdfArg.Contains('=', StringComparison.Ordinal)
+            ? rebuildCombinedPdfArg[(rebuildCombinedPdfArg.IndexOf('=') + 1)..]
+            : "";
+        var periodPart = rest;
+        var outPath = "";
+        var split = rest.IndexOf('=', StringComparison.Ordinal);
+        if (split >= 0)
+        {
+            periodPart = rest[..split];
+            outPath = rest[(split + 1)..];
+        }
+
+        var today = DateTime.Today;
+        var year = today.Year;
+        var month = today.Month;
+        var stamp = periodPart.Trim();
+        if (!string.IsNullOrWhiteSpace(stamp))
+        {
+            var dash = stamp.IndexOf('-');
+            if (dash < 0
+                || !int.TryParse(stamp[..dash], out year)
+                || !int.TryParse(stamp[(dash + 1)..], out month)
+                || month is < 1 or > 12)
+            {
+                Console.WriteLine("Use --rebuild-combined-pdf=YYYY-MM or --rebuild-combined-pdf=YYYY-MM=/path/out.pdf");
+                return;
+            }
+        }
+
+        var billing = scope.ServiceProvider.GetRequiredService<MonthlyBillingService>();
+        var pdfStore = scope.ServiceProvider.GetRequiredService<InvoicePdfStorageService>();
+        var invoices = await billing.GetSubmittedInvoicesAsync(year, month);
+        var contractIds = invoices.SelectMany(i => i.Lines.Select(l => l.CustomerContractId)).Distinct().ToList();
+        var contracts = await context.CustomerContracts
+            .AsNoTracking()
+            .Where(c => contractIds.Contains(c.Id))
+            .Select(c => new { c.Id, c.WaveInvoicePdfPath, c.WaveInvoiceNumber })
+            .ToListAsync();
+        var byId = contracts.ToDictionary(c => c.Id);
+        var files = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var invoice in invoices)
+        {
+            var added = false;
+            foreach (var line in invoice.Lines)
+            {
+                if (!byId.TryGetValue(line.CustomerContractId, out var contract))
+                    continue;
+                var path = pdfStore.ResolveFilePath(
+                    contract.WaveInvoicePdfPath,
+                    contract.WaveInvoiceNumber ?? invoice.WaveInvoiceNumber,
+                    contract.Id);
+                if (path == null || !seen.Add(path))
+                    continue;
+                files.Add(path);
+                added = true;
+            }
+
+            if (added)
+                continue;
+            var fallback = pdfStore.ResolveFilePath(null, invoice.WaveInvoiceNumber, invoice.Id);
+            if (fallback != null && seen.Add(fallback))
+                files.Add(fallback);
+        }
+
+        if (files.Count == 0)
+        {
+            Console.WriteLine($"No saved invoice PDFs for {year:0000}-{month:00}.");
+            return;
+        }
+
+        var bytes = pdfStore.Merge(files);
+        if (string.IsNullOrWhiteSpace(outPath))
+        {
+            var period = BillingDueCalculator.PeriodLabel(year, month).Replace(' ', '-');
+            outPath = Path.Combine(invoiceUploadRoot, $"AdRack-invoices-{period}.pdf");
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath))!);
+        File.WriteAllBytes(outPath, bytes);
+        Console.WriteLine($"Merged {files.Count} invoice PDF(s) into {outPath} ({bytes.Length} bytes).");
+        return;
+    }
+
+    var regeneratePdfsArg = args.FirstOrDefault(a =>
+        a.StartsWith("--regenerate-invoice-pdfs", StringComparison.OrdinalIgnoreCase));
+    if (regeneratePdfsArg != null)
+    {
+        var stamp = regeneratePdfsArg.Contains('=', StringComparison.Ordinal)
+            ? regeneratePdfsArg[(regeneratePdfsArg.IndexOf('=') + 1)..].Trim()
+            : "";
+        var today = DateTime.Today;
+        var year = today.Year;
+        var month = today.Month;
+        if (!string.IsNullOrWhiteSpace(stamp))
+        {
+            var dash = stamp.IndexOf('-');
+            if (dash < 0
+                || !int.TryParse(stamp[..dash], out year)
+                || !int.TryParse(stamp[(dash + 1)..], out month)
+                || month is < 1 or > 12)
+            {
+                Console.WriteLine("Use --regenerate-invoice-pdfs=YYYY-MM");
+                return;
+            }
+        }
+
+        var billing = scope.ServiceProvider.GetRequiredService<MonthlyBillingService>();
+        var (saved, failed, message) = await billing.RegenerateInvoicePdfsAsync(year, month);
+        Console.WriteLine(message);
+        if (failed > 0 && saved == 0)
+            Environment.ExitCode = 1;
         return;
     }
 

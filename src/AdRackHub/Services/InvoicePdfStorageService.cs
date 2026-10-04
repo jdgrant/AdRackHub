@@ -1,8 +1,7 @@
 using Microsoft.AspNetCore.Hosting;
-using PDFtoImage;
-using QuestPDF.Fluent;
-using QuestPDF.Helpers;
-using QuestPDF.Infrastructure;
+using PdfSharp.Fonts;
+using PdfSharp.Pdf;
+using PdfSharp.Pdf.IO;
 
 namespace AdRackHub.Services;
 
@@ -111,45 +110,36 @@ public class InvoicePdfStorageService
         if (existing.Count == 1)
             return File.ReadAllBytes(existing[0]);
 
-        var pageImages = new List<byte[]>();
-        var options = new RenderOptions(Dpi: 150);
+        GlobalFontSettings.UseWindowsFontsUnderWindows = true;
+
+        using var output = new PdfDocument();
+        output.Info.Title = "Ad-Rack invoices";
+        var mergedPages = 0;
+        var failed = new List<string>();
         foreach (var path in existing)
         {
-            using var pdfStream = File.OpenRead(path);
-            var pageCount = Conversion.GetPageCount(pdfStream, leaveOpen: true);
-            for (var pageIndex = 0; pageIndex < pageCount; pageIndex++)
+            try
             {
-                pdfStream.Position = 0;
-                var pngPath = Path.Combine(Path.GetTempPath(), $"AdRack-merge-{Guid.NewGuid():N}.png");
-                try
-                {
-                    Conversion.SavePng(pngPath, pdfStream, page: pageIndex, leaveOpen: true, options: options);
-                    pageImages.Add(File.ReadAllBytes(pngPath));
-                }
-                finally
-                {
-                    if (File.Exists(pngPath))
-                        File.Delete(pngPath);
-                }
+                using var input = PdfReader.Open(path, PdfDocumentOpenMode.Import);
+                for (var pageIndex = 0; pageIndex < input.PageCount; pageIndex++)
+                    output.AddPage(input.Pages[pageIndex]);
+                mergedPages += input.PageCount;
+            }
+            catch (Exception ex)
+            {
+                failed.Add($"{Path.GetFileName(path)} ({ex.Message})");
             }
         }
 
-        if (pageImages.Count == 0)
-            throw new InvalidOperationException("No invoice PDF pages to merge.");
-
-        QuestPDF.Settings.License = LicenseType.Community;
-        return Document.Create(container =>
+        if (mergedPages == 0)
         {
-            foreach (var image in pageImages)
-            {
-                container.Page(page =>
-                {
-                    page.Size(PageSizes.Letter);
-                    page.Margin(0);
-                    page.Content().Image(image).FitArea();
-                });
-            }
-        }).GeneratePdf();
+            var detail = failed.Count == 0 ? "No invoice PDF pages to merge." : string.Join("; ", failed.Take(3));
+            throw new InvalidOperationException(detail);
+        }
+
+        using var stream = new MemoryStream();
+        output.Save(stream, false);
+        return stream.ToArray();
     }
 
     private IEnumerable<string> CandidatePaths(string? storedFileName, string? invoiceNumber, int? contractId)
