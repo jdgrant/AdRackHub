@@ -215,6 +215,9 @@ public class WaveSyncService
         if (contract == null)
             return;
 
+        if (!contract.NextBillDate.HasValue)
+            return;
+
         if (_options.PushCustomersToWaveApi && _waveApiService.IsConfigured)
             await EnsureCustomerOnWaveAsync(contract.Customer, cancellationToken);
 
@@ -293,7 +296,7 @@ public class WaveSyncService
             ContractName = contract.ContractName,
             Term = BillingTermDisplay.Label(contract),
             BillingAnchorMonth = contract.BillingAnchorMonth,
-            NextBillDate = contract.NextBillDate,
+            NextBillDate = contract.NextBillDate!.Value,
             ServiceMonthMask = contract.ServiceMonthMask,
             ContractEndDate = contract.ContractEndDate,
             TotalAmount = lines.Sum(l => l.UnitPrice * l.Quantity),
@@ -592,7 +595,7 @@ public class WaveSyncService
     {
         var content = InvoiceLineFormatter.Build(
             route.RouteName,
-            contract.NextBillDate,
+            contract.NextBillDate!.Value,
             AnnualBillingHelper.BillingMonths(contract),
             amount,
             customer,

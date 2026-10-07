@@ -1,0 +1,198 @@
+@model WarehouseInvoicePageViewModel
+@{
+    ViewData["Title"] = "Invoice";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Invoice</h1>
+    <div class="d-flex flex-wrap gap-2">
+        <a asp-controller="Reports" asp-action="WarehouseInventoryPdf" class="btn btn-outline-secondary">Count sheet PDF</a>
+        <a asp-action="Index" class="btn btn-outline-secondary">Routes</a>
+    </div>
+</div>
+
+<p class="text-muted">Warehouse inventory count sheet. Fill cases and per case (or a total) for Kentucky and Ohio, then save to log counts for every brochure in this batch.</p>
+
+<form asp-action="Invoice" method="post" id="warehouse-invoice-form">
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="ActiveWarehouse" id="active-warehouse" />
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="text-center mb-3">
+                <div class="fw-bold">WAREHOUSE INVENTORY COUNT SHEET</div>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label asp-for="InventoryDate" class="form-label">Date</label>
+                    <input asp-for="InventoryDate" type="date" class="form-control" />
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="CountedBy" class="form-label">Counted by</label>
+                    <input asp-for="CountedBy" class="form-control" />
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary">Save inventory logs</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <ul class="nav nav-tabs" role="tablist">
+        @foreach (var tab in Model.Tabs)
+        {
+            <li class="nav-item" role="presentation">
+                <button class="nav-link @(tab.Code == Model.ActiveWarehouse ? "active" : null)"
+                        id="tab-@tab.Code-btn"
+                        data-bs-toggle="tab"
+                        data-bs-target="#tab-@tab.Code"
+                        data-warehouse="@tab.Code"
+                        type="button"
+                        role="tab">
+                    @tab.Title
+                    <span class="badge text-bg-light text-muted">@tab.RowIndexes.Count</span>
+                </button>
+            </li>
+        }
+    </ul>
+
+    <div class="tab-content border border-top-0 rounded-bottom p-3">
+        @foreach (var tab in Model.Tabs)
+        {
+            <div class="tab-pane fade @(tab.Code == Model.ActiveWarehouse ? "show active" : null)"
+                 id="tab-@tab.Code"
+                 role="tabpanel">
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Brochure</th>
+                                <th>ID</th>
+                                <th>Location</th>
+                                <th class="text-end" style="width: 6rem;">Last</th>
+                                <th class="text-end" style="width: 6.5rem;">Cases</th>
+                                <th class="text-end" style="width: 6.5rem;">Per case</th>
+                                <th class="text-end" style="width: 7rem;">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var index in tab.RowIndexes)
+                        {
+                            var row = Model.Rows[index];
+                            <tr data-inventory-row>
+                                <td>
+                                    <input type="hidden" name="Rows[@index].CustomerId" value="@row.CustomerId" />
+                                    <input type="hidden" name="Rows[@index].Warehouse" value="@row.Warehouse" />
+                                    <input type="hidden" name="Rows[@index].Rack" value="@row.Rack" />
+                                    <input type="hidden" name="Rows[@index].Bin" value="@row.Bin" />
+                                    <input type="hidden" name="Rows[@index].Shelf" value="@row.Shelf" />
+                                    <input type="hidden" name="Rows[@index].BrochureName" value="@row.BrochureName" />
+                                    <a asp-controller="Customers" asp-action="Details" asp-route-id="@row.CustomerId" asp-route-tab="brochures">@row.BrochureName</a>
+                                </td>
+                                <td>@(row.BrochureCode ?? "—")</td>
+                                <td>@(row.Location ?? "—")</td>
+                                <td class="text-end text-muted">@(row.LastQuantity?.ToString("N0") ?? "—")</td>
+                                <td>
+                                    <input name="Rows[@index].Cases" value="@row.Cases" inputmode="numeric" class="form-control form-control-sm text-end" data-cases />
+                                </td>
+                                <td>
+                                    <input name="Rows[@index].PerCase" value="@row.PerCase" inputmode="numeric" class="form-control form-control-sm text-end" data-per-case />
+                                </td>
+                                <td>
+                                    <input name="Rows[@index].Total" value="@row.Total" inputmode="numeric" class="form-control form-control-sm text-end" data-total />
+                                </td>
+                            </tr>
+                        }
+                        @if (tab.RowIndexes.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="7" class="text-muted">No brochures assigned to this warehouse.</td>
+                            </tr>
+                        }
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td colspan="4" class="text-end fw-bold pt-3">WAREHOUSE TOTAL</td>
+                                <td class="pt-3"></td>
+                                <td class="pt-3"></td>
+                                <td class="text-end fw-bold pt-3" data-warehouse-total>—</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="mt-3">
+        <button type="submit" class="btn btn-primary">Save inventory logs</button>
+    </div>
+</form>
+
+@section Scripts {
+    <script>
+        (function () {
+            const form = document.getElementById('warehouse-invoice-form');
+            const active = document.getElementById('active-warehouse');
+            document.querySelectorAll('[data-warehouse]').forEach(function (button) {
+                button.addEventListener('shown.bs.tab', function () {
+                    if (active) active.value = button.getAttribute('data-warehouse') || 'K';
+                });
+            });
+
+            function formatTotal(value) {
+                return value.toLocaleString();
+            }
+
+            function updateWarehouseTotals() {
+                document.querySelectorAll('.tab-pane').forEach(function (pane) {
+                    const totalCell = pane.querySelector('[data-warehouse-total]');
+                    if (!totalCell) return;
+                    let sum = 0;
+                    let hasValue = false;
+                    pane.querySelectorAll('[data-total]').forEach(function (input) {
+                        const raw = String(input.value || '').trim();
+                        if (raw === '') return;
+                        const quantity = parseInt(raw, 10);
+                        if (Number.isNaN(quantity)) return;
+                        hasValue = true;
+                        sum += quantity;
+                    });
+                    totalCell.textContent = hasValue ? formatTotal(sum) : '—';
+                });
+            }
+
+            function bindRow(row) {
+                const casesInput = row.querySelector('[data-cases]');
+                const perCaseInput = row.querySelector('[data-per-case]');
+                const totalInput = row.querySelector('[data-total]');
+                if (!casesInput || !perCaseInput || !totalInput) return;
+                function recalc() {
+                    const cases = parseInt(casesInput.value, 10);
+                    const perCase = parseInt(perCaseInput.value, 10);
+                    if (!Number.isNaN(cases) && !Number.isNaN(perCase) && cases >= 0 && perCase >= 0) {
+                        totalInput.value = String(cases * perCase);
+                    }
+                    updateWarehouseTotals();
+                }
+                casesInput.addEventListener('input', recalc);
+                perCaseInput.addEventListener('input', recalc);
+                totalInput.addEventListener('input', updateWarehouseTotals);
+            }
+
+            document.querySelectorAll('[data-inventory-row]').forEach(bindRow);
+            updateWarehouseTotals();
+
+            if (form) {
+                form.addEventListener('submit', function (event) {
+                    const hasCount = Array.from(form.querySelectorAll('[data-total]'))
+                        .some(function (input) { return String(input.value || '').trim() !== ''; });
+                    if (!hasCount) {
+                        event.preventDefault();
+                        alert('Enter a total (or cases and per case) on at least one brochure.');
+                    }
+                });
+            }
+        })();
+    </script>
+}

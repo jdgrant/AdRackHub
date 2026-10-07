@@ -1,10 +1,14 @@
 @model CustomerContractEditViewModel
 @{
-    ViewData["Title"] = "Add Contract";
+    ViewData["Title"] = ViewBag.DuplicatedFrom == null ? "Add Contract" : "Duplicate Contract";
     var customerId = (int)(ViewBag.CustomerId ?? Model.Contract.CustomerId);
 }
 
-<h1 class="h2 mb-4">Add Contract — @ViewBag.CustomerName</h1>
+<h1 class="h2 mb-4">@(ViewBag.DuplicatedFrom == null ? "Add Contract" : "Duplicate Contract") — @ViewBag.CustomerName</h1>
+@if (ViewBag.DuplicatedFrom is string duplicatedFrom)
+{
+    <p class="text-muted">Copy of <strong>@duplicatedFrom</strong>. Beginning and end dates are blank so you can set the new term before saving.</p>
+}
 <form asp-controller="CustomerContracts" asp-action="Create" asp-route-customerId="@customerId" method="post">
     <input type="hidden" name="customerId" value="@customerId" />
     <partial name="_CustomerContractForm" />

@@ -246,6 +246,9 @@ public class InvoicePdfGenerator
                     notes.Spacing(4);
                     notes.Item().Text("Notes / Terms").FontSize(9).Bold();
                     notes.Item().Text(model.Notes).FontSize(9).FontColor(Muted);
+                    notes.Item().Hyperlink(WaveOptions.DefaultTermsUrl)
+                        .Text(WaveOptions.DefaultTermsUrl.TrimEnd('/'))
+                        .FontSize(9).FontColor(Color.FromHex("#2563EB"));
                 });
             }
         });
@@ -269,7 +272,7 @@ public class InvoicePdfGenerator
                         .FontSize(8);
                     mail.Item().PaddingTop(4).Text(CompanyText(_options.InvoiceCompanyName, WaveOptions.DefaultCompanyName))
                         .FontSize(8).Bold();
-                    mail.Item().Text("7608 KY-146, STE 104").FontSize(8);
+                    mail.Item().Text("7608 W HWY 146, STE 104").FontSize(8);
                     mail.Item().Text("Pewee Valley, KY 40056").FontSize(8);
                 });
 

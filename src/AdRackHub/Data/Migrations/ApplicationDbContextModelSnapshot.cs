@@ -672,6 +672,9 @@ namespace AdRackHub.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<int>("AdvertisingSpaces")
+                        .HasColumnType("int");
+
                     b.Property<int>("BillingAnchorMonth")
                         .HasColumnType("int");
 
@@ -679,6 +682,9 @@ namespace AdRackHub.Data.Migrations
                         .HasColumnType("int");
 
                     b.Property<DateTime?>("ContractEndDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime?>("ContractStartDate")
                         .HasColumnType("date");
 
                     b.Property<int>("CustomerId")
@@ -692,7 +698,7 @@ namespace AdRackHub.Data.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
-                    b.Property<DateTime>("NextBillDate")
+                    b.Property<DateTime?>("NextBillDate")
                         .HasColumnType("date");
 
                     b.Property<string>("Notes")

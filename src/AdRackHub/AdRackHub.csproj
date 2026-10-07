@@ -29,6 +29,8 @@
 
   <ItemGroup>
     <Content Remove="App_Data\Uploads\**" />
+    <Content Remove="Views\**\_backups\**" />
+    <None Include="Views\**\_backups\**" />
     <Content Remove="Data\Uploads\**" />
     <Content Update="appsettings.Production.json" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
     <Content Update="appsettings.*.local.json" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />

@@ -14,6 +14,10 @@ public class CustomerRouteEditViewModel
 public class CustomerContractEditViewModel
 {
     public CustomerContract Contract { get; set; } = new();
+
+    [Display(Name = "Submit to billing")]
+    public bool SubmitToBilling { get; set; } = true;
+
     public List<RouteSelectionItem> AvailableRoutes { get; set; } = new();
     public List<int> SelectedRouteIds { get; set; } = new();
     public Dictionary<int, decimal> RouteBillingAmounts { get; set; } = new();

@@ -30,7 +30,7 @@ public class WaveOptions
 
 
         Please note the new payment address of:Ad-Rack Services LLC
-        7608 KY-146
+        7608 W HWY 146
         STE 104
         Pewee Valley, KY 40056
 
@@ -48,15 +48,18 @@ public class WaveOptions
     public string InvoiceMemo { get; set; } = string.Empty;
 
     public const string DefaultCompanyName = "Ad-Rack Services LLC";
-    public const string DefaultCompanyAddress1 = "7608 KY-146";
+    public const string DefaultCompanyAddress1 = "7608 W HWY 146";
     public const string DefaultCompanyAddress2 = "STE 104";
     public const string DefaultCompanyCityStateZip = "Pewee Valley, KY 40056";
     public const string DefaultCompanyCountry = "United States";
     public const string DefaultCompanyPhone = "(502) 253-5454";
     public const string DefaultCompanyWebsite = "www.ad-rack.com";
+    public const string DefaultTermsUrl = "https://ad-rack.com/terms/";
     public const string DefaultAddressNotice = "PLEASE NOTE NEW PAYMENT INFORMATION";
     public const string DefaultInvoiceTerms =
         "Payment of this invoice constitutes acceptance of and agreement to Terms and Conditions. Please note new payment information below.";
+    public const string DefaultContractTerms =
+        "Signing this contract constitutes acceptance of and agreement to Terms and Conditions.";
 
     public const string PaymentChangeNotice =
         "Please note: Our mailing address and ACH payment account have changed. To avoid delays, please update any payment information you have saved and use the details below for future payments.";
@@ -76,13 +79,13 @@ public class WaveOptions
     public string InvoiceAddressNotice { get; set; } = DefaultAddressNotice;
     public string InvoiceTerms { get; set; } = DefaultInvoiceTerms;
 
-    /// <summary>Wave Cash &amp; Bank account used when marking an invoice paid.</summary>
+    /// <summary>Wave Money in Transit account for received invoices. Never a real bank.</summary>
     public string? PaymentAccountId { get; set; }
 
-    /// <summary>Prefer a Wave bank account whose name or notes include this last-4.</summary>
-    public string PaymentAccountLast4 { get; set; } = "4345";
+    /// <summary>Ignored for payment posting. Kept so old configs do not silently retarget a bank.</summary>
+    public string PaymentAccountLast4 { get; set; } = "";
 
-    public string PaymentAccountHint { get; set; } = "Ad-Rack Services LLC (345)";
+    public string PaymentAccountHint { get; set; } = WaveApiService.ReceivedInvoicesAccountName;
 
     public string PaymentMethod { get; set; } = "BANK_TRANSFER";
 

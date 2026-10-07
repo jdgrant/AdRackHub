@@ -11,17 +11,34 @@
             <span asp-validation-for="Contract.ContractName" class="text-danger"></span>
         </div>
         <input type="hidden" asp-for="Contract.Term" />
-        <div class="mb-3">
+        <div class="mb-3 form-check">
+            <input asp-for="SubmitToBilling" class="form-check-input" id="submitToBilling" />
+            <label asp-for="SubmitToBilling" class="form-check-label"></label>
+            <div class="form-text">Turn this off to print a signed contract PDF without a next bill date. The contract will not appear in billing.</div>
+        </div>
+        <div class="mb-3" id="nextBillDateGroup">
             <label asp-for="Contract.NextBillDate" class="form-label"></label>
             <input asp-for="Contract.NextBillDate" class="form-control" type="date" id="contractNextBillDate" />
             <div class="form-text">The contract issues the next bill on this date, then every N months after that.</div>
             <span asp-validation-for="Contract.NextBillDate" class="text-danger"></span>
         </div>
         <div class="mb-3">
+            <label asp-for="Contract.ContractStartDate" class="form-label"></label>
+            <input asp-for="Contract.ContractStartDate" class="form-control" type="date" id="contractStartDate" />
+            <div class="form-text">Leave blank by default. Printed as the beginning date on the contract PDF.</div>
+            <span asp-validation-for="Contract.ContractStartDate" class="text-danger"></span>
+        </div>
+        <div class="mb-3">
             <label asp-for="Contract.ContractEndDate" class="form-label"></label>
             <input asp-for="Contract.ContractEndDate" class="form-control" type="date" id="contractEndDate" />
             <div class="form-text">Leave blank if the contract does not expire.</div>
             <span asp-validation-for="Contract.ContractEndDate" class="text-danger"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="Contract.AdvertisingSpaces" class="form-label"></label>
+            <input asp-for="Contract.AdvertisingSpaces" class="form-control" type="number" min="1" max="20" />
+            <div class="form-text">Spaces per rest area or display rack, printed on the contract PDF.</div>
+            <span asp-validation-for="Contract.AdvertisingSpaces" class="text-danger"></span>
         </div>
         @{
             var billingTermPicker = new BillingTermPickerViewModel
@@ -242,13 +259,31 @@
         }
 
         const nextBillInput = document.getElementById('contractNextBillDate');
+        const startDateInput = document.getElementById('contractStartDate');
         const endDateInput = document.getElementById('contractEndDate');
         const matchDatesButton = document.getElementById('matchMonthsFromDates');
-        if (matchDatesButton && nextBillInput && endDateInput) {
+        const submitToBilling = document.getElementById('submitToBilling');
+        const nextBillGroup = document.getElementById('nextBillDateGroup');
+
+        function syncBillingFields() {
+            const billed = !submitToBilling || submitToBilling.checked;
+            if (nextBillGroup) nextBillGroup.classList.toggle('d-none', !billed);
+            if (nextBillInput) nextBillInput.disabled = !billed;
+        }
+
+        if (submitToBilling) {
+            submitToBilling.addEventListener('change', syncBillingFields);
+            syncBillingFields();
+        }
+
+        if (matchDatesButton && endDateInput) {
             matchDatesButton.addEventListener('click', function () {
-                const months = inclusiveMonthCount(nextBillInput.value, endDateInput.value);
+                const startValue = (nextBillInput && !nextBillInput.disabled && nextBillInput.value)
+                    ? nextBillInput.value
+                    : (startDateInput ? startDateInput.value : '');
+                const months = inclusiveMonthCount(startValue, endDateInput.value);
                 if (!months || months < 1 || months > 36) {
-                    alert('Set a next bill date and an end date first. Number of months is the inclusive span between those dates.');
+                    alert('Set a beginning or next bill date and an end date first. Number of months is the inclusive span between those dates.');
                     return;
                 }
                 if (window.AdRackBillingTerm) {

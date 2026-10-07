@@ -37,9 +37,18 @@ public class CustomerContract
     [Display(Name = "Contract End Date")]
     public DateOnly? ContractEndDate { get; set; }
 
-    [Required]
+    [Display(Name = "Beginning Date")]
+    public DateOnly? ContractStartDate { get; set; }
+
     [Display(Name = "Next Bill Date")]
-    public DateOnly NextBillDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+    public DateOnly? NextBillDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+
+    [Range(1, 20)]
+    [Display(Name = "Advertising Spaces")]
+    public int AdvertisingSpaces { get; set; } = 1;
+
+    [NotMapped]
+    public bool IsSubmittedToBilling => NextBillDate.HasValue;
 
     [StringLength(1000)]
     public string? Notes { get; set; }

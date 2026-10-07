@@ -950,7 +950,7 @@
                                             </tr>
                                         </thead>
                                         <tbody>
-                                        @foreach (var contract in Model.Contracts.OrderBy(b => b.NextBillDate).ThenBy(b => b.ContractName))
+                                        @foreach (var contract in Model.Contracts.OrderBy(b => b.NextBillDate.HasValue ? 0 : 1).ThenBy(b => b.NextBillDate).ThenBy(b => b.ContractName))
                                         {
                                             var routes = contract.ContractRoutes.OrderBy(cbr => cbr.Route.RouteName).ToList();
                                             var total = routes.Sum(AnnualBillingHelper.GetBillingAmount);
@@ -1002,7 +1002,16 @@
                                                         <span class="text-muted">No routes</span>
                                                     }
                                                 </td>
-                                                <td>@contract.NextBillDate.ToString("MMM d, yyyy")</td>
+                                                <td>
+                                                    @if (contract.NextBillDate.HasValue)
+                                                    {
+                                                        @contract.NextBillDate.Value.ToString("MMM d, yyyy")
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="badge text-bg-light text-muted">Not billed</span>
+                                                    }
+                                                </td>
                                                 <td>
                                                     @BillingDueCalculator.FormatContractEndDate(contract.ContractEndDate)
                                                     @if (isExpired)
@@ -1012,6 +1021,8 @@
                                                 </td>
                                                 <td class="text-end">@total.ToString("C")</td>
                                                 <td class="text-end text-nowrap">
+                                                    <a asp-controller="CustomerContracts" asp-action="AgreementPdf" asp-route-id="@contract.Id" class="btn btn-sm btn-outline-secondary" target="_blank">Contract PDF</a>
+                                                    <a asp-controller="CustomerContracts" asp-action="Duplicate" asp-route-id="@contract.Id" class="btn btn-sm btn-outline-secondary">Duplicate</a>
                                                     <a asp-controller="CustomerContracts" asp-action="Edit" asp-route-id="@contract.Id" class="btn btn-sm btn-outline-primary">Edit</a>
                                                     <a asp-controller="CustomerContracts" asp-action="Delete" asp-route-id="@contract.Id" class="btn btn-sm btn-outline-danger">Delete</a>
                                                 </td>

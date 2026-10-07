@@ -1,0 +1,68 @@
+@model AdRackHub.Services.BrochureInventoryReport
+@{
+    ViewData["Title"] = "Warehouse inventory";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Warehouse inventory</h1>
+    <div class="d-flex flex-wrap gap-2">
+        <a asp-controller="Routes" asp-action="Invoice" class="btn btn-outline-primary">Log counts</a>
+        <a asp-action="WarehouseInventoryPdf" class="btn btn-outline-primary">Count sheet PDF</a>
+        <a asp-action="Index" class="btn btn-outline-secondary">All reports</a>
+    </div>
+</div>
+
+<p class="text-muted">As of @Model.AsOf.ToString("MMM d, yyyy"). Last counted quantity comes from warehouse inventory records.</p>
+
+@if (Model.Warehouses.Count == 0)
+{
+    <p class="text-muted">No customer warehouse locations yet.</p>
+}
+else
+{
+    <ul class="nav nav-pills gap-2 mb-4">
+        @foreach (var group in Model.Warehouses)
+        {
+            var anchor = group.Warehouse?.ToString() ?? "unassigned";
+            <li class="nav-item">
+                <a class="nav-link" href="#warehouse-@anchor">
+                    @group.Title
+                    <span class="badge text-bg-light text-muted">@group.Rows.Count</span>
+                </a>
+            </li>
+        }
+    </ul>
+
+    @foreach (var group in Model.Warehouses)
+    {
+        var anchor = group.Warehouse?.ToString() ?? "unassigned";
+        <h2 class="h5 mt-4" id="warehouse-@anchor">@group.Title</h2>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Brochure</th>
+                        <th>ID</th>
+                        <th>Location</th>
+                        <th class="text-end">Last count</th>
+                        <th>Counted</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var row in group.Rows)
+                {
+                    <tr>
+                        <td>
+                            <a asp-controller="Customers" asp-action="Details" asp-route-id="@row.CustomerId" asp-route-tab="brochures">@row.BrochureName</a>
+                        </td>
+                        <td>@(row.BrochureCode ?? "—")</td>
+                        <td>@(row.Location ?? "—")</td>
+                        <td class="text-end">@(row.Quantity?.ToString("N0") ?? "—")</td>
+                        <td>@(row.InventoryDate?.ToString("MMM d, yyyy") ?? "—")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+}

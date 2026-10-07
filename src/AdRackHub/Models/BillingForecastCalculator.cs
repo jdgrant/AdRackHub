@@ -155,7 +155,10 @@ public static class BillingForecastCalculator
             });
         }
 
-        var forward = contract.NextBillDate;
+        if (contract.NextBillDate is not { } nextBill)
+            return;
+
+        var forward = nextBill;
         var guard = 0;
         while (forward < horizon && guard++ < 48)
         {
@@ -165,10 +168,10 @@ public static class BillingForecastCalculator
             forward = advanced;
         }
 
-        if (contract.NextBillDate < start)
+        if (nextBill < start)
             return;
 
-        var backward = contract.NextBillDate;
+        var backward = nextBill;
         guard = 0;
         while (guard++ < 48)
         {

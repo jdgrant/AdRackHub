@@ -13,8 +13,10 @@ public class WaveApiService
 {
     public const int InvoiceDueDays = 30;
 
+    public const string ReceivedInvoicesAccountName = "Received Invoices";
+
     public const string DefaultOAuthScopes =
-        "business:read customer:read customer:write invoice:read invoice:write invoice:send account:read user:read";
+        "business:read customer:read customer:write invoice:read invoice:write invoice:send account:read account:write user:read";
 
     public const string SessionExpiredReconnectMessage =
         "Your Wave session expired. Reset the business, then send the contract again.";
@@ -664,8 +666,8 @@ public class WaveApiService
         if (string.IsNullOrWhiteSpace(accountId))
         {
             return WavePaymentResult.Failed(
-                "Wave could not record the payment because no Cash & Bank account is available. "
-                + "On the Billing page, reset the business and connect to Wave again, then click Receive.");
+                "Wave could not record the payment because the Money in Transit account "
+                + "\"Received Invoices\" was not found. Create that account in Wave, then click Receive again.");
         }
 
         const string mutation = """
@@ -702,7 +704,7 @@ public class WaveApiService
                     paymentDate = paymentDate.ToString("yyyy-MM-dd"),
                     paymentMethod = method,
                     exchangeRate = 1m,
-                    memo = "AdRackHub received to Bluevine 4345"
+                    memo = "AdRackHub received to Received Invoices"
                 }
             }
         };
@@ -1236,32 +1238,213 @@ public class WaveApiService
     private string? ResolveBusinessId(string? businessId) =>
         string.IsNullOrWhiteSpace(businessId) ? _options.BusinessId : businessId;
 
+    public async Task<WaveClearingAccountResult> EnsureInvoicePaymentsClearingAccountAsync(
+        CancellationToken cancellationToken = default,
+        string? accessToken = null,
+        string? businessId = null)
+    {
+        var accounts = await ListCashAndBankAccountsAsync(cancellationToken, accessToken, businessId);
+        var clearing = PickClearingAccount(accounts);
+        if (clearing != null)
+            return WaveClearingAccountResult.Found(clearing.Value.Id, clearing.Value.Name, accounts);
+
+        return WaveClearingAccountResult.Failed(
+            "Wave Money in Transit account \"Received Invoices\" was not found. "
+            + "Create that category in Wave, then click Receive again.",
+            accounts);
+    }
+
+    public async Task<IReadOnlyList<WaveInvoicePaymentInfo>> ListInvoicePaymentsAsync(
+        string waveInvoiceId,
+        CancellationToken cancellationToken = default,
+        string? accessToken = null,
+        string? businessId = null)
+    {
+        if (!HasApiCredentials(accessToken, businessId) || string.IsNullOrWhiteSpace(waveInvoiceId))
+            return Array.Empty<WaveInvoicePaymentInfo>();
+
+        const string query = """
+            query ($businessId: ID!, $invoiceId: ID!) {
+              business(id: $businessId) {
+                invoice(id: $invoiceId) {
+                  invoiceNumber
+                  payments {
+                    id
+                    memo
+                    amount { value }
+                    account { id name }
+                  }
+                }
+              }
+            }
+            """;
+
+        var response = await ExecuteGraphQlAsync(
+            new { query, variables = new { businessId = ResolveBusinessId(businessId), invoiceId = waveInvoiceId } },
+            cancellationToken,
+            accessToken);
+        if (!response.Success || response.Data == null)
+            return Array.Empty<WaveInvoicePaymentInfo>();
+
+        try
+        {
+            if (!response.Data.Value.TryGetProperty("business", out var business)
+                || !business.TryGetProperty("invoice", out var invoice)
+                || invoice.ValueKind != JsonValueKind.Object
+                || !invoice.TryGetProperty("payments", out var payments)
+                || payments.ValueKind != JsonValueKind.Array)
+                return Array.Empty<WaveInvoicePaymentInfo>();
+
+            var invoiceNumber = ReadString(invoice, "invoiceNumber");
+            return payments.EnumerateArray()
+                .Select(payment =>
+                {
+                    string? accountId = null;
+                    string? accountName = null;
+                    if (payment.TryGetProperty("account", out var account) && account.ValueKind == JsonValueKind.Object)
+                    {
+                        accountId = ReadString(account, "id");
+                        accountName = ReadString(account, "name");
+                    }
+
+                    decimal amount = 0;
+                    decimal.TryParse(
+                        ReadMoneyValue(payment, "amount"),
+                        NumberStyles.Any,
+                        CultureInfo.InvariantCulture,
+                        out amount);
+
+                    return new WaveInvoicePaymentInfo(
+                        ReadString(payment, "id") ?? "",
+                        invoiceNumber,
+                        accountId,
+                        accountName,
+                        ReadString(payment, "memo"),
+                        amount);
+                })
+                .Where(item => !string.IsNullOrWhiteSpace(item.PaymentId))
+                .ToList();
+        }
+        catch
+        {
+            return Array.Empty<WaveInvoicePaymentInfo>();
+        }
+    }
+
+    public async Task<WavePaymentResult> PatchInvoicePaymentAccountAsync(
+        string paymentId,
+        string paymentAccountId,
+        CancellationToken cancellationToken = default,
+        string? accessToken = null)
+    {
+        if (string.IsNullOrWhiteSpace(paymentId) || string.IsNullOrWhiteSpace(paymentAccountId))
+            return WavePaymentResult.Failed("A Wave payment and clearing account are required.");
+
+        const string mutation = """
+            mutation ($input: InvoicePaymentPatchInput!) {
+              invoicePaymentPatch(input: $input) {
+                didSucceed
+                inputErrors {
+                  message
+                  code
+                  path
+                }
+                invoicePayment {
+                  id
+                  amount
+                }
+              }
+            }
+            """;
+
+        var payload = new
+        {
+            query = mutation,
+            variables = new
+            {
+                input = new
+                {
+                    id = paymentId,
+                    paymentAccountId,
+                    memo = "AdRackHub received to Received Invoices"
+                }
+            }
+        };
+
+        var response = await ExecuteGraphQlAsync(payload, cancellationToken, accessToken);
+        if (!response.Success)
+            return WavePaymentResult.Failed(response.ErrorMessage ?? "Wave invoicePaymentPatch failed.");
+
+        try
+        {
+            var patched = response.Data!.Value.GetProperty("invoicePaymentPatch");
+            if (!patched.GetProperty("didSucceed").GetBoolean())
+            {
+                var errors = patched.GetProperty("inputErrors").EnumerateArray()
+                    .Select(e => e.GetProperty("message").GetString())
+                    .Where(m => !string.IsNullOrWhiteSpace(m));
+                return WavePaymentResult.Failed(string.Join("; ", errors));
+            }
+
+            return WavePaymentResult.Succeeded(paymentId, 0);
+        }
+        catch (Exception ex)
+        {
+            return WavePaymentResult.Failed($"Failed to parse Wave payment patch: {ex.Message}");
+        }
+    }
+
+    public static bool IsRealBankAccount(string? name, string? description = null)
+    {
+        var blob = $"{name} {description}";
+        return ContainsAny(
+            blob,
+            "bluevine",
+            "4345",
+            "checking",
+            "savings",
+            "operating",
+            "cash on hand",
+            "(345)",
+            "(4345)");
+    }
+
+    public static bool IsClearingAccount(string? name, string? description = null)
+    {
+        var blob = $"{name} {description}";
+        return ContainsAny(
+            blob,
+            ReceivedInvoicesAccountName,
+            "undeposited",
+            "payment clearing",
+            "payments clearing",
+            "receivable clearing",
+            "invoice payments");
+    }
+
     private async Task<string?> ResolvePaymentAccountIdAsync(
         CancellationToken cancellationToken,
         string? accessToken,
         string? businessId)
     {
+        var clearing = await EnsureInvoicePaymentsClearingAccountAsync(cancellationToken, accessToken, businessId);
+        if (clearing.Success)
+            return clearing.Id;
+
+        var accounts = clearing.Accounts;
         if (!string.IsNullOrWhiteSpace(_options.PaymentAccountId))
-            return _options.PaymentAccountId.Trim();
-
-        var fromSession = await ListCashAndBankAccountsAsync(cancellationToken, accessToken, businessId);
-        var picked = PickPaymentAccount(fromSession);
-        if (!string.IsNullOrWhiteSpace(picked))
-            return picked;
-
-        if (!string.IsNullOrWhiteSpace(_options.AccessToken)
-            && !string.Equals(accessToken, _options.AccessToken, StringComparison.Ordinal))
         {
-            var fromApiToken = await ListCashAndBankAccountsAsync(cancellationToken, _options.AccessToken, businessId);
-            picked = PickPaymentAccount(fromApiToken);
-            if (!string.IsNullOrWhiteSpace(picked))
-                return picked;
+            var configured = accounts.FirstOrDefault(item =>
+                string.Equals(item.Id, _options.PaymentAccountId.Trim(), StringComparison.Ordinal)
+                && !IsRealBankAccount(item.Name, item.Description));
+            if (!string.IsNullOrWhiteSpace(configured.Id))
+                return configured.Id;
         }
 
-        return await PaymentAccountFromPaidInvoicesAsync(cancellationToken, accessToken, businessId);
+        return PickClearingAccount(accounts)?.Id;
     }
 
-    private async Task<IReadOnlyList<(string Id, string Name, string Description)>> ListCashAndBankAccountsAsync(
+    public async Task<IReadOnlyList<(string Id, string Name, string Description)>> ListCashAndBankAccountsAsync(
         CancellationToken cancellationToken,
         string? accessToken,
         string? businessId)
@@ -1269,7 +1452,7 @@ public class WaveApiService
         const string query = """
             query ($businessId: ID!) {
               business(id: $businessId) {
-                accounts(page: 1, pageSize: 50, subtypes: [CASH_AND_BANK], isArchived: false) {
+                accounts(page: 1, pageSize: 200, types: [ASSET], isArchived: false) {
                   edges {
                     node {
                       id
@@ -1312,104 +1495,35 @@ public class WaveApiService
         }
     }
 
-    private string? PickPaymentAccount(IReadOnlyList<(string Id, string Name, string Description)> accounts)
+    private (string Id, string Name, string Description)? PickClearingAccount(
+        IReadOnlyList<(string Id, string Name, string Description)> accounts)
     {
-        if (accounts.Count == 0)
-            return null;
+        var exactName = ReceivedInvoicesAccountName;
+        var exact = accounts.FirstOrDefault(item =>
+            !IsRealBankAccount(item.Name, item.Description)
+            && string.Equals(item.Name.Trim(), exactName, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(exact.Id))
+            return exact;
 
-        var last4 = (_options.PaymentAccountLast4 ?? "").Trim();
-        var hint = (_options.PaymentAccountHint ?? "Ad-Rack Services LLC (345)").Trim();
-        var last3 = last4.Length >= 3 ? last4[^3..] : last4;
-
-        if (!string.IsNullOrWhiteSpace(last4))
+        var hinted = (_options.PaymentAccountHint ?? exactName).Trim();
+        if (!string.IsNullOrWhiteSpace(hinted))
         {
-            var exactLast4 = accounts.FirstOrDefault(item =>
-                AccountBlob(item).Contains(last4, StringComparison.OrdinalIgnoreCase));
-            if (!string.IsNullOrWhiteSpace(exactLast4.Id))
-                return exactLast4.Id;
+            var match = accounts.FirstOrDefault(item =>
+                !IsRealBankAccount(item.Name, item.Description)
+                && AccountBlob(item).Contains(hinted, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(match.Id))
+                return match;
         }
 
-        if (!string.IsNullOrWhiteSpace(hint))
-        {
-            var hinted = accounts.FirstOrDefault(item =>
-                AccountBlob(item).Contains(hint, StringComparison.OrdinalIgnoreCase)
-                && (string.IsNullOrWhiteSpace(last3)
-                    || item.Name.Contains($"({last3})", StringComparison.OrdinalIgnoreCase)));
-            if (!string.IsNullOrWhiteSpace(hinted.Id))
-                return hinted.Id;
-        }
+        var named = accounts.FirstOrDefault(item => IsClearingAccount(item.Name, item.Description));
+        if (!string.IsNullOrWhiteSpace(named.Id))
+            return named;
 
-        var checking = accounts.FirstOrDefault(item =>
-            ContainsAny(item.Name, "checking", "operating", "business checking"));
-        if (!string.IsNullOrWhiteSpace(checking.Id))
-            return checking.Id;
-
-        return accounts[0].Id;
+        return null;
     }
 
     private static string AccountBlob((string Id, string Name, string Description) account) =>
         $"{account.Name} {account.Description}";
-
-    private async Task<string?> PaymentAccountFromPaidInvoicesAsync(
-        CancellationToken cancellationToken,
-        string? accessToken,
-        string? businessId)
-    {
-        const string query = """
-            query ($businessId: ID!) {
-              business(id: $businessId) {
-                invoices(page: 1, pageSize: 50, sort: [CREATED_AT_DESC]) {
-                  edges {
-                    node {
-                      payments {
-                        account { id name }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-            """;
-
-        var response = await ExecuteGraphQlAsync(
-            new { query, variables = new { businessId = ResolveBusinessId(businessId) } },
-            cancellationToken,
-            accessToken);
-        if (!response.Success || response.Data == null)
-            return null;
-
-        try
-        {
-            if (!response.Data.Value.TryGetProperty("business", out var business)
-                || !business.TryGetProperty("invoices", out var invoices)
-                || !invoices.TryGetProperty("edges", out var edges))
-                return null;
-
-            foreach (var edge in edges.EnumerateArray())
-            {
-                if (!edge.TryGetProperty("node", out var node)
-                    || !node.TryGetProperty("payments", out var payments)
-                    || payments.ValueKind != JsonValueKind.Array)
-                    continue;
-                foreach (var payment in payments.EnumerateArray())
-                {
-                    if (!payment.TryGetProperty("account", out var account)
-                        || account.ValueKind != JsonValueKind.Object
-                        || !account.TryGetProperty("id", out var id))
-                        continue;
-                    var accountId = id.GetString();
-                    if (!string.IsNullOrWhiteSpace(accountId))
-                        return accountId;
-                }
-            }
-        }
-        catch
-        {
-            return null;
-        }
-
-        return null;
-    }
 
     private static bool ContainsAny(string value, params string[] needles) =>
         needles.Any(needle => value.Contains(needle, StringComparison.OrdinalIgnoreCase));
@@ -1735,3 +1849,44 @@ public sealed record WaveInvoiceListItem(
     string? InvoiceNumber,
     string? Status,
     string? CustomerName);
+
+public sealed record WaveInvoicePaymentInfo(
+    string PaymentId,
+    string? InvoiceNumber,
+    string? AccountId,
+    string? AccountName,
+    string? Memo,
+    decimal Amount);
+
+public sealed class WaveClearingAccountResult
+{
+    public bool Success { get; init; }
+    public bool Created { get; init; }
+    public string? Id { get; init; }
+    public string? Name { get; init; }
+    public string? ErrorMessage { get; init; }
+    public IReadOnlyList<(string Id, string Name, string Description)> Accounts { get; init; } =
+        Array.Empty<(string, string, string)>();
+
+    public static WaveClearingAccountResult Found(
+        string id,
+        string name,
+        IReadOnlyList<(string Id, string Name, string Description)> accounts) =>
+        new() { Success = true, Id = id, Name = name, Accounts = accounts };
+
+    public static WaveClearingAccountResult CreatedNew(
+        string id,
+        string name,
+        IReadOnlyList<(string Id, string Name, string Description)> accounts) =>
+        new() { Success = true, Created = true, Id = id, Name = name, Accounts = accounts };
+
+    public static WaveClearingAccountResult Failed(
+        string message,
+        IReadOnlyList<(string Id, string Name, string Description)>? accounts = null) =>
+        new()
+        {
+            Success = false,
+            ErrorMessage = message,
+            Accounts = accounts ?? Array.Empty<(string, string, string)>()
+        };
+}

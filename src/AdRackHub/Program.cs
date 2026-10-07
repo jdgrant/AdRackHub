@@ -87,6 +87,7 @@ builder.Services.AddScoped<StopVisitService>();
 builder.Services.AddScoped<BrochureScanService>();
 builder.Services.AddSingleton<InvoicePdfStorageService>();
 builder.Services.AddSingleton<InvoicePdfGenerator>();
+builder.Services.AddSingleton<ContractAgreementPdfGenerator>();
 builder.Services.AddScoped<RouteCustomerReportPdfGenerator>();
 builder.Services.AddScoped<BrochureLabelIdService>();
 builder.Services.AddScoped<BrochureLabelPdfGenerator>();
@@ -102,6 +103,7 @@ builder.Services.AddScoped<CustomerNeedsMoreInfoService>();
 builder.Services.AddScoped<HighValueProspectProximityService>();
         builder.Services.AddScoped<CustomerRouteMatrixService>();
         builder.Services.AddScoped<BrochureWarehouseSheetService>();
+        builder.Services.AddScoped<BrochureInventoryReportService>();
 builder.Services.AddScoped<Sept2026ContractImportService>();
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
 {
@@ -395,6 +397,50 @@ using (var scope = app.Services.CreateScope())
         return;
     }
 
+    if (args.Contains("--warehouse-inventory-pdf"))
+    {
+        var generator = scope.ServiceProvider.GetRequiredService<BrochureInventoryReportService>();
+        var report = await generator.BuildAsync();
+        var outPath = Path.Combine(Path.GetTempPath(), "adrackhub-warehouse-inventory-count-sheet.pdf");
+        File.WriteAllBytes(outPath, generator.GeneratePdf(report));
+        Console.WriteLine(outPath);
+        return;
+    }
+
+    var contractPdfArg = args.FirstOrDefault(a => a.StartsWith("--contract-agreement-pdf", StringComparison.OrdinalIgnoreCase));
+    if (contractPdfArg != null)
+    {
+        var idText = contractPdfArg.Contains('=', StringComparison.Ordinal)
+            ? contractPdfArg[(contractPdfArg.IndexOf('=') + 1)..].Trim()
+            : null;
+        if (!int.TryParse(idText, out var contractId) || contractId <= 0)
+        {
+            Console.WriteLine("Usage: --contract-agreement-pdf=CONTRACT_ID");
+            return;
+        }
+
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var generator = scope.ServiceProvider.GetRequiredService<ContractAgreementPdfGenerator>();
+        var contract = await db.CustomerContracts
+            .Include(c => c.Customer)
+                .ThenInclude(c => c.CustomerRoutes)
+                    .ThenInclude(cr => cr.CustomerRouteStops)
+            .Include(c => c.ContractRoutes)
+                .ThenInclude(cr => cr.Route)
+                    .ThenInclude(r => r.Stops)
+            .FirstOrDefaultAsync(c => c.Id == contractId);
+        if (contract == null)
+        {
+            Console.WriteLine($"Contract {contractId} was not found.");
+            return;
+        }
+
+        var outPath = Path.Combine(Path.GetTempPath(), ContractAgreementPdfGenerator.DownloadFileName(contract));
+        File.WriteAllBytes(outPath, generator.Generate(contract));
+        Console.WriteLine(outPath);
+        return;
+    }
+
     var warehouseSheetArg = args.FirstOrDefault(a => a.StartsWith("--brochure-warehouse-xlsx", StringComparison.OrdinalIgnoreCase));
     if (warehouseSheetArg != null)
     {
@@ -486,6 +532,51 @@ using (var scope = app.Services.CreateScope())
                     ? $"Deleted Wave invoice #{item.InvoiceNumber} ({item.Status})."
                     : $"Could not delete #{item.InvoiceNumber}: {deleted.ErrorMessage}");
         }
+        return;
+    }
+
+    if (args.Contains("--ensure-wave-clearing-account") || args.Contains("--repoint-wave-payments-to-clearing"))
+    {
+        var session = scope.ServiceProvider.GetRequiredService<WaveSessionService>();
+        var waveApi = scope.ServiceProvider.GetRequiredService<WaveApiService>();
+        var workflow = scope.ServiceProvider.GetRequiredService<WaveInvoiceWorkflowService>();
+        var credentials = await session.GetCredentialsAsync();
+        if (credentials == null || string.IsNullOrWhiteSpace(credentials.AccessToken))
+        {
+            Console.WriteLine("Connect to Wave on Billing first.");
+            return;
+        }
+
+        var clearing = await waveApi.EnsureInvoicePaymentsClearingAccountAsync(
+            accessToken: credentials.AccessToken,
+            businessId: credentials.BusinessId);
+        foreach (var account in clearing.Accounts)
+        {
+            var kind = WaveApiService.IsRealBankAccount(account.Name, account.Description)
+                ? "bank"
+                : WaveApiService.IsClearingAccount(account.Name, account.Description)
+                    ? "clearing"
+                    : "other";
+            Console.WriteLine($"  [{kind}] {account.Name}");
+        }
+
+        if (!clearing.Success)
+        {
+            Console.WriteLine(clearing.ErrorMessage);
+            return;
+        }
+
+        Console.WriteLine(
+            clearing.Created
+                ? $"Created Wave account {clearing.Name}."
+                : $"Using Wave account {clearing.Name}.");
+
+        if (args.Contains("--repoint-wave-payments-to-clearing"))
+        {
+            var moved = await workflow.MoveBankPaymentsToClearingAsync();
+            Console.WriteLine(moved.Message);
+        }
+
         return;
     }
 

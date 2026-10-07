@@ -232,7 +232,9 @@ public class WaveInvoiceWorkflowService
             credentials.BusinessId,
             cancellationToken);
 
-        var invoiceDate = contract.NextBillDate;
+        if (contract.NextBillDate is not { } invoiceDate)
+            return Fail("This contract is not submitted to billing.");
+
         var months = AnnualBillingHelper.BillingMonths(contract);
         var lineItems = contract.ContractRoutes
             .OrderBy(cr => cr.Route.RouteName)
@@ -493,8 +495,102 @@ public class WaveInvoiceWorkflowService
         {
             Success = true,
             Invoice = invoice,
-            Message = $"Recorded {paid.Amount:C} in Wave on invoice {invoice.InvoiceNumber ?? invoice.WaveInvoiceId}."
+            Message = $"Recorded {paid.Amount:C} on Wave invoice {invoice.InvoiceNumber ?? invoice.WaveInvoiceId} to Received Invoices."
         };
+    }
+
+    public async Task<(bool Success, string Message)> MoveBankPaymentsToClearingAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var credentials = await _session.GetCredentialsAsync(cancellationToken);
+        if (credentials == null
+            || string.IsNullOrWhiteSpace(credentials.AccessToken)
+            || string.IsNullOrWhiteSpace(credentials.BusinessId))
+        {
+            return (false, _session.NeedsBusinessReset
+                ? WaveSessionService.SessionExpiredReconnectMessage
+                : "Connect to Wave on the Billing page first.");
+        }
+
+        var clearing = await _waveApi.EnsureInvoicePaymentsClearingAccountAsync(
+            cancellationToken,
+            credentials.AccessToken,
+            credentials.BusinessId);
+        if (!clearing.Success || string.IsNullOrWhiteSpace(clearing.Id))
+            return (false, clearing.ErrorMessage ?? "Wave Money in Transit account Received Invoices is missing.");
+
+        var invoices = await _context.BillingRunInvoices
+            .Include(i => i.Customer)
+            .Where(i => i.Status == BillingRunInvoiceStatus.Received
+                        && i.WaveInvoiceId != null
+                        && i.WaveInvoiceId != "")
+            .OrderBy(i => i.Customer.CustomerName)
+            .ThenBy(i => i.Id)
+            .ToListAsync(cancellationToken);
+
+        var moved = 0;
+        var skipped = 0;
+        var failed = 0;
+        var errors = new List<string>();
+
+        foreach (var invoice in invoices)
+        {
+            var payments = await _waveApi.ListInvoicePaymentsAsync(
+                invoice.WaveInvoiceId!,
+                cancellationToken,
+                credentials.AccessToken,
+                credentials.BusinessId);
+            if (payments.Count == 0)
+            {
+                skipped++;
+                continue;
+            }
+
+            foreach (var payment in payments)
+            {
+                if (string.Equals(payment.AccountId, clearing.Id, StringComparison.Ordinal)
+                    || WaveApiService.IsClearingAccount(payment.AccountName))
+                {
+                    skipped++;
+                    continue;
+                }
+
+                if (!WaveApiService.IsRealBankAccount(payment.AccountName))
+                {
+                    skipped++;
+                    continue;
+                }
+
+                var patched = await _waveApi.PatchInvoicePaymentAccountAsync(
+                    payment.PaymentId,
+                    clearing.Id,
+                    cancellationToken,
+                    credentials.AccessToken);
+                if (patched.Success)
+                {
+                    moved++;
+                    _logger.LogInformation(
+                        "Moved Wave payment on invoice {InvoiceNumber} from {FromAccount} to {ToAccount}.",
+                        payment.InvoiceNumber ?? invoice.WaveInvoiceNumber,
+                        payment.AccountName,
+                        clearing.Name);
+                }
+                else
+                {
+                    failed++;
+                    errors.Add($"#{invoice.WaveInvoiceNumber ?? invoice.Id.ToString()}: {patched.ErrorMessage}");
+                }
+            }
+        }
+
+        var message =
+            $"Received Invoices: {clearing.Name}. Moved {moved} Wave payment(s) off checking/cash. "
+            + $"Already on clearing or not a bank: {skipped}.";
+        if (failed > 0)
+            message += $" {failed} failed. {string.Join(" ", errors.Take(3))}";
+        if (clearing.Created)
+            message = $"Created {clearing.Name}. " + message;
+        return (failed == 0, message);
     }
 
     private static decimal ParseAmount(string? value)

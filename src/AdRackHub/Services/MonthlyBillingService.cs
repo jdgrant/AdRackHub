@@ -120,7 +120,7 @@ public class MonthlyBillingService
                 ContractName = c.ContractName,
                 Term = c.Term,
                 BillingMonthCount = AnnualBillingHelper.BillingMonths(c),
-                NextBillDate = c.NextBillDate,
+                NextBillDate = c.NextBillDate!.Value,
                 ServiceMonthMask = c.ServiceMonthMask,
                 RouteId = cr.RouteId,
                 RouteName = cr.Route.RouteName,
@@ -460,7 +460,7 @@ public class MonthlyBillingService
         await AdvanceContractBillDatesAsync(new[] { customerContractId }, cancellationToken);
         await UpdateRunStatusAsync(invoice.BillingRunId, cancellationToken);
 
-        var nextBill = contract.NextBillDate.ToString("MMM d, yyyy");
+        var nextBill = contract.NextBillDate?.ToString("MMM d, yyyy") ?? "none";
 
         _logger.LogInformation(
             "Create On Send completed. Invoice ID {InvoiceId} for contract {ContractId} period {Period}; Wave {WaveInvoiceNumber}; next bill {NextBillDate}.",
@@ -521,7 +521,7 @@ public class MonthlyBillingService
         {
             var contract = await _context.CustomerContracts.FindAsync(new object[] { nextBills[0] }, cancellationToken);
             if (contract != null)
-                nextBillLabel = contract.NextBillDate.ToString("MMM d, yyyy");
+                nextBillLabel = contract.NextBillDate?.ToString("MMM d, yyyy") ?? "none";
         }
 
         _logger.LogInformation(
@@ -739,10 +739,10 @@ public class MonthlyBillingService
         foreach (var contractId in contractIds)
         {
             var contract = await _context.CustomerContracts.FindAsync(new object[] { contractId }, cancellationToken);
-            if (contract == null)
+            if (contract == null || contract.NextBillDate is not { } current)
                 continue;
 
-            contract.NextBillDate = BillingDueCalculator.AdvanceNextBillDate(contract.NextBillDate, contract);
+            contract.NextBillDate = BillingDueCalculator.AdvanceNextBillDate(current, contract);
         }
 
         await _context.SaveChangesAsync(cancellationToken);
@@ -755,10 +755,10 @@ public class MonthlyBillingService
         foreach (var group in lines.GroupBy(l => l.CustomerContractId))
         {
             var contract = await _context.CustomerContracts.FindAsync(new object[] { group.Key }, cancellationToken);
-            if (contract == null)
+            if (contract == null || contract.NextBillDate is not { } current)
                 continue;
 
-            contract.NextBillDate = BillingDueCalculator.RewindNextBillDate(contract.NextBillDate, contract);
+            contract.NextBillDate = BillingDueCalculator.RewindNextBillDate(current, contract);
         }
     }
 

@@ -235,8 +235,14 @@ public class AdminController : Controller
             return View("WaveProof", model);
         }
 
+        if (contract.NextBillDate is not { } invoiceDate)
+        {
+            model.ResultMessage = "This contract is not submitted to billing.";
+            return View("WaveProof", model);
+        }
+
         var memo = $"AdRackHub Wave proof of concept — contract #{contract.Id} {contract.ContractName}";
-        var result = await _waveInvoices.ProcessContractAsync(contract, contract.NextBillDate, memo, cancellationToken);
+        var result = await _waveInvoices.ProcessContractAsync(contract, invoiceDate, memo, cancellationToken);
         if (result.SessionExpired)
         {
             TempData["WaveSessionExpired"] = true;
@@ -544,7 +550,7 @@ public class AdminController : Controller
                 .ToList()
             : new List<string>();
         model.InvoiceDate = contract.NextBillDate;
-        model.DueDate = contract.NextBillDate.AddDays(WaveApiService.InvoiceDueDays);
+        model.DueDate = contract.NextBillDate?.AddDays(WaveApiService.InvoiceDueDays);
         var months = AnnualBillingHelper.BillingMonths(contract);
         var missingRoutes = new List<string>();
         model.LineSummaries = contract.ContractRoutes

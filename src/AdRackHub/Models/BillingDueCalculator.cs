@@ -13,11 +13,15 @@ public static class BillingDueCalculator
         var periodStart = new DateOnly(year, month, 1);
         var periodEnd = new DateOnly(year, month, DateTime.DaysInMonth(year, month));
 
-        // Due only when NextBillDate falls in the selected billing period (date picker).
-        if (contract.NextBillDate < periodStart || contract.NextBillDate > periodEnd)
+        // Print-only contracts have no next bill date and are never due.
+        if (contract.NextBillDate is not { } nextBill)
             return false;
 
-        return WouldBeDueOn(contract, contract.NextBillDate);
+        // Due only when NextBillDate falls in the selected billing period (date picker).
+        if (nextBill < periodStart || nextBill > periodEnd)
+            return false;
+
+        return WouldBeDueOn(contract, nextBill);
     }
 
     public static bool WouldBeDueOn(CustomerContract contract, DateOnly billDate, bool ignoreEndDate = false)

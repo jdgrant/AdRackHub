@@ -30,12 +30,17 @@
                             <li class="nav-item"><a class="nav-link" asp-controller="Billing" asp-action="Index">Billing</a></li>
                             <li class="nav-item"><a class="nav-link" asp-controller="Billing" asp-action="Forecast">Forecast</a></li>
                         }
+                        @if (User.IsInRole(AppRoles.Customers) || User.IsInRole(AppRoles.RoutesStops) || User.IsInRole(AppRoles.Admin))
+                        {
+                            <li class="nav-item"><a class="nav-link" asp-controller="Reports" asp-action="Index">Reports</a></li>
+                        }
                         @if (User.IsInRole(AppRoles.RoutesStops) || User.IsInRole(AppRoles.Admin))
                         {
                             <li class="nav-item dropdown">
                                 <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">Routes & Stops</a>
                                 <ul class="dropdown-menu">
                                     <li><a class="dropdown-item" asp-controller="Routes" asp-action="Index">Routes</a></li>
+                                    <li><a class="dropdown-item" asp-controller="Routes" asp-action="Invoice">Invoice</a></li>
                                     <li><a class="dropdown-item" asp-controller="Stops" asp-action="Index">Stops</a></li>
                                     <li><a class="dropdown-item" asp-controller="Maps" asp-action="Index">Maps</a></li>
                                     <li><a class="dropdown-item" asp-controller="ProspectStops" asp-action="Index">Prospect Stops</a></li>

@@ -3,6 +3,7 @@ using AdRackHub.Models;
 using AdRackHub.Services;
 using AdRackHub.ViewModels;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using DistributionRoute = AdRackHub.Models.Route;
@@ -17,26 +18,23 @@ public class RoutesController : Controller
     private readonly StopImportService _stopImportService;
     private readonly RouteSheetSyncService _routeSheetSyncService;
     private readonly StopVisitService _visitService;
-    private readonly RouteCustomerReportPdfGenerator _routeCustomerReportPdf;
-    private readonly BrochureLabelPdfGenerator _brochureLabelPdf;
-    private readonly BrochureWarehouseSheetService _warehouseSheet;
+    private readonly BrochureInventoryReportService _inventoryReport;
+    private readonly UserManager<ApplicationUser> _userManager;
 
     public RoutesController(
         ApplicationDbContext context,
         StopImportService stopImportService,
         RouteSheetSyncService routeSheetSyncService,
         StopVisitService visitService,
-        RouteCustomerReportPdfGenerator routeCustomerReportPdf,
-        BrochureLabelPdfGenerator brochureLabelPdf,
-        BrochureWarehouseSheetService warehouseSheet)
+        BrochureInventoryReportService inventoryReport,
+        UserManager<ApplicationUser> userManager)
     {
         _context = context;
         _stopImportService = stopImportService;
         _routeSheetSyncService = routeSheetSyncService;
         _visitService = visitService;
-        _routeCustomerReportPdf = routeCustomerReportPdf;
-        _brochureLabelPdf = brochureLabelPdf;
-        _warehouseSheet = warehouseSheet;
+        _inventoryReport = inventoryReport;
+        _userManager = userManager;
     }
 
     public async Task<IActionResult> Index(RouteStatus? status, RouteProduct? product)
@@ -59,33 +57,186 @@ public class RoutesController : Controller
         return View(await query.OrderBy(r => r.RouteName).ToListAsync());
     }
 
-    public async Task<IActionResult> HotelCustomersPdf(CancellationToken cancellationToken)
+    [HttpGet]
+    public async Task<IActionResult> Invoice(string? warehouse)
     {
-        var pdf = await _routeCustomerReportPdf.BuildHotelAsync(cancellationToken);
-        return File(pdf, "application/pdf", $"Hotel-customers-by-route-{DateTime.Today:yyyyMMdd}.pdf");
+        var report = await _inventoryReport.BuildAsync();
+        var countedBy = await GetCurrentUserLabelAsync();
+        return View(BuildInvoicePage(report, countedBy, warehouse));
     }
 
-    public async Task<IActionResult> RestAreaCustomersPdf(CancellationToken cancellationToken)
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [RequestFormLimits(ValueCountLimit = 16384)]
+    public async Task<IActionResult> Invoice(WarehouseInvoicePageViewModel model)
     {
-        var pdf = await _routeCustomerReportPdf.BuildRestAreaAsync(cancellationToken);
-        return File(pdf, "application/pdf", $"Rest-area-customers-by-location-{DateTime.Today:yyyyMMdd}.pdf");
+        var rows = model.Rows ?? new List<WarehouseInvoiceRowForm>();
+        var date = model.InventoryDate == default
+            ? DateOnly.FromDateTime(DateTime.Today)
+            : model.InventoryDate;
+        var countedBy = string.IsNullOrWhiteSpace(model.CountedBy)
+            ? await GetCurrentUserLabelAsync()
+            : model.CountedBy.Trim();
+
+        var toLog = new List<(WarehouseInvoiceRowForm Row, int Quantity)>();
+        foreach (var row in rows)
+        {
+            if (row.CustomerId <= 0)
+                continue;
+            var quantity = ResolveQuantity(row);
+            if (!quantity.HasValue)
+                continue;
+            toLog.Add((row, quantity.Value));
+        }
+
+        if (toLog.Count == 0)
+        {
+            TempData["Error"] = "Enter a total (or cases and per case) on at least one brochure.";
+            var report = await _inventoryReport.BuildAsync();
+            var page = BuildInvoicePage(report, countedBy, model.ActiveWarehouse);
+            page.InventoryDate = date;
+            page.CountedBy = countedBy;
+            CopyEnteredCounts(page.Rows, rows);
+            return View(page);
+        }
+
+        var customerIds = toLog.Select(item => item.Row.CustomerId).Distinct().ToList();
+        var customers = await _context.Customers
+            .Include(c => c.WarehouseLocations)
+            .Where(c => customerIds.Contains(c.Id) && c.Type == CustomerType.Customer)
+            .ToDictionaryAsync(c => c.Id);
+
+        var logged = 0;
+        foreach (var (row, quantity) in toLog)
+        {
+            if (!customers.TryGetValue(row.CustomerId, out var customer))
+                continue;
+
+            var rack = WarehouseLocation.NullIfEmpty(row.Rack);
+            var bin = WarehouseLocation.NullIfEmpty(row.Bin);
+            var warehouse = WarehouseLocation.Parse(row.Warehouse);
+            var shelf = WarehouseLocation.ParseShelf(row.Shelf);
+            warehouse = WarehouseLocation.DefaultKy(warehouse, rack, bin);
+            if (warehouse != null || rack != null || bin != null || shelf != null)
+                WarehouseLocation.Upsert(customer, warehouse, rack, bin, shelf);
+
+            var notes = InventoryNote(row);
+            _context.CustomerBrochureInventories.Add(new CustomerBrochureInventory
+            {
+                CustomerId = customer.Id,
+                Quantity = quantity,
+                InventoryDate = date,
+                Warehouse = warehouse,
+                Rack = rack,
+                Bin = bin,
+                Shelf = shelf,
+                Notes = notes,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = countedBy
+            });
+            logged++;
+        }
+
+        await _context.SaveChangesAsync();
+        TempData["Message"] = logged == 1
+            ? "Saved 1 inventory log."
+            : $"Saved {logged} inventory logs.";
+        return RedirectToAction(nameof(Invoice), new { warehouse = model.ActiveWarehouse });
     }
 
-    public async Task<IActionResult> BrochureLabelsPdf(CancellationToken cancellationToken)
+    private static WarehouseInvoicePageViewModel BuildInvoicePage(
+        BrochureInventoryReport report,
+        string countedBy,
+        string? warehouse)
     {
-        var pdf = await _brochureLabelPdf.BuildAsync(cancellationToken);
-        return File(pdf, "application/pdf", $"Brochure-labels-nametags-{DateTime.Today:yyyyMMdd}.pdf");
+        var active = string.Equals(warehouse, "O", StringComparison.OrdinalIgnoreCase) ? "O" : "K";
+        var page = new WarehouseInvoicePageViewModel
+        {
+            InventoryDate = report.AsOf,
+            CountedBy = countedBy,
+            ActiveWarehouse = active
+        };
+
+        void addTab(string code, string title, IEnumerable<BrochureInventoryRow> source)
+        {
+            var start = page.Rows.Count;
+            foreach (var row in source)
+            {
+                page.Rows.Add(new WarehouseInvoiceRowForm
+                {
+                    CustomerId = row.CustomerId,
+                    BrochureName = row.BrochureName,
+                    BrochureCode = row.BrochureCode,
+                    Location = row.Location,
+                    Warehouse = row.Warehouse?.ToString(),
+                    Rack = row.Rack,
+                    Bin = row.Bin,
+                    Shelf = row.Shelf?.ToString(),
+                    LastQuantity = row.Quantity
+                });
+            }
+
+            page.Tabs.Add(new WarehouseInvoiceTabViewModel
+            {
+                Code = code,
+                Title = title,
+                RowIndexes = Enumerable.Range(start, page.Rows.Count - start).ToList()
+            });
+        }
+
+        var kentucky = report.Warehouses.FirstOrDefault(g => g.Warehouse == BrochureWarehouse.K);
+        var ohio = report.Warehouses.FirstOrDefault(g => g.Warehouse == BrochureWarehouse.O);
+        var unassigned = report.Warehouses.FirstOrDefault(g => g.Warehouse == null);
+        addTab("K", BrochureInventoryReportService.WarehouseTitle(BrochureWarehouse.K),
+            (kentucky?.Rows ?? Array.Empty<BrochureInventoryRow>())
+                .Concat(unassigned?.Rows ?? Array.Empty<BrochureInventoryRow>()));
+        addTab("O", BrochureInventoryReportService.WarehouseTitle(BrochureWarehouse.O),
+            ohio?.Rows ?? Array.Empty<BrochureInventoryRow>());
+        return page;
     }
 
-    public async Task<IActionResult> DownloadWarehouseSheet(CancellationToken cancellationToken)
+    private static void CopyEnteredCounts(
+        IReadOnlyList<WarehouseInvoiceRowForm> pageRows,
+        IReadOnlyList<WarehouseInvoiceRowForm> posted)
     {
-        var stream = new MemoryStream();
-        await _warehouseSheet.ExportAsync(stream, cancellationToken);
-        stream.Position = 0;
-        return File(
-            stream,
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            BrochureWarehouseSheetService.FileName);
+        var byKey = posted
+            .GroupBy(r => $"{r.CustomerId}|{r.Warehouse}|{r.Rack}|{r.Bin}|{r.Shelf}")
+            .ToDictionary(g => g.Key, g => g.First());
+        foreach (var row in pageRows)
+        {
+            var key = $"{row.CustomerId}|{row.Warehouse}|{row.Rack}|{row.Bin}|{row.Shelf}";
+            if (!byKey.TryGetValue(key, out var entered))
+                continue;
+            row.Cases = entered.Cases;
+            row.PerCase = entered.PerCase;
+            row.Total = entered.Total;
+        }
+    }
+
+    private static int? ResolveQuantity(WarehouseInvoiceRowForm row)
+    {
+        if (row.Total.HasValue)
+            return row.Total.Value;
+        if (row.Cases.HasValue && row.PerCase.HasValue)
+            return row.Cases.Value * row.PerCase.Value;
+        return null;
+    }
+
+    private static string? InventoryNote(WarehouseInvoiceRowForm row)
+    {
+        if (row.Cases.HasValue && row.PerCase.HasValue)
+            return $"{row.Cases.Value} cases × {row.PerCase.Value}";
+        return null;
+    }
+
+    private async Task<string> GetCurrentUserLabelAsync()
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (!string.IsNullOrWhiteSpace(user?.DisplayName))
+            return user.DisplayName;
+        if (!string.IsNullOrWhiteSpace(user?.UserName))
+            return user.UserName;
+        return User.Identity?.Name ?? "User";
     }
 
     public async Task<IActionResult> Details(int? id)

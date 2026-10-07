@@ -16,15 +16,18 @@ public class CustomerContractsController : Controller
     private readonly ApplicationDbContext _context;
     private readonly WaveSyncService _waveSyncService;
     private readonly InvoicePdfStorageService _invoicePdfs;
+    private readonly ContractAgreementPdfGenerator _agreementPdfs;
 
     public CustomerContractsController(
         ApplicationDbContext context,
         WaveSyncService waveSyncService,
-        InvoicePdfStorageService invoicePdfs)
+        InvoicePdfStorageService invoicePdfs,
+        ContractAgreementPdfGenerator agreementPdfs)
     {
         _context = context;
         _waveSyncService = waveSyncService;
         _invoicePdfs = invoicePdfs;
+        _agreementPdfs = agreementPdfs;
     }
 
     public async Task<IActionResult> Create(int customerId)
@@ -41,6 +44,9 @@ public class CustomerContractsController : Controller
             ContractName = await SuggestUniqueContractNameAsync(customerId, customer.CustomerName, today),
             ServiceMonthMask = SubscribedMonths.AllMonthsMask,
             NextBillDate = new DateOnly(today.Year, today.Month, 1),
+            ContractStartDate = null,
+            ContractEndDate = null,
+            AdvertisingSpaces = 1,
             BillingAnchorMonth = today.Month
         }, selectedMonthNumbers: Enumerable.Range(1, 12).ToList());
 
@@ -79,7 +85,8 @@ public class CustomerContractsController : Controller
                 _context.Add(vm.Contract);
                 await _context.SaveChangesAsync();
                 await SyncRoutesAsync(vm);
-                await _waveSyncService.PushContractToWaveAsync(vm.Contract.Id);
+                if (vm.Contract.NextBillDate.HasValue)
+                    await _waveSyncService.PushContractToWaveAsync(vm.Contract.Id);
                 return RedirectToAction("Details", "Customers", new { id = vm.Contract.CustomerId });
             }
             catch (DbUpdateException ex) when (IsDuplicateContractNameException(ex))
@@ -100,6 +107,46 @@ public class CustomerContractsController : Controller
         ViewBag.CustomerId = vm.Contract.CustomerId;
         ViewBag.CustomerName = customer?.CustomerName;
         return View(vm);
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Duplicate(int id)
+    {
+        var source = await _context.CustomerContracts
+            .AsNoTracking()
+            .Include(c => c.Customer)
+            .Include(c => c.ContractRoutes)
+            .FirstOrDefaultAsync(c => c.Id == id);
+        if (source == null)
+            return NotFound();
+
+        var copy = new CustomerContract
+        {
+            CustomerId = source.CustomerId,
+            ContractName = await SuggestUniqueCopiedNameAsync(source.CustomerId, source.ContractName),
+            Term = source.Term,
+            BillingMonthCount = source.BillingMonthCount,
+            BillingAnchorMonth = source.BillingAnchorMonth,
+            ServiceMonthMask = source.ServiceMonthMask,
+            AdvertisingSpaces = source.AdvertisingSpaces > 0 ? source.AdvertisingSpaces : 1,
+            Notes = source.Notes,
+            InvoiceNotes = source.InvoiceNotes,
+            DriversNotes = source.DriversNotes,
+            ContractStartDate = null,
+            ContractEndDate = null,
+            NextBillDate = null,
+            ContractRoutes = source.ContractRoutes.Select(cr => new CustomerContractRoute
+            {
+                RouteId = cr.RouteId,
+                BillingAmount = cr.BillingAmount
+            }).ToList()
+        };
+
+        var vm = await BuildEditViewModelAsync(copy);
+        ViewBag.CustomerId = source.CustomerId;
+        ViewBag.CustomerName = source.Customer.CustomerName;
+        ViewBag.DuplicatedFrom = source.ContractName;
+        return View("Create", vm);
     }
 
     public async Task<IActionResult> Edit(int? id)
@@ -287,6 +334,7 @@ public class CustomerContractsController : Controller
         return new CustomerContractEditViewModel
         {
             Contract = contract,
+            SubmitToBilling = contract.NextBillDate.HasValue,
             SelectedRouteIds = selectedRouteIds,
             SelectedMonthNumbers = selectedMonthNumbers,
             RouteBillingAmounts = availableRoutes
@@ -339,6 +387,23 @@ public class CustomerContractsController : Controller
         return PhysicalFile(filePath, "application/pdf", enableRangeProcessing: true);
     }
 
+    public async Task<IActionResult> AgreementPdf(int id)
+    {
+        var contract = await _context.CustomerContracts
+            .Include(c => c.Customer)
+                .ThenInclude(c => c.CustomerRoutes)
+                    .ThenInclude(cr => cr.CustomerRouteStops)
+            .Include(c => c.ContractRoutes)
+                .ThenInclude(cr => cr.Route)
+                    .ThenInclude(r => r.Stops)
+            .FirstOrDefaultAsync(c => c.Id == id);
+        if (contract == null)
+            return NotFound();
+
+        var bytes = _agreementPdfs.Generate(contract);
+        return File(bytes, "application/pdf", ContractAgreementPdfGenerator.DownloadFileName(contract));
+    }
+
     private void ApplyContractFields(CustomerContractEditViewModel vm)
     {
         if (vm.SelectedMonthNumbers == null || !vm.SelectedMonthNumbers.Any())
@@ -348,7 +413,29 @@ public class CustomerContractsController : Controller
         vm.Contract.InvoiceNotes = WarehouseLocation.NullIfEmpty(vm.Contract.InvoiceNotes);
         vm.Contract.DriversNotes = WarehouseLocation.NullIfEmpty(vm.Contract.DriversNotes);
         vm.Contract.ServiceMonthMask = SubscribedMonths.BuildMask(vm.SelectedMonthNumbers ?? new List<int>());
-        vm.Contract.BillingAnchorMonth = vm.Contract.NextBillDate.Month;
+        if (vm.Contract.AdvertisingSpaces is < 1 or > 20)
+        {
+            vm.Contract.AdvertisingSpaces = 1;
+            ModelState.Remove("Contract.AdvertisingSpaces");
+        }
+
+        if (vm.SubmitToBilling)
+        {
+            if (vm.Contract.NextBillDate is not { } nextBill)
+            {
+                ModelState.AddModelError("Contract.NextBillDate", "Enter a next bill date, or turn off Submit to billing.");
+            }
+            else
+            {
+                vm.Contract.BillingAnchorMonth = nextBill.Month;
+            }
+        }
+        else
+        {
+            vm.Contract.NextBillDate = null;
+            vm.Contract.BillingAnchorMonth = (vm.Contract.ContractStartDate ?? DateOnly.FromDateTime(DateTime.Today)).Month;
+        }
+
         if (vm.Contract.BillingMonthCount is < 1 or > 36)
             ModelState.AddModelError("Contract.BillingMonthCount", "Enter a number of months between 1 and 36.");
         else
@@ -451,6 +538,32 @@ public class CustomerContractsController : Controller
         }
 
         return $"{baseName} ({DateTime.UtcNow:HHmmss})";
+    }
+
+    private async Task<string> SuggestUniqueCopiedNameAsync(int customerId, string sourceName)
+    {
+        var trimmed = (sourceName ?? string.Empty).Trim();
+        var baseName = string.IsNullOrWhiteSpace(trimmed) ? "Contract" : trimmed;
+        var existing = await _context.CustomerContracts.AsNoTracking()
+            .Where(c => c.CustomerId == customerId)
+            .Select(c => c.ContractName)
+            .ToListAsync();
+
+        bool taken(string name) =>
+            existing.Any(n => string.Equals(n.Trim(), name, StringComparison.OrdinalIgnoreCase));
+
+        var copyName = $"{baseName} (copy)";
+        if (!taken(copyName))
+            return copyName;
+
+        for (var suffix = 2; suffix < 100; suffix++)
+        {
+            var candidate = $"{baseName} (copy {suffix})";
+            if (!taken(candidate))
+                return candidate;
+        }
+
+        return $"{baseName} (copy {DateTime.UtcNow:HHmmss})";
     }
 
     private async Task<List<RouteSelectionItem>> GetAvailableRoutesAsync(

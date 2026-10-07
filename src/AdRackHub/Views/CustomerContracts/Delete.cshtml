@@ -11,7 +11,7 @@
     <dt class="col-sm-3">Months of Service</dt>
     <dd class="col-sm-9">@SubscribedMonths.Format(Model.ServiceMonthMask)</dd>
     <dt class="col-sm-3">Next Bill Date</dt>
-    <dd class="col-sm-9">@Model.NextBillDate.ToString("MMM d, yyyy")</dd>
+    <dd class="col-sm-9">@(Model.NextBillDate?.ToString("MMM d, yyyy") ?? "Not submitted to billing")</dd>
     <dt class="col-sm-3">Contract End</dt>
     <dd class="col-sm-9">@BillingDueCalculator.FormatContractEndDate(Model.ContractEndDate)</dd>
     <dt class="col-sm-3">Routes</dt>

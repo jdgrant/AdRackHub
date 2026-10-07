@@ -191,6 +191,15 @@ else if (!Model.CreateOnSendConfigured)
         <code>appsettings.Production.json</code>.
     </div>
 }
+@if (Model.WaveConnected)
+{
+    <div class="alert alert-info">
+        Receive posts each invoice to Wave Money in Transit <strong>Received Invoices</strong>.
+        That is a reportable holding account, not Bluevine or any checking account.
+        When the deposit hits the bank, exclude it or transfer from Received Invoices
+        to the bank.
+    </div>
+}
 
 @if (Model.BatchPdfContractIds.Count > 0)
 {
@@ -426,7 +435,7 @@ else
                                 <input type="date" name="receivedDate" class="form-control form-control-sm"
                                        value="@today.ToString("yyyy-MM-dd")" style="width: 9.5rem;" />
                                 <button type="submit" class="btn btn-sm btn-success"
-                                        title="Mark paid in Wave to Bluevine 4345. Exclude the matching bank deposit so it is not income.">Receive</button>
+                                        title="Mark paid in Wave to Money in Transit: Received Invoices. Does not post to Bluevine or checking. When the bank deposit appears, exclude it or transfer from Received Invoices.">Receive</button>
                             </form>
                         }
                         <form asp-action="UpdateInvoiceStatus" method="post" class="d-flex flex-wrap gap-1 align-items-center">
