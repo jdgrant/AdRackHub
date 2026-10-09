@@ -1,0 +1,217 @@
+@model WarehouseInvoicePageViewModel
+@using AdRackHub.Services
+@{
+    ViewData["Title"] = "Inventory";
+    var warehouseTitle = BrochureInventoryReportService.WarehouseTitleFromCode(Model.ActiveWarehouse);
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Inventory</h1>
+    <div class="d-flex flex-wrap gap-2">
+        <a asp-controller="Reports" asp-action="WarehouseInventoryPdf" class="btn btn-outline-secondary">Print count sheets</a>
+        <a asp-action="Index" class="btn btn-outline-secondary">Routes</a>
+    </div>
+</div>
+
+<p class="text-muted">Select Kentucky, Ohio, or unassigned customers, enter counts, and save once. Print count sheets is one PDF with a page for each of those three groups.</p>
+
+<form method="get" class="card mb-3">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label" for="warehouse">Warehouse</label>
+                <select name="warehouse" id="warehouse" class="form-select" onchange="this.form.submit()">
+                    <option value="K" selected="@(Model.ActiveWarehouse == "K")">@BrochureInventoryReportService.WarehouseTitle(BrochureWarehouse.K)</option>
+                    <option value="O" selected="@(Model.ActiveWarehouse == "O")">@BrochureInventoryReportService.WarehouseTitle(BrochureWarehouse.O)</option>
+                    <option value="U" selected="@(Model.ActiveWarehouse == "U")">@BrochureInventoryReportService.WarehouseTitle(null)</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="inventory-filter">Filter customers</label>
+                <input type="search" class="form-control" id="inventory-filter" placeholder="Name or ID" />
+            </div>
+            <div class="col-md-4">
+                <div class="text-muted">@Model.Rows.Count customer@(Model.Rows.Count == 1 ? "" : "s") at @warehouseTitle</div>
+            </div>
+        </div>
+    </div>
+</form>
+
+<form asp-action="Inventory" method="post" id="warehouse-inventory-form">
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="ActiveWarehouse" />
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label asp-for="InventoryDate" class="form-label">Date</label>
+                    <input asp-for="InventoryDate" type="date" class="form-control" />
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="CountedBy" class="form-label">Counted by</label>
+                    <input asp-for="CountedBy" class="form-control" />
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary">Save inventory</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle" id="inventory-table">
+            <thead>
+                <tr>
+                    <th>Customer</th>
+                    <th>Location</th>
+                    <th title="Active this month, contract end, number of routes">Contract</th>
+                    <th class="text-end" title="Last count / last received">Last</th>
+                    <th>Last counted</th>
+                    <th class="text-end" style="width: 6.5rem;">Cases</th>
+                    <th class="text-end" style="width: 6.5rem;">Per case</th>
+                    <th class="text-end" style="width: 7rem;">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+            @for (var index = 0; index < Model.Rows.Count; index++)
+            {
+                var row = Model.Rows[index];
+                var rackKey = WarehouseLocation.NullIfEmpty(row.Rack) ?? "";
+                var previousRack = index == 0 ? null : WarehouseLocation.NullIfEmpty(Model.Rows[index - 1].Rack);
+                var rackBreak = index > 0 && !string.Equals(rackKey, previousRack ?? "", StringComparison.OrdinalIgnoreCase);
+                <tr data-inventory-row data-rack="@rackKey.ToLowerInvariant()" data-name="@((row.BrochureName + " " + (row.BrochureCode ?? "") + " " + (row.ContractLabel ?? "")).ToLowerInvariant())" class="@(rackBreak ? "inventory-rack-break" : null)">
+                    <td>
+                        <input type="hidden" name="Rows[@index].CustomerId" value="@row.CustomerId" />
+                        <input type="hidden" name="Rows[@index].Warehouse" value="@row.Warehouse" />
+                        <input type="hidden" name="Rows[@index].Rack" value="@row.Rack" />
+                        <input type="hidden" name="Rows[@index].Bin" value="@row.Bin" />
+                        <input type="hidden" name="Rows[@index].Shelf" value="@row.Shelf" />
+                        <input type="hidden" name="Rows[@index].BrochureName" value="@row.BrochureName" />
+                        <a asp-controller="Customers" asp-action="Details" asp-route-id="@row.CustomerId" asp-route-tab="brochures">@row.BrochureName</a>@if (!string.IsNullOrWhiteSpace(row.BrochureCode))
+                        {
+                            <span class="text-muted"> (@row.BrochureCode)</span>
+                        }
+                    </td>
+                    <td>@(row.Location ?? "—")</td>
+                    <td class="small text-nowrap">@(string.IsNullOrWhiteSpace(row.ContractLabel) ? "—" : row.ContractLabel)</td>
+                    <td class="text-end text-muted text-nowrap">@(BrochureInventoryRow.FormatLast(row.LastQuantity, row.LastReceivedQuantity) is { Length: > 0 } last ? last : "—")</td>
+                    <td class="text-muted">@(row.LastCountedDate?.ToString("MMM d, yyyy") ?? "—")</td>
+                    <td>
+                        <input name="Rows[@index].Cases" value="@row.Cases" inputmode="numeric" class="form-control form-control-sm text-end" data-cases />
+                    </td>
+                    <td>
+                        <input name="Rows[@index].PerCase" value="@row.PerCase" inputmode="numeric" class="form-control form-control-sm text-end" data-per-case />
+                    </td>
+                    <td>
+                        <input name="Rows[@index].Total" value="@row.Total" inputmode="numeric" class="form-control form-control-sm text-end" data-total />
+                    </td>
+                </tr>
+            }
+            @if (Model.Rows.Count == 0)
+            {
+                <tr>
+                    <td colspan="8" class="text-muted">No customers assigned to this warehouse.</td>
+                </tr>
+            }
+            </tbody>
+            <tfoot>
+                <tr class="table-light fw-semibold">
+                    <td colspan="5" class="text-end">Warehouse total</td>
+                    <td></td>
+                    <td></td>
+                    <td class="text-end" data-warehouse-total>—</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    <div class="mt-3">
+        <button type="submit" class="btn btn-primary">Save inventory</button>
+    </div>
+</form>
+
+@section Scripts {
+    <script>
+        (function () {
+            const form = document.getElementById('warehouse-inventory-form');
+            const filter = document.getElementById('inventory-filter');
+            const table = document.getElementById('inventory-table');
+
+            function refreshRackBreaks() {
+                let lastRack = null;
+                table.querySelectorAll('[data-inventory-row]').forEach(function (row) {
+                    if (row.classList.contains('d-none')) {
+                        row.classList.remove('inventory-rack-break');
+                        return;
+                    }
+                    const rack = row.getAttribute('data-rack') || '';
+                    row.classList.toggle('inventory-rack-break', lastRack !== null && rack !== lastRack);
+                    lastRack = rack;
+                });
+            }
+
+            filter?.addEventListener('input', function () {
+                const q = filter.value.trim().toLowerCase();
+                table.querySelectorAll('[data-inventory-row]').forEach(function (row) {
+                    const name = row.getAttribute('data-name') || '';
+                    row.classList.toggle('d-none', q.length > 0 && !name.includes(q));
+                });
+                refreshRackBreaks();
+                updateWarehouseTotal();
+            });
+
+            function formatTotal(value) {
+                return value.toLocaleString();
+            }
+
+            function updateWarehouseTotal() {
+                const totalCell = document.querySelector('[data-warehouse-total]');
+                if (!totalCell) return;
+                let sum = 0;
+                let hasValue = false;
+                document.querySelectorAll('[data-inventory-row]:not(.d-none) [data-total]').forEach(function (input) {
+                    const raw = String(input.value || '').trim();
+                    if (raw === '') return;
+                    const quantity = parseInt(raw, 10);
+                    if (Number.isNaN(quantity)) return;
+                    hasValue = true;
+                    sum += quantity;
+                });
+                totalCell.textContent = hasValue ? formatTotal(sum) : '—';
+            }
+
+            function bindRow(row) {
+                const casesInput = row.querySelector('[data-cases]');
+                const perCaseInput = row.querySelector('[data-per-case]');
+                const totalInput = row.querySelector('[data-total]');
+                if (!casesInput || !perCaseInput || !totalInput) return;
+                function recalc() {
+                    const cases = parseInt(casesInput.value, 10);
+                    const perCase = parseInt(perCaseInput.value, 10);
+                    if (!Number.isNaN(cases) && !Number.isNaN(perCase) && cases >= 0 && perCase >= 0) {
+                        totalInput.value = String(cases * perCase);
+                    }
+                    updateWarehouseTotal();
+                }
+                casesInput.addEventListener('input', recalc);
+                perCaseInput.addEventListener('input', recalc);
+                totalInput.addEventListener('input', updateWarehouseTotal);
+            }
+
+            document.querySelectorAll('[data-inventory-row]').forEach(bindRow);
+            updateWarehouseTotal();
+
+            if (form) {
+                form.addEventListener('submit', function (event) {
+                    const hasCount = Array.from(form.querySelectorAll('[data-total]'))
+                        .some(function (input) { return String(input.value || '').trim() !== ''; });
+                    if (!hasCount) {
+                        event.preventDefault();
+                        alert('Enter a total (or cases and per case) on at least one customer.');
+                    }
+                });
+            }
+        })();
+    </script>
+}

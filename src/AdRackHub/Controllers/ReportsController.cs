@@ -62,10 +62,18 @@ public class ReportsController : Controller
             BrochureWarehouseSheetService.FileName);
     }
 
-    public async Task<IActionResult> WarehouseInventoryPdf(CancellationToken cancellationToken)
+    public async Task<IActionResult> WarehouseInventoryPdf(string? warehouse, CancellationToken cancellationToken)
     {
         var report = await _inventoryReport.BuildAsync(cancellationToken);
-        var pdf = _inventoryReport.GeneratePdf(report);
-        return File(pdf, "application/pdf", $"warehouse-inventory-count-sheet-{report.AsOf:yyyyMMdd}.pdf");
+        var pdf = _inventoryReport.GeneratePdf(report, warehouse);
+        var suffix = string.IsNullOrWhiteSpace(warehouse)
+            || string.Equals(warehouse, "all", StringComparison.OrdinalIgnoreCase)
+            ? "all"
+            : string.Equals(warehouse, "O", StringComparison.OrdinalIgnoreCase)
+                ? "ohio"
+                : BrochureInventoryReportService.IsUnassignedCode(warehouse)
+                    ? "unassigned"
+                    : "kentucky";
+        return File(pdf, "application/pdf", $"warehouse-inventory-count-sheet-{suffix}-{report.AsOf:yyyyMMdd}.pdf");
     }
 }

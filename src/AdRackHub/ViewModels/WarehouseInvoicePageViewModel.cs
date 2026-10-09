@@ -22,11 +22,14 @@ public class WarehouseInvoiceRowForm
     public string BrochureName { get; set; } = string.Empty;
     public string? BrochureCode { get; set; }
     public string? Location { get; set; }
+    public string? ContractLabel { get; set; }
     public string? Warehouse { get; set; }
     public string? Rack { get; set; }
     public string? Bin { get; set; }
     public string? Shelf { get; set; }
     public int? LastQuantity { get; set; }
+    public int? LastReceivedQuantity { get; set; }
+    public DateOnly? LastCountedDate { get; set; }
     public int? Cases { get; set; }
     public int? PerCase { get; set; }
     public int? Total { get; set; }

@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using AdRackHub.Data;
 using AdRackHub.Models;
 using Microsoft.EntityFrameworkCore;
@@ -32,7 +33,21 @@ public sealed class BrochureInventoryRow
     public BrochureShelf? Shelf { get; init; }
     public string? Location { get; init; }
     public int? Quantity { get; init; }
+    public int? ReceivedQuantity { get; init; }
     public DateOnly? InventoryDate { get; init; }
+    public int? PerCase { get; init; }
+    public string? ContractLabel { get; init; }
+
+    public string LastLabel => FormatLast(Quantity, ReceivedQuantity);
+
+    public static string FormatLast(int? lastCount, int? lastReceived)
+    {
+        if (!lastCount.HasValue && !lastReceived.HasValue)
+            return string.Empty;
+        var count = lastCount?.ToString("N0") ?? "—";
+        var received = lastReceived?.ToString("N0") ?? "—";
+        return $"{count}/{received}";
+    }
 }
 
 public class BrochureInventoryReportService
@@ -57,6 +72,12 @@ public class BrochureInventoryReportService
             .OrderBy(c => c.CustomerName)
             .ToListAsync(cancellationToken);
 
+        var asOf = DateOnly.FromDateTime(DateTime.Today);
+        var contractLabels = await BuildContractLabelsAsync(
+            customers.Select(c => c.Id).ToList(),
+            asOf,
+            cancellationToken);
+
         var warehouses = customers
             .SelectMany(customer => SlotsFor(customer).Select(slot => (
                 slot.Warehouse,
@@ -70,8 +91,11 @@ public class BrochureInventoryReportService
                     Bin = slot.Bin,
                     Shelf = slot.Shelf,
                     Location = slot.Location,
-                    Quantity = LatestQuantity(customer, slot.Warehouse, slot.Rack, slot.Bin, slot.Shelf, slot.IsFirst),
-                    InventoryDate = LatestInventoryDate(customer, slot.Warehouse, slot.Rack, slot.Bin, slot.Shelf, slot.IsFirst)
+                    Quantity = LatestCountQuantity(customer, slot.Warehouse, slot.Rack, slot.Bin, slot.Shelf, slot.IsFirst),
+                    ReceivedQuantity = LatestReceivedQuantity(customer, slot.Warehouse, slot.Rack, slot.Bin, slot.Shelf, slot.IsFirst),
+                    InventoryDate = LatestInventoryDate(customer, slot.Warehouse, slot.Rack, slot.Bin, slot.Shelf, slot.IsFirst),
+                    PerCase = LatestPerCase(customer, slot.Warehouse, slot.Rack, slot.Bin, slot.Shelf, slot.IsFirst),
+                    ContractLabel = contractLabels.GetValueOrDefault(customer.Id)
                 })))
             .GroupBy(item => item.Warehouse)
             .OrderBy(group => group.Key.HasValue ? 0 : 1)
@@ -80,38 +104,70 @@ public class BrochureInventoryReportService
             {
                 Warehouse = group.Key,
                 Title = WarehouseTitle(group.Key),
-                Rows = group
-                    .Select(item => item.Row)
-                    .OrderBy(row => row.BrochureName)
-                    .ThenBy(row => row.Location)
-                    .ToList()
+                Rows = group.Select(item => item.Row).ToList()
             })
             .ToList();
 
         return new BrochureInventoryReport
         {
-            AsOf = DateOnly.FromDateTime(DateTime.Today),
+            AsOf = asOf,
             Warehouses = warehouses
         };
     }
 
-    public byte[] GeneratePdf(BrochureInventoryReport report)
+    public static bool IsUnassignedCode(string? warehouse) =>
+        string.Equals(warehouse, "U", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(warehouse, "unassigned", StringComparison.OrdinalIgnoreCase);
+
+    public static string WarehouseTitleFromCode(string? warehouse)
+    {
+        if (string.Equals(warehouse, "O", StringComparison.OrdinalIgnoreCase))
+            return WarehouseTitle(BrochureWarehouse.O);
+        if (IsUnassignedCode(warehouse))
+            return WarehouseTitle(null);
+        return WarehouseTitle(BrochureWarehouse.K);
+    }
+
+    public static IReadOnlyList<BrochureInventoryRow> RowsForWarehouse(
+        BrochureInventoryReport report,
+        string? warehouse)
+    {
+        BrochureInventoryWarehouseGroup? group;
+        if (string.Equals(warehouse, "O", StringComparison.OrdinalIgnoreCase))
+            group = report.Warehouses.FirstOrDefault(g => g.Warehouse == BrochureWarehouse.O);
+        else if (IsUnassignedCode(warehouse))
+            group = report.Warehouses.FirstOrDefault(g => g.Warehouse == null);
+        else
+            group = report.Warehouses.FirstOrDefault(g => g.Warehouse == BrochureWarehouse.K);
+
+        return (group?.Rows ?? Array.Empty<BrochureInventoryRow>())
+            .Order(Comparer<BrochureInventoryRow>.Create(CompareInventoryRows))
+            .ToList();
+    }
+
+    public byte[] GeneratePdf(BrochureInventoryReport report, string? warehouse = null)
     {
         QuestPDF.Settings.License = LicenseType.Community;
-        var groups = report.Warehouses.Count == 0
-            ? new[]
+        var printAll = string.IsNullOrWhiteSpace(warehouse)
+            || string.Equals(warehouse, "all", StringComparison.OrdinalIgnoreCase);
+        var codes = printAll
+            ? new[] { "K", "O", "U" }
+            : new[]
             {
-                new BrochureInventoryWarehouseGroup
-                {
-                    Title = "Unassigned",
-                    Rows = Array.Empty<BrochureInventoryRow>()
-                }
-            }
-            : report.Warehouses;
+                string.Equals(warehouse, "O", StringComparison.OrdinalIgnoreCase) ? "O"
+                    : IsUnassignedCode(warehouse) ? "U"
+                    : "K"
+            };
+
+        var sheets = codes
+            .Select(code => (Title: WarehouseTitleFromCode(code), Rows: RowsForWarehouse(report, code)))
+            .ToList();
+        if (sheets.Count == 0)
+            sheets.Add((WarehouseTitle(BrochureWarehouse.K), Array.Empty<BrochureInventoryRow>()));
 
         return Document.Create(container =>
         {
-            foreach (var group in groups)
+            foreach (var sheet in sheets)
             {
                 container.Page(page =>
                 {
@@ -124,26 +180,27 @@ public class BrochureInventoryReportService
                         .FontSize(9)
                         .FontColor(Colors.Grey.Darken4));
 
-                    page.Header().Element(header => DrawHeader(header, group.Title));
+                    page.Header().Element(header => DrawHeader(header, sheet.Title, report.AsOf));
                     page.Footer().AlignCenter().DefaultTextStyle(text => text.FontSize(8)).Text(text =>
                     {
-                        text.Span("Fill in cases, brochures per case, and total by hand.  Page ");
+                        text.Span("Fill cases, per case, and total. Per case is printed when known.  Page ");
                         text.CurrentPageNumber();
                         text.Span(" of ");
                         text.TotalPages();
                     });
-                    page.Content().PaddingTop(8).Element(content => DrawSheet(content, group));
+                    page.Content().PaddingTop(8).Element(content => DrawSheet(content, sheet.Rows));
                 });
             }
         }).GeneratePdf();
     }
 
-    private static void DrawHeader(IContainer container, string warehouseTitle)
+    private static void DrawHeader(IContainer container, string warehouseTitle, DateOnly asOf)
     {
         container.Column(col =>
         {
             col.Item().AlignCenter().Text("WAREHOUSE INVENTORY COUNT SHEET").FontSize(13).Bold();
             col.Item().PaddingTop(2).AlignCenter().Text(warehouseTitle.ToUpperInvariant()).FontSize(11).Bold();
+            col.Item().PaddingTop(2).AlignCenter().Text($"Last counts as of {asOf:MMM d, yyyy}").FontSize(8);
             col.Item().PaddingTop(8).Row(row =>
             {
                 row.RelativeItem().Row(field =>
@@ -161,58 +218,80 @@ public class BrochureInventoryReportService
         });
     }
 
-    private static void DrawSheet(IContainer container, BrochureInventoryWarehouseGroup group)
+    private static void DrawSheet(IContainer container, IReadOnlyList<BrochureInventoryRow> rows)
     {
         container.Table(table =>
         {
             table.ColumnsDefinition(columns =>
             {
-                columns.RelativeColumn(3.6f);
-                columns.ConstantColumn(52);
-                columns.RelativeColumn(2.4f);
-                columns.ConstantColumn(70);
-                columns.ConstantColumn(70);
-                columns.ConstantColumn(78);
+                columns.RelativeColumn(3.4f);
+                columns.RelativeColumn(2.0f);
+                columns.ConstantColumn(110);
+                columns.ConstantColumn(82);
+                columns.ConstantColumn(58);
+                columns.ConstantColumn(58);
+                columns.ConstantColumn(64);
             });
 
             table.Header(header =>
             {
-                HeaderCell(header.Cell(), "Brochure");
-                HeaderCell(header.Cell(), "ID");
+                HeaderCell(header.Cell(), "Customer");
                 HeaderCell(header.Cell(), "Location");
+                HeaderCell(header.Cell(), "Contract");
+                HeaderCell(header.Cell(), "Last", true);
                 HeaderCell(header.Cell(), "Cases", true);
                 HeaderCell(header.Cell(), "Per case", true);
                 HeaderCell(header.Cell(), "Total", true);
             });
 
-            foreach (var row in group.Rows)
-                DrawDataRow(table, row.BrochureName, row.BrochureCode, row.Location);
+            string? previousRack = null;
+            var started = false;
+            foreach (var row in rows)
+            {
+                var rack = WarehouseLocation.NullIfEmpty(row.Rack) ?? "";
+                var rackBreak = started
+                    && !string.Equals(rack, previousRack ?? "", StringComparison.OrdinalIgnoreCase);
+                started = true;
+                previousRack = rack;
+                DrawDataRow(
+                    table,
+                    CustomerLabel(row),
+                    row.Location,
+                    row.ContractLabel,
+                    row.LastLabel,
+                    row.PerCase,
+                    rackBreak);
+            }
 
             for (var i = 0; i < ExtraBlankRows; i++)
-                DrawDataRow(table, "", null, null);
+                DrawDataRow(table, "", null, null, "", null, false);
 
-            table.Cell().ColumnSpan(3).PaddingTop(10).Element(cell =>
+            table.Cell().ColumnSpan(4).PaddingTop(10).Element(cell =>
             {
                 cell.AlignRight().PaddingRight(8).PaddingTop(6).Text("WAREHOUSE TOTAL").Bold();
             });
-            table.Cell().PaddingTop(10).Element(WriteInBox);
-            table.Cell().PaddingTop(10).Element(WriteInBox);
-            table.Cell().PaddingTop(10).Element(WriteInBox);
+            table.Cell().PaddingTop(10).Element(c => WriteInBox(c));
+            table.Cell().PaddingTop(10).Element(c => WriteInBox(c));
+            table.Cell().PaddingTop(10).Element(c => WriteInBox(c));
         });
     }
 
     private static void DrawDataRow(
         TableDescriptor table,
         string name,
-        string? code,
-        string? location)
+        string? location,
+        string? contractLabel,
+        string lastLabel,
+        int? perCase,
+        bool rackBreak)
     {
-        table.Cell().Element(cell => TextCell(cell, name));
-        table.Cell().Element(cell => TextCell(cell, code ?? ""));
-        table.Cell().Element(cell => TextCell(cell, location ?? ""));
-        table.Cell().Element(WriteInBox);
-        table.Cell().Element(WriteInBox);
-        table.Cell().Element(WriteInBox);
+        table.Cell().Element(cell => TextCell(cell, name, rackBreak));
+        table.Cell().Element(cell => TextCell(cell, location ?? "", rackBreak));
+        table.Cell().Element(cell => TextCell(cell, contractLabel ?? "", rackBreak));
+        table.Cell().Element(cell => TextCell(cell, lastLabel, rackBreak, alignRight: true));
+        table.Cell().Element(cell => WriteInBox(cell, null, rackBreak));
+        table.Cell().Element(cell => WriteInBox(cell, perCase?.ToString("N0"), rackBreak));
+        table.Cell().Element(cell => WriteInBox(cell, null, rackBreak));
     }
 
     private static void HeaderCell(IContainer container, string text, bool alignRight = false)
@@ -225,14 +304,95 @@ public class BrochureInventoryReportService
             cell.Text(text).Bold();
     }
 
-    private static void TextCell(IContainer container, string text) =>
-        container.BorderBottom(0.4f).BorderColor(Colors.Grey.Lighten1)
-            .MinHeight(22).PaddingHorizontal(4).AlignMiddle()
-            .Text(text);
+    private static IContainer RowEdge(IContainer container, bool rackBreak) =>
+        container
+            .BorderTop(rackBreak ? 1.8f : 0.4f)
+            .BorderColor(rackBreak ? Colors.Grey.Darken3 : Colors.Grey.Lighten1)
+            .MinHeight(22)
+            .PaddingHorizontal(4)
+            .AlignMiddle();
 
-    private static void WriteInBox(IContainer container) =>
-        container.PaddingHorizontal(4).PaddingVertical(3)
-            .Border(0.7f).BorderColor(LineColor).Height(18).Background(Colors.White);
+    private static void TextCell(IContainer container, string text, bool rackBreak = false, bool alignRight = false)
+    {
+        var cell = RowEdge(container, rackBreak);
+        if (alignRight)
+            cell.AlignRight().Text(text);
+        else
+            cell.Text(text);
+    }
+
+    private static void WriteInBox(IContainer container, string? value = null, bool rackBreak = false)
+    {
+        container
+            .BorderTop(rackBreak ? 1.8f : 0.4f)
+            .BorderColor(rackBreak ? Colors.Grey.Darken3 : Colors.Grey.Lighten1)
+            .MinHeight(22)
+            .PaddingHorizontal(4)
+            .PaddingVertical(3)
+            .Element(inner => inner
+                .Border(0.7f)
+                .BorderColor(LineColor)
+                .Background(Colors.White)
+                .AlignCenter()
+                .AlignMiddle()
+                .Text(value ?? "")
+                .FontColor(Colors.Grey.Medium));
+    }
+
+    private static string CustomerLabel(BrochureInventoryRow row)
+    {
+        if (string.IsNullOrWhiteSpace(row.BrochureCode))
+            return row.BrochureName;
+        return $"{row.BrochureName} ({row.BrochureCode})";
+    }
+
+    private static int CompareInventoryRows(BrochureInventoryRow left, BrochureInventoryRow right)
+    {
+        var rack = CompareLocationPart(left.Rack, right.Rack);
+        if (rack != 0)
+            return rack;
+        var bin = CompareLocationPart(left.Bin, right.Bin);
+        if (bin != 0)
+            return bin;
+        return string.Compare(left.BrochureName, right.BrochureName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int CompareLocationPart(string? left, string? right)
+    {
+        left = WarehouseLocation.NullIfEmpty(left);
+        right = WarehouseLocation.NullIfEmpty(right);
+        if (left == null && right == null)
+            return 0;
+        if (left == null)
+            return 1;
+        if (right == null)
+            return -1;
+
+        var i = 0;
+        var j = 0;
+        while (i < left.Length && j < right.Length)
+        {
+            if (char.IsDigit(left[i]) && char.IsDigit(right[j]))
+            {
+                long a = 0;
+                long b = 0;
+                while (i < left.Length && char.IsDigit(left[i]))
+                    a = a * 10 + (left[i++] - '0');
+                while (j < right.Length && char.IsDigit(right[j]))
+                    b = b * 10 + (right[j++] - '0');
+                var numeric = a.CompareTo(b);
+                if (numeric != 0)
+                    return numeric;
+                continue;
+            }
+
+            var text = char.ToUpperInvariant(left[i++]).CompareTo(char.ToUpperInvariant(right[j++]));
+            if (text != 0)
+                return text;
+        }
+
+        return (left.Length - i).CompareTo(right.Length - j);
+    }
 
     private static IEnumerable<(BrochureWarehouse? Warehouse, string? Rack, string? Bin, BrochureShelf? Shelf, string? Location, bool IsFirst)> SlotsFor(Customer customer)
     {
@@ -280,7 +440,7 @@ public class BrochureInventoryReportService
             true);
     }
 
-    private static CustomerBrochureInventory? LatestInventory(
+    private static List<CustomerBrochureInventory> OrderedInventories(
         Customer customer,
         BrochureWarehouse? warehouse,
         string? rack,
@@ -294,27 +454,61 @@ public class BrochureInventoryReportService
                 warehouse, rack, bin, shelf))
             .OrderByDescending(i => i.InventoryDate)
             .ThenByDescending(i => i.Id)
-            .FirstOrDefault();
-        if (match != null)
+            .ToList();
+        if (match.Count > 0 || !isFirstSlot)
             return match;
-
-        if (!isFirstSlot)
-            return null;
 
         return customer.BrochureInventories
             .OrderByDescending(i => i.InventoryDate)
             .ThenByDescending(i => i.Id)
-            .FirstOrDefault();
+            .ToList();
     }
 
-    private static int? LatestQuantity(
+    private static CustomerBrochureInventory? LatestCountInventory(
+        Customer customer,
+        BrochureWarehouse? warehouse,
+        string? rack,
+        string? bin,
+        BrochureShelf? shelf,
+        bool isFirstSlot)
+    {
+        var items = OrderedInventories(customer, warehouse, rack, bin, shelf, isFirstSlot);
+        return items.FirstOrDefault(i => !IsReceivedInventory(i)) ?? items.FirstOrDefault();
+    }
+
+    private static int? LatestCountQuantity(
         Customer customer,
         BrochureWarehouse? warehouse,
         string? rack,
         string? bin,
         BrochureShelf? shelf,
         bool isFirstSlot) =>
-        LatestInventory(customer, warehouse, rack, bin, shelf, isFirstSlot)?.Quantity;
+        LatestCountInventory(customer, warehouse, rack, bin, shelf, isFirstSlot)?.Quantity;
+
+    private static int? LatestReceivedQuantity(
+        Customer customer,
+        BrochureWarehouse? warehouse,
+        string? rack,
+        string? bin,
+        BrochureShelf? shelf,
+        bool isFirstSlot)
+    {
+        var items = OrderedInventories(customer, warehouse, rack, bin, shelf, isFirstSlot);
+        var namedReceive = items.FirstOrDefault(IsReceivedInventory);
+        if (namedReceive != null)
+            return namedReceive.Quantity;
+
+        var lastCount = LatestCountInventory(customer, warehouse, rack, bin, shelf, isFirstSlot);
+        return items.FirstOrDefault(i => i.Id != lastCount?.Id)?.Quantity;
+    }
+
+    private static bool IsReceivedInventory(CustomerBrochureInventory inventory)
+    {
+        var notes = inventory.Notes;
+        if (string.IsNullOrWhiteSpace(notes))
+            return false;
+        return notes.Contains("receiv", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static DateOnly? LatestInventoryDate(
         Customer customer,
@@ -323,7 +517,108 @@ public class BrochureInventoryReportService
         string? bin,
         BrochureShelf? shelf,
         bool isFirstSlot) =>
-        LatestInventory(customer, warehouse, rack, bin, shelf, isFirstSlot)?.InventoryDate;
+        LatestCountInventory(customer, warehouse, rack, bin, shelf, isFirstSlot)?.InventoryDate;
+
+    private static readonly Regex PerCasePattern = new(
+        @"cases\s*[×x]\s*(\d+)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    public static int? PerCaseFromNotes(string? notes)
+    {
+        if (string.IsNullOrWhiteSpace(notes))
+            return null;
+        var match = PerCasePattern.Match(notes);
+        if (!match.Success || !int.TryParse(match.Groups[1].Value, out var perCase) || perCase <= 0)
+            return null;
+        return perCase;
+    }
+
+    private static int? LatestPerCase(
+        Customer customer,
+        BrochureWarehouse? warehouse,
+        string? rack,
+        string? bin,
+        BrochureShelf? shelf,
+        bool isFirstSlot)
+    {
+        foreach (var inventory in customer.BrochureInventories
+            .Where(i => WarehouseLocation.Matches(
+                i.Warehouse, i.Rack, i.Bin, i.Shelf,
+                warehouse, rack, bin, shelf))
+            .OrderByDescending(i => i.InventoryDate)
+            .ThenByDescending(i => i.Id))
+        {
+            var perCase = PerCaseFromNotes(inventory.Notes);
+            if (perCase.HasValue)
+                return perCase;
+        }
+
+        if (!isFirstSlot)
+            return null;
+
+        foreach (var inventory in customer.BrochureInventories
+            .OrderByDescending(i => i.InventoryDate)
+            .ThenByDescending(i => i.Id))
+        {
+            var perCase = PerCaseFromNotes(inventory.Notes);
+            if (perCase.HasValue)
+                return perCase;
+        }
+
+        return null;
+    }
+
+    private async Task<IReadOnlyDictionary<int, string>> BuildContractLabelsAsync(
+        IReadOnlyCollection<int> customerIds,
+        DateOnly asOf,
+        CancellationToken cancellationToken)
+    {
+        var labels = new Dictionary<int, string>();
+        if (customerIds.Count == 0)
+            return labels;
+
+        var contracts = await _context.CustomerContracts
+            .AsNoTracking()
+            .Where(c => customerIds.Contains(c.CustomerId))
+            .Select(c => new
+            {
+                c.CustomerId,
+                c.ContractEndDate,
+                c.ServiceMonthMask,
+                RouteIds = c.ContractRoutes.Select(cr => cr.RouteId).ToList()
+            })
+            .ToListAsync(cancellationToken);
+
+        foreach (var customerId in customerIds)
+        {
+            var live = contracts
+                .Where(c => c.CustomerId == customerId && IsLiveContract(c.ContractEndDate, c.RouteIds.Count, asOf))
+                .ToList();
+            if (live.Count == 0)
+                continue;
+
+            var distributing = live.Any(c =>
+                BillingDueCalculator.IsMonthInService(c.ServiceMonthMask, asOf.Month));
+            var endDates = live.Select(c => c.ContractEndDate).ToList();
+            var endLabel = endDates.Any(d => !d.HasValue)
+                ? "—"
+                : endDates.Max()!.Value.ToString("MM/yy");
+            var routeCount = live.SelectMany(c => c.RouteIds).Distinct().Count();
+            var routeLabel = routeCount == 0 ? "—" : $"Rt {routeCount}";
+            labels[customerId] = $"{(distributing ? "A" : "—")} | {endLabel} | {routeLabel}";
+        }
+
+        return labels;
+    }
+
+    private static bool IsLiveContract(DateOnly? end, int routeCount, DateOnly asOf)
+    {
+        if (routeCount == 0)
+            return false;
+        if (end.HasValue && end.Value < asOf)
+            return false;
+        return true;
+    }
 
     public static string WarehouseTitle(BrochureWarehouse? warehouse) => warehouse switch
     {

@@ -51,10 +51,11 @@
             <div class="card-body d-flex flex-column">
                 <h2 class="h5">Warehouse inventory</h2>
                 <p class="text-muted small flex-grow-1">
-                    Browse rack and bin locations with the last counted quantity, or print a blank count sheet.
+                    Select a warehouse, update brochure counts for every customer at once, or print Kentucky, Ohio, and unassigned count sheets.
                 </p>
                 <div class="d-flex flex-wrap gap-2">
-                    <a asp-action="Inventory" class="btn btn-outline-primary">Open inventory</a>
+                    <a asp-controller="Routes" asp-action="Inventory" class="btn btn-outline-primary">Update inventory</a>
+                    <a asp-action="Inventory" class="btn btn-outline-secondary">Browse last counts</a>
                     <a asp-action="WarehouseInventoryPdf" class="btn btn-outline-secondary">Count sheet PDF</a>
                 </div>
             </div>

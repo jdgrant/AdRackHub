@@ -6,13 +6,13 @@
 <div class="page-header">
     <h1 class="h2 mb-0">Warehouse inventory</h1>
     <div class="d-flex flex-wrap gap-2">
-        <a asp-controller="Routes" asp-action="Invoice" class="btn btn-outline-primary">Log counts</a>
+        <a asp-controller="Routes" asp-action="Inventory" class="btn btn-outline-primary">Update inventory</a>
         <a asp-action="WarehouseInventoryPdf" class="btn btn-outline-primary">Count sheet PDF</a>
         <a asp-action="Index" class="btn btn-outline-secondary">All reports</a>
     </div>
 </div>
 
-<p class="text-muted">As of @Model.AsOf.ToString("MMM d, yyyy"). Last counted quantity comes from warehouse inventory records.</p>
+<p class="text-muted">As of @Model.AsOf.ToString("MMM d, yyyy"). Last is last count / last received from warehouse inventory records.</p>
 
 @if (Model.Warehouses.Count == 0)
 {
@@ -36,7 +36,10 @@ else
     @foreach (var group in Model.Warehouses)
     {
         var anchor = group.Warehouse?.ToString() ?? "unassigned";
-        <h2 class="h5 mt-4" id="warehouse-@anchor">@group.Title</h2>
+        <h2 class="h5 mt-4 d-flex flex-wrap align-items-center gap-2" id="warehouse-@anchor">
+            <span>@group.Title</span>
+            <a asp-action="WarehouseInventoryPdf" asp-route-warehouse="@(group.Warehouse?.ToString() ?? "U")" class="btn btn-sm btn-outline-secondary">Print sheet</a>
+        </h2>
         <div class="table-responsive">
             <table class="table table-sm table-hover align-middle">
                 <thead>
@@ -44,7 +47,8 @@ else
                         <th>Brochure</th>
                         <th>ID</th>
                         <th>Location</th>
-                        <th class="text-end">Last count</th>
+                        <th>Contract</th>
+                        <th class="text-end">Last</th>
                         <th>Counted</th>
                     </tr>
                 </thead>
@@ -57,7 +61,8 @@ else
                         </td>
                         <td>@(row.BrochureCode ?? "—")</td>
                         <td>@(row.Location ?? "—")</td>
-                        <td class="text-end">@(row.Quantity?.ToString("N0") ?? "—")</td>
+                        <td class="small text-nowrap">@(string.IsNullOrWhiteSpace(row.ContractLabel) ? "—" : row.ContractLabel)</td>
+                        <td class="text-end text-nowrap">@(string.IsNullOrEmpty(row.LastLabel) ? "—" : row.LastLabel)</td>
                         <td>@(row.InventoryDate?.ToString("MMM d, yyyy") ?? "—")</td>
                     </tr>
                 }
