@@ -19,10 +19,14 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_PATHS = ("src", "scripts")
 
-SKIP_FILENAMES = {"appsettings.Production.json"}
+SKIP_FILENAMES = {
+    "appsettings.Production.json",
+    "appsettings.Development.json",
+    "wave-poc-oauth.json",
+}
 SECRET_SETTING_FILES = {"appsettings.json", "appsettings.Production.json"}
 SKIP_REMOTE_PREFIXES = (
-    "App_Data/Uploads/",
+    "App_Data/",
     "Data/Uploads/",
     "runtimes/linux",
     "runtimes/osx",

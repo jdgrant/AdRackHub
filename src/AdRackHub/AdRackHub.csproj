@@ -34,6 +34,8 @@
     <Content Remove="Data\Uploads\**" />
     <Content Update="appsettings.Production.json" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
     <Content Update="appsettings.*.local.json" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
+    <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
+    <Content Remove="App_Data\wave-poc-oauth.json" />
     <None Remove="App_Data\Uploads\**" />
     <None Remove="Data\Uploads\**" />
   </ItemGroup>
@@ -44,6 +46,8 @@
       <PublishedUploadFiles Include="$(PublishDir)Data\Uploads\**\*" />
       <PublishedSecretSettings Include="$(PublishDir)appsettings.Production.json" />
       <PublishedSecretSettings Include="$(PublishDir)appsettings.*.local.json" />
+      <PublishedSecretSettings Include="$(PublishDir)appsettings.Development.json" />
+      <PublishedSecretSettings Include="$(PublishDir)App_Data\wave-poc-oauth.json" />
     </ItemGroup>
     <Delete Files="@(PublishedUploadFiles)" />
     <Delete Files="@(PublishedSecretSettings)" />
