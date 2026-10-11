@@ -24,6 +24,10 @@ public class Contact
     [Display(Name = "Last Name")]
     public string? LastName { get; set; }
 
+    [StringLength(200)]
+    [Display(Name = "Title")]
+    public string? Title { get; set; }
+
     [EmailAddress]
     [StringLength(200)]
     public string? Email { get; set; }
@@ -53,6 +57,10 @@ public class Contact
     [StringLength(500)]
     [Display(Name = "Web URL")]
     public string? WebUrl { get; set; }
+
+    [StringLength(500)]
+    [Display(Name = "LinkedIn Profile URL")]
+    public string? LinkedInUrl { get; set; }
 
     [Required]
     [Display(Name = "Role")]

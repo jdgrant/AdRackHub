@@ -1,0 +1,170 @@
+@model LinkedInContactsPageViewModel
+@{
+    ViewData["Title"] = "Find contacts on LinkedIn";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Find contacts on LinkedIn</h1>
+</div>
+
+<p class="text-muted">
+    LinkedIn does not give AdRackHub the profile URL. Search, copy
+    <code>linkedin.com/in/...</code> from the address bar, then paste and save it here.
+    After that, this list shows the profile URL.
+</p>
+
+<form method="get" asp-action="LinkedIn" class="row g-2 align-items-end mb-4">
+    <div class="col-md-4">
+        <label class="form-label" for="linkedin-search">Search</label>
+        <input type="search" name="search" id="linkedin-search" value="@Model.Search" class="form-control"
+               placeholder="Name, customer, or email" />
+    </div>
+    <div class="col-md-3">
+        <label class="form-label" for="linkedin-type">List</label>
+        <select name="type" id="linkedin-type" class="form-select" onchange="this.form.submit()">
+            @foreach (var option in new[] { ("all", "Customers and prospects"), ("customer", "Customers"), ("prospect", "Prospects") })
+            {
+                if (option.Item1 == Model.ListType)
+                {
+                    <option value="@option.Item1" selected>@option.Item2</option>
+                }
+                else
+                {
+                    <option value="@option.Item1">@option.Item2</option>
+                }
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <div class="form-check mt-4">
+            <input type="hidden" name="namedOnly" value="false" />
+            <input class="form-check-input" type="checkbox" name="namedOnly" value="true" id="namedOnly"
+                   @(Model.NamedOnly ? "checked" : null) onchange="this.form.submit()" />
+            <label class="form-check-label" for="namedOnly">Named people only</label>
+        </div>
+    </div>
+    <div class="col-auto">
+        <div class="form-check mt-4">
+            <input type="hidden" name="missingOnly" value="false" />
+            <input class="form-check-input" type="checkbox" name="missingOnly" value="true" id="missingOnly"
+                   @(Model.MissingOnly ? "checked" : null) onchange="this.form.submit()" />
+            <label class="form-check-label" for="missingOnly">Missing profile URL</label>
+        </div>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-outline-secondary">Filter</button>
+        <a asp-action="LinkedInExport"
+           asp-route-search="@Model.Search"
+           asp-route-type="@Model.ListType"
+           asp-route-namedOnly="@Model.NamedOnly.ToString().ToLowerInvariant()"
+           asp-route-missingOnly="@Model.MissingOnly.ToString().ToLowerInvariant()"
+           class="btn btn-primary">Export spreadsheet</a>
+    </div>
+</form>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Named people</div>
+                <div class="display-6">@Model.NamedCount</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <a asp-action="LinkedIn" asp-route-search="@Model.Search" asp-route-type="@Model.ListType"
+           asp-route-namedOnly="@Model.NamedOnly.ToString().ToLowerInvariant()" asp-route-missingOnly="false"
+           class="stat-card-link">
+            <div class="card stat-card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">With profile URL</div>
+                    <div class="display-6">@Model.WithProfileCount</div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-3">
+        <a asp-action="LinkedIn" asp-route-search="@Model.Search" asp-route-type="@Model.ListType"
+           asp-route-namedOnly="@Model.NamedOnly.ToString().ToLowerInvariant()" asp-route-missingOnly="true"
+           class="stat-card-link">
+            <div class="card stat-card h-100 @(Model.MissingOnly ? "stat-card-current" : "")">
+                <div class="card-body">
+                    <div class="text-muted small">Missing profile URL</div>
+                    <div class="display-6">@Model.MissingProfileCount</div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Showing</div>
+                <div class="display-6">@Model.Contacts.Count</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (Model.Contacts.Count == 0)
+{
+    <p class="text-muted">@(Model.NamedOnly ? "No contacts with a first and last name match this filter. Uncheck named people only to include company names." : "No contacts match this filter.")</p>
+}
+else
+{
+    <table class="table table-sm table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Person</th>
+                <th>Title</th>
+                <th>Customer</th>
+                <th>LinkedIn profile URL</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var row in Model.Contacts)
+        {
+            <tr id="row-@row.ContactId">
+                <td>
+                    @(row.PersonName ?? "—")
+                    <div class="small text-muted">@row.BusinessName</div>
+                </td>
+                <td class="small">@(row.Title ?? "—")</td>
+                <td>
+                    <a asp-controller="Customers" asp-action="Details" asp-route-id="@row.CustomerId" asp-route-tab="contacts">@row.CustomerName</a>
+                    @if (row.CustomerType != CustomerType.Customer)
+                    {
+                        <span class="badge bg-secondary">Prospect</span>
+                    }
+                </td>
+                <td>
+                    @if (row.HasProfile)
+                    {
+                        <a href="@row.ProfileUrl" target="_blank" rel="noopener noreferrer" class="small d-block text-break mb-1">@row.ProfileUrl</a>
+                    }
+                    <form asp-action="SaveLinkedInUrl" method="post" class="linkedin-profile-form">
+                        <input type="hidden" name="id" value="@row.ContactId" />
+                        <input type="hidden" name="search" value="@Model.Search" />
+                        <input type="hidden" name="type" value="@Model.ListType" />
+                        <input type="hidden" name="namedOnly" value="@Model.NamedOnly.ToString().ToLowerInvariant()" />
+                        <input type="hidden" name="missingOnly" value="@Model.MissingOnly.ToString().ToLowerInvariant()" />
+                        <input name="linkedInUrl" value="@row.ProfileUrl" class="form-control form-control-sm linkedin-url-input"
+                               placeholder="https://www.linkedin.com/in/..." />
+                        <button type="submit" class="btn btn-sm btn-outline-primary">Save</button>
+                    </form>
+                </td>
+                <td class="text-nowrap">
+                    @if (row.PeopleSearchUrl != null)
+                    {
+                        <a class="btn btn-sm btn-primary" href="@row.PeopleSearchUrl" target="_blank" rel="noopener noreferrer">Search LinkedIn</a>
+                    }
+                    @if (row.GoogleSearchUrl != null)
+                    {
+                        <a class="btn btn-sm btn-outline-secondary" href="@row.GoogleSearchUrl" target="_blank" rel="noopener noreferrer">Google</a>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}

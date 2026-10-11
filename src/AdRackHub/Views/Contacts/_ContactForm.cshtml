@@ -23,6 +23,11 @@
             </div>
         </div>
         <div class="mb-3">
+            <label asp-for="Title" class="form-label"></label>
+            <input asp-for="Title" class="form-control" placeholder="Director, owner, brochures…" />
+            <span asp-validation-for="Title" class="text-danger"></span>
+        </div>
+        <div class="mb-3">
             <label asp-for="Role" class="form-label"></label>
             <select asp-for="Role" class="form-select" asp-items="Html.GetEnumSelectList<ContactRole>()"></select>
         </div>
@@ -52,6 +57,11 @@
             <label asp-for="WebUrl" class="form-label"></label>
             <input asp-for="WebUrl" class="form-control" placeholder="https://" />
             <span asp-validation-for="WebUrl" class="text-danger"></span>
+        </div>
+        <div class="mb-3">
+            <label asp-for="LinkedInUrl" class="form-label"></label>
+            <input asp-for="LinkedInUrl" class="form-control" placeholder="https://www.linkedin.com/in/..." />
+            <span asp-validation-for="LinkedInUrl" class="text-danger"></span>
         </div>
         <div class="mb-3">
             <label asp-for="Address" class="form-label"></label>

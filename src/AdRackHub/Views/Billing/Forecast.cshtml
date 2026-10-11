@@ -14,9 +14,12 @@
                    @(Model.IgnoreEndDate ? "checked" : null) onchange="this.form.submit()" />
             <label class="form-check-label" for="ignoreEndDate">Ignore end dates (assume renewals)</label>
         </form>
+        <a asp-action="Outstanding" class="btn btn-outline-secondary">Outstanding</a>
         <a asp-action="Index" asp-route-year="@Model.Year" asp-route-month="@Model.Month" class="btn btn-outline-secondary">Back to Billing</a>
     </div>
 </div>
+
+<partial name="_BillingNav" />
 
 <p class="text-muted mb-4">Expected invoices for each of the next 12 months, including invoices already sent and invoices still due@(Model.IgnoreEndDate ? ". End dates are ignored, so contracts are treated as if they renew." : ".")</p>
 

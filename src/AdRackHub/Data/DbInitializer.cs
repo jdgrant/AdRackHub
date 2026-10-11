@@ -38,6 +38,7 @@ public static class DbInitializer
         IConfiguration configuration)
     {
         await context.Database.MigrateAsync();
+        await EnsureContactTitlesAsync(context);
         await EnsureRolesAsync(roleManager);
         await EnsureAdminUserAsync(userManager, configuration);
         await EnsureRoutesAsync(context);
@@ -82,6 +83,22 @@ public static class DbInitializer
 
         foreach (var role in AppRoles.All)
             await userManager.AddToRoleAsync(user, role);
+    }
+
+    private static async Task EnsureContactTitlesAsync(ApplicationDbContext context)
+    {
+        var contacts = await context.Contacts
+            .Where(c => c.LastName != null && c.LastName.Contains("("))
+            .ToListAsync();
+        if (contacts.Count == 0)
+            return;
+
+        var changed = false;
+        foreach (var contact in contacts)
+            changed |= ContactTitleParser.ApplyFromLastName(contact);
+
+        if (changed)
+            await context.SaveChangesAsync();
     }
 
     private static async Task EnsureRoutesAsync(ApplicationDbContext context)

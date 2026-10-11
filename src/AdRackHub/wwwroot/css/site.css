@@ -52,6 +52,10 @@ a.stat-card-link:hover .stat-card {
   box-shadow: 0 0 0 1px rgba(13, 202, 240, 0.55);
 }
 
+.stat-card.danger.stat-card-current {
+  box-shadow: 0 0 0 1px rgba(220, 53, 69, 0.45);
+}
+
 .dashboard-routes {
   margin-top: 0.5rem;
 }
@@ -819,5 +823,15 @@ a:hover .billing-forecast-month {
 
 #inventory-table tbody tr.inventory-rack-break > td {
   border-top: 2px solid #495057;
+}
+
+.linkedin-profile-form {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.linkedin-url-input {
+  min-width: 16rem;
 }
 

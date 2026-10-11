@@ -93,6 +93,90 @@ public class BillingController : Controller
         return View(model);
     }
 
+    public async Task<IActionResult> Outstanding(string? search, int? weeks, string? age)
+    {
+        var asOf = DateOnly.FromDateTime(DateTime.Today);
+        var minWeeks = weeks is > 0 ? weeks : null;
+        var selectedAge = age is OutstandingInvoicesPageViewModel.AgeUnder30
+            or OutstandingInvoicesPageViewModel.Age30To60
+            or OutstandingInvoicesPageViewModel.AgeOver60
+            ? age
+            : null;
+        var invoices = await _billingService.GetUnreceivedInvoicesAsync();
+        var pdfIds = await OutstandingInvoicePdfIdsAsync(invoices);
+
+        var rows = invoices
+            .Select(invoice =>
+            {
+                var invoiceDate = new DateOnly(invoice.BillingRun.Year, invoice.BillingRun.Month, 1);
+                var daysLate = Math.Max(0, asOf.DayNumber - invoiceDate.DayNumber);
+                return new OutstandingInvoiceRow
+                {
+                    InvoiceId = invoice.Id,
+                    CustomerId = invoice.CustomerId,
+                    CustomerName = invoice.Customer.CustomerName,
+                    InvoiceReceiptMethod = invoice.Customer.InvoiceReceiptMethod,
+                    WaveInvoiceNumber = invoice.WaveInvoiceNumber,
+                    Year = invoice.BillingRun.Year,
+                    Month = invoice.BillingRun.Month,
+                    PeriodLabel = BillingDueCalculator.PeriodLabel(invoice.BillingRun.Year, invoice.BillingRun.Month),
+                    InvoiceDate = invoiceDate,
+                    DaysLate = daysLate,
+                    WeeksLate = daysLate / 7,
+                    Amount = invoice.TotalAmount,
+                    ContractNames = string.Join(", ", invoice.Lines.Select(l => l.ContractName).Distinct().OrderBy(n => n)),
+                    Status = invoice.Status,
+                    HasPdf = pdfIds.Contains(invoice.Id)
+                };
+            })
+            .OrderByDescending(r => r.DaysLate)
+            .ThenBy(r => r.CustomerName)
+            .ThenByDescending(r => r.InvoiceId)
+            .ToList();
+
+        var model = new OutstandingInvoicesPageViewModel
+        {
+            Search = search?.Trim(),
+            MinWeeksLate = minWeeks,
+            Age = selectedAge,
+            AsOf = asOf,
+            WaveConnected = _waveSession.IsReady && !_waveSession.NeedsBusinessReset,
+            WaveSessionExpired = _waveSession.NeedsBusinessReset
+        };
+
+        if (!string.IsNullOrWhiteSpace(model.Search))
+        {
+            var term = model.Search;
+            rows = rows.Where(r =>
+                r.CustomerName.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || r.ContractNames.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || r.PeriodLabel.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || (r.WaveInvoiceNumber?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
+                || r.InvoiceId.ToString().Contains(term, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
+        model.AllInvoiceCount = rows.Count;
+        model.AllUniqueClientCount = rows.Select(r => r.CustomerId).Distinct().Count();
+        model.AllOutstandingAmount = rows.Sum(r => r.Amount);
+        model.Under30 = OutstandingInvoicesPageViewModel.Bucket(rows, d => d < 30);
+        model.From30To60 = OutstandingInvoicesPageViewModel.Bucket(rows, d => d is >= 30 and <= 60);
+        model.Over60 = OutstandingInvoicesPageViewModel.Bucket(rows, d => d > 60);
+
+        if (minWeeks.HasValue)
+            rows = rows.Where(r => r.WeeksLate >= minWeeks.Value).ToList();
+
+        rows = selectedAge switch
+        {
+            OutstandingInvoicesPageViewModel.AgeUnder30 => rows.Where(r => r.DaysLate < 30).ToList(),
+            OutstandingInvoicesPageViewModel.Age30To60 => rows.Where(r => r.DaysLate is >= 30 and <= 60).ToList(),
+            OutstandingInvoicesPageViewModel.AgeOver60 => rows.Where(r => r.DaysLate > 60).ToList(),
+            _ => rows
+        };
+
+        model.Invoices = rows;
+        return View(model);
+    }
+
     [HttpPost]
     [ValidateAntiForgeryToken]
     public IActionResult WaveOAuthSaveCredentials(string? clientId, string? clientSecret, int? year, int? month)
@@ -151,6 +235,9 @@ public class BillingController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> CreateOnSend(int year, int month, int customerContractId)
     {
+        if (WaveDisconnectedRedirect(year, month) is { } blocked)
+            return blocked;
+
         var (success, message, _) = await _billingService.CreateOnSendAsync(year, month, customerContractId);
         if (WaveSessionService.IsSessionExpiredMessage(message))
         {
@@ -179,11 +266,8 @@ public class BillingController : Controller
             return RedirectToAction(nameof(Index), new { year, month });
         }
 
-        if (_waveSession.NeedsBusinessReset)
-        {
-            TempData["WaveSessionExpired"] = true;
-            return RedirectToAction(nameof(Index), new { year, month });
-        }
+        if (WaveDisconnectedRedirect(year, month) is { } blocked)
+            return blocked;
 
         var sentIds = new List<int>();
         var failed = new List<string>();
@@ -350,8 +434,15 @@ public class BillingController : Controller
         int month,
         int invoiceId,
         DateOnly? receivedDate,
-        string? waveInvoiceNumber)
+        string? waveInvoiceNumber,
+        string? returnTo = null,
+        string? search = null,
+        int? weeks = null,
+        string? age = null)
     {
+        if (WaveDisconnectedRedirect(year, month, returnTo, search, weeks, age) is { } blocked)
+            return blocked;
+
         var (success, message) = await _billingService.UpdateInvoiceWaveStatusAsync(
             invoiceId,
             BillingRunInvoiceStatus.Received,
@@ -365,7 +456,7 @@ public class BillingController : Controller
         else
             TempData["Error"] = message;
 
-        return RedirectToAction(nameof(Index), new { year, month });
+        return RedirectAfterInvoiceChange(year, month, returnTo, search, weeks, age);
     }
 
     [HttpPost]
@@ -376,13 +467,21 @@ public class BillingController : Controller
         int invoiceId,
         string status,
         string? waveInvoiceNumber,
-        DateOnly? receivedDate)
+        DateOnly? receivedDate,
+        string? returnTo = null,
+        string? search = null,
+        int? weeks = null,
+        string? age = null)
     {
         if (!WaveInvoiceStatuses.TryParse(status, out var parsed))
         {
             TempData["Error"] = "Status must be Submitted, Received, or Canceled.";
-            return RedirectToAction(nameof(Index), new { year, month });
+            return RedirectAfterInvoiceChange(year, month, returnTo, search, weeks, age);
         }
+
+        if (parsed == BillingRunInvoiceStatus.Received
+            && WaveDisconnectedRedirect(year, month, returnTo, search, weeks, age) is { } blocked)
+            return blocked;
 
         var (success, message) = await _billingService.UpdateInvoiceWaveStatusAsync(
             invoiceId,
@@ -397,7 +496,7 @@ public class BillingController : Controller
         else
             TempData["Error"] = message;
 
-        return RedirectToAction(nameof(Index), new { year, month });
+        return RedirectAfterInvoiceChange(year, month, returnTo, search, weeks, age);
     }
 
     [HttpPost]
@@ -424,6 +523,9 @@ public class BillingController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> SendToWave(int year, int month)
     {
+        if (WaveDisconnectedRedirect(year, month) is { } blocked)
+            return blocked;
+
         try
         {
             var run = await _billingService.GetRunAsync(year, month);
@@ -454,6 +556,9 @@ public class BillingController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Retry(int year, int month)
     {
+        if (WaveDisconnectedRedirect(year, month) is { } blocked)
+            return blocked;
+
         var run = await _billingService.GetRunAsync(year, month);
         if (run == null)
             return RedirectToAction(nameof(Index), new { year, month });
@@ -675,6 +780,65 @@ public class BillingController : Controller
 
     private IActionResult RedirectToBilling(int? year, int? month) =>
         RedirectToAction(nameof(Index), new { year, month });
+
+    private IActionResult? WaveDisconnectedRedirect(
+        int year,
+        int month,
+        string? returnTo = null,
+        string? search = null,
+        int? weeks = null,
+        string? age = null)
+    {
+        if (_waveSession.IsReady && !_waveSession.NeedsBusinessReset)
+            return null;
+
+        if (_waveSession.NeedsBusinessReset)
+            TempData["WaveSessionExpired"] = true;
+
+        TempData["Error"] = _waveSession.NeedsBusinessReset
+            ? "Wave session expired. Reset Wave, then try again."
+            : "Connect to Wave before sending or receiving invoices.";
+
+        return RedirectAfterInvoiceChange(year, month, returnTo, search, weeks, age);
+    }
+
+    private IActionResult RedirectAfterInvoiceChange(
+        int year,
+        int month,
+        string? returnTo,
+        string? search,
+        int? weeks,
+        string? age = null)
+    {
+        if (string.Equals(returnTo, nameof(Outstanding), StringComparison.OrdinalIgnoreCase))
+            return RedirectToAction(nameof(Outstanding), new { search, weeks, age });
+
+        return RedirectToAction(nameof(Index), new { year, month });
+    }
+
+    private async Task<HashSet<int>> OutstandingInvoicePdfIdsAsync(IReadOnlyList<BillingRunInvoice> invoices)
+    {
+        var contractIds = invoices.SelectMany(i => i.Lines.Select(l => l.CustomerContractId)).Distinct().ToList();
+        if (contractIds.Count == 0)
+            return new HashSet<int>();
+
+        var contracts = await _context.CustomerContracts
+            .AsNoTracking()
+            .Where(c => contractIds.Contains(c.Id))
+            .Select(c => new { c.Id, c.WaveInvoicePdfPath, c.WaveInvoiceNumber })
+            .ToListAsync();
+        var withPdf = contracts
+            .Where(c => _invoicePdfs.ResolveFilePath(c.WaveInvoicePdfPath, c.WaveInvoiceNumber, c.Id) != null)
+            .Select(c => c.Id)
+            .ToHashSet();
+
+        return invoices
+            .Where(invoice =>
+                invoice.Lines.Any(l => withPdf.Contains(l.CustomerContractId))
+                || _invoicePdfs.ResolveFilePath(null, invoice.WaveInvoiceNumber) != null)
+            .Select(i => i.Id)
+            .ToHashSet();
+    }
 
     private void ClearWaveLogin()
     {

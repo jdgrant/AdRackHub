@@ -13,6 +13,10 @@ public class BillingPageViewModel
     public bool WaveSessionExpired { get; set; }
     public bool WaveOAuthConfigured { get; set; }
     public bool WaveConnected { get; set; }
+    public string WaveActionBlockedReason =>
+        WaveSessionExpired
+            ? "Wave session expired. Reset Wave, then try again."
+            : "Connect to Wave to send or receive invoices.";
     public string? WaveBusinessName { get; set; }
     public string? WaveClientId { get; set; }
     public bool MailgunConfigured { get; set; }

@@ -37,6 +37,7 @@
         {
             <span class="badge bg-secondary">Wave not connected</span>
         }
+        <a asp-action="Outstanding" class="btn btn-outline-secondary">Outstanding</a>
         <a asp-action="Forecast" class="btn btn-outline-secondary">Forecast</a>
         <a asp-action="WaveOAuthStart" asp-route-year="@Model.Year" asp-route-month="@Model.Month" class="btn btn-outline-primary">Connect to Wave</a>
         @if (Model.CanSendToWave)
@@ -44,7 +45,9 @@
             <form asp-action="SendToWave" method="post" class="d-inline">
                 <input type="hidden" name="year" value="@Model.Year" />
                 <input type="hidden" name="month" value="@Model.Month" />
-                <button type="submit" class="btn btn-primary">Send to Wave</button>
+                <button type="submit" class="btn btn-primary"
+                        @(Model.WaveConnected ? null : "disabled")
+                        title="@(Model.WaveConnected ? null : Model.WaveActionBlockedReason)">Send to Wave</button>
             </form>
         }
         else if (Model.CanPrepare && !Model.CanSendToWave)
@@ -57,6 +60,8 @@
         }
     </div>
 </div>
+
+<partial name="_BillingNav" />
 
 <form method="get" asp-action="Index" class="row g-2 align-items-end mb-4">
     <div class="col-auto">
@@ -133,7 +138,9 @@
             <form asp-action="Retry" method="post" class="mb-0">
                 <input type="hidden" name="year" value="@Model.Year" />
                 <input type="hidden" name="month" value="@Model.Month" />
-                <button type="submit" class="btn btn-sm btn-outline-primary">Retry Failed</button>
+                <button type="submit" class="btn btn-sm btn-outline-primary"
+                        @(Model.WaveConnected ? null : "disabled")
+                        title="@(Model.WaveConnected ? null : Model.WaveActionBlockedReason)">Retry Failed</button>
             </form>
         }
     </div>
@@ -224,13 +231,12 @@ else if (!Model.CreateOnSendConfigured)
         <input type="hidden" name="year" value="@Model.Year" />
         <input type="hidden" name="month" value="@Model.Month" />
         <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-            @if (Model.CreateOnSendConfigured && !Model.WaveSessionExpired)
-            {
-                <button type="submit" class="btn btn-sm btn-primary" id="send-selected-due" disabled
-                        data-confirm-template="Send {count} selected invoice(s) to Wave, then download one combined PDF?">
-                    Send selected
-                </button>
-            }
+            <button type="submit" class="btn btn-sm btn-primary" id="send-selected-due" disabled
+                    data-wave-connected="@(Model.WaveConnected ? "true" : "false")"
+                    data-confirm-template="Send {count} selected invoice(s) to Wave, then download one combined PDF?"
+                    title="@(Model.WaveConnected ? null : Model.WaveActionBlockedReason)">
+                Send selected
+            </button>
             <span class="text-muted small" id="due-selected-count">0 selected</span>
         </div>
     <table class="table table-sm table-hover">
@@ -297,7 +303,7 @@ else if (!Model.CreateOnSendConfigured)
                             Create On Send
                         </button>
                     }
-                    else if (Model.CreateOnSendConfigured)
+                    else if (Model.WaveConnected)
                     {
                         var sendConfirm = Model.MissingBillingEmailIssue(item.CustomerId) != null
                             ? $"No billing email on file for {item.CustomerName}. Send {item.ContractName} anyway and advance the next bill date?"
@@ -308,6 +314,11 @@ else if (!Model.CreateOnSendConfigured)
                                 onclick="return confirm('@Html.Raw(System.Text.Encodings.Web.JavaScriptEncoder.Default.Encode(sendConfirm))');">
                             Create On Send
                         </button>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn btn-sm btn-outline-primary" disabled
+                                title="@Model.WaveActionBlockedReason">Create On Send</button>
                     }
                 </td>
             </tr>
@@ -433,9 +444,11 @@ else
                                 <input type="hidden" name="invoiceId" value="@invoice.Id" />
                                 <input type="hidden" name="waveInvoiceNumber" value="@invoice.WaveInvoiceNumber" />
                                 <input type="date" name="receivedDate" class="form-control form-control-sm"
-                                       value="@today.ToString("yyyy-MM-dd")" style="width: 9.5rem;" />
+                                       value="@today.ToString("yyyy-MM-dd")" style="width: 9.5rem;"
+                                       @(Model.WaveConnected ? null : "disabled") />
                                 <button type="submit" class="btn btn-sm btn-success"
-                                        title="Mark paid in Wave to Money in Transit: Received Invoices. Does not post to Bluevine or checking. When the bank deposit appears, exclude it or transfer from Received Invoices.">Receive</button>
+                                        @(Model.WaveConnected ? null : "disabled")
+                                        title="@(Model.WaveConnected ? "Mark paid in Wave to Money in Transit: Received Invoices. Does not post to Bluevine or checking. When the bank deposit appears, exclude it or transfer from Received Invoices." : Model.WaveActionBlockedReason)">Receive</button>
                             </form>
                         }
                         <form asp-action="UpdateInvoiceStatus" method="post" class="d-flex flex-wrap gap-1 align-items-center">
@@ -496,7 +509,7 @@ else
                 if (countLabel)
                     countLabel.textContent = count + ' selected';
                 if (sendSelected)
-                    sendSelected.disabled = count === 0;
+                    sendSelected.disabled = count === 0 || sendSelected.getAttribute('data-wave-connected') !== 'true';
                 selectAll.checked = count === checks.length;
                 selectAll.indeterminate = count > 0 && count < checks.length;
             }

@@ -728,6 +728,18 @@ public class MonthlyBillingService
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<List<BillingRunInvoice>> GetUnreceivedInvoicesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return await _context.BillingRunInvoices
+            .AsNoTracking()
+            .Include(i => i.Customer)
+            .Include(i => i.BillingRun)
+            .Include(i => i.Lines)
+            .Where(i => i.Status == BillingRunInvoiceStatus.Submitted)
+            .ToListAsync(cancellationToken);
+    }
+
     private static bool IsCompletedInvoiceStatus(BillingRunInvoiceStatus status) =>
         status is BillingRunInvoiceStatus.Submitted
             or BillingRunInvoiceStatus.Received

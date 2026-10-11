@@ -1,0 +1,177 @@
+@model OutstandingInvoicesPageViewModel
+@{
+    ViewData["Title"] = "Outstanding invoices";
+    var today = DateOnly.FromDateTime(DateTime.Today);
+    var filtered = !string.IsNullOrWhiteSpace(Model.Search)
+        || Model.MinWeeksLate.HasValue
+        || !string.IsNullOrWhiteSpace(Model.Age);
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Outstanding invoices</h1>
+</div>
+
+<partial name="_BillingNav" />
+
+<p class="text-muted">Submitted invoices that have not been marked received, oldest first. Lateness is counted from the first of the billing month.</p>
+
+<form method="get" asp-action="Outstanding" class="row g-2 align-items-end mb-4">
+    <div class="col-md-5">
+        <label class="form-label" for="outstanding-search">Search</label>
+        <input type="search" name="search" id="outstanding-search" value="@Model.Search" class="form-control"
+               placeholder="Customer, invoice #, Wave #, or contract" />
+    </div>
+    <div class="col-md-3">
+        <label class="form-label" for="outstanding-weeks">Weeks late</label>
+        <select name="weeks" id="outstanding-weeks" class="form-select" onchange="this.form.submit()">
+            @foreach (var option in OutstandingInvoicesPageViewModel.WeekFilters)
+            {
+                if (option.Weeks == Model.MinWeeksLate)
+                {
+                    <option value="@option.Weeks" selected>@option.Label</option>
+                }
+                else
+                {
+                    <option value="@option.Weeks">@option.Label</option>
+                }
+            }
+        </select>
+    </div>
+    <input type="hidden" name="age" value="@Model.Age" />
+    <div class="col-auto">
+        <button type="submit" class="btn btn-outline-secondary">Filter</button>
+        @if (filtered)
+        {
+            <a asp-action="Outstanding" class="btn btn-link">Clear</a>
+        }
+    </div>
+</form>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <a asp-action="Outstanding"
+           asp-route-search="@Model.Search"
+           asp-route-weeks="@Model.MinWeeksLate"
+           class="stat-card-link"
+           title="Show all outstanding invoices">
+            <div class="card stat-card danger h-100 @(string.IsNullOrEmpty(Model.Age) ? "stat-card-current" : null)">
+                <div class="card-body">
+                    <div class="text-muted small">Outstanding</div>
+                    <div class="h3 mb-0">@($"{Model.AllOutstandingAmount:C0} / {Model.AllInvoiceCount}")</div>
+                    <div class="text-muted small">@Model.AllUniqueClientCount unique clients</div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-3">
+        <a asp-action="Outstanding"
+           asp-route-search="@Model.Search"
+           asp-route-weeks="@Model.MinWeeksLate"
+           asp-route-age="@(Model.Age == OutstandingInvoicesPageViewModel.AgeUnder30 ? null : OutstandingInvoicesPageViewModel.AgeUnder30)"
+           class="stat-card-link"
+           title="Show invoices under 30 days">
+            <div class="card stat-card h-100 @(Model.Age == OutstandingInvoicesPageViewModel.AgeUnder30 ? "stat-card-current" : null)">
+                <div class="card-body">
+                    <div class="text-muted small">&lt;30 days</div>
+                    <div class="h3 mb-0">@Model.Under30.Summary</div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-3">
+        <a asp-action="Outstanding"
+           asp-route-search="@Model.Search"
+           asp-route-weeks="@Model.MinWeeksLate"
+           asp-route-age="@(Model.Age == OutstandingInvoicesPageViewModel.Age30To60 ? null : OutstandingInvoicesPageViewModel.Age30To60)"
+           class="stat-card-link"
+           title="Show invoices 30 to 60 days">
+            <div class="card stat-card warning h-100 @(Model.Age == OutstandingInvoicesPageViewModel.Age30To60 ? "stat-card-current" : null)">
+                <div class="card-body">
+                    <div class="text-muted small">30–60 days</div>
+                    <div class="h3 mb-0">@Model.From30To60.Summary</div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-3">
+        <a asp-action="Outstanding"
+           asp-route-search="@Model.Search"
+           asp-route-weeks="@Model.MinWeeksLate"
+           asp-route-age="@(Model.Age == OutstandingInvoicesPageViewModel.AgeOver60 ? null : OutstandingInvoicesPageViewModel.AgeOver60)"
+           class="stat-card-link"
+           title="Show invoices over 60 days">
+            <div class="card stat-card info h-100 @(Model.Age == OutstandingInvoicesPageViewModel.AgeOver60 ? "stat-card-current" : null)">
+                <div class="card-body">
+                    <div class="text-muted small">Over 60 days</div>
+                    <div class="h3 mb-0">@Model.Over60.Summary</div>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+
+@if (Model.Invoices.Count == 0)
+{
+    <p class="text-muted">@(filtered ? "No outstanding invoices match this search or age filter." : "No submitted invoices are waiting to be received.")</p>
+}
+else
+{
+    <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle">
+        <thead>
+            <tr>
+                <th class="text-nowrap">Late</th>
+                <th>Period</th>
+                <th>Customer</th>
+                <th class="text-nowrap">Wave #</th>
+                <th>Contracts</th>
+                <th class="text-end text-nowrap">Amount</th>
+                <th class="text-nowrap" style="min-width: 16rem;">Receive</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var invoice in Model.Invoices)
+        {
+            <tr>
+                <td class="text-nowrap">@invoice.LateLabel</td>
+                <td>
+                    <a asp-action="Index" asp-route-year="@invoice.Year" asp-route-month="@invoice.Month">@invoice.PeriodLabel</a>
+                </td>
+                <td>
+                    <a asp-controller="Customers" asp-action="Details" asp-route-id="@invoice.CustomerId">@invoice.CustomerName</a>
+                    <partial name="_InvoiceReceiptIcon" model="invoice.InvoiceReceiptMethod" />
+                </td>
+                <td>
+                    @(invoice.WaveInvoiceNumber ?? "—")
+                    @if (invoice.HasPdf)
+                    {
+                        <a class="ms-1" asp-action="InvoicePdf" asp-route-invoiceId="@invoice.InvoiceId">PDF</a>
+                    }
+                </td>
+                <td class="small">@invoice.ContractNames</td>
+                <td class="text-end">@invoice.Amount.ToString("C")</td>
+                <td>
+                    <form asp-action="MarkInvoiceReceived" method="post" class="d-flex flex-wrap gap-1 align-items-center">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="year" value="@invoice.Year" />
+                        <input type="hidden" name="month" value="@invoice.Month" />
+                        <input type="hidden" name="invoiceId" value="@invoice.InvoiceId" />
+                        <input type="hidden" name="waveInvoiceNumber" value="@invoice.WaveInvoiceNumber" />
+                        <input type="hidden" name="returnTo" value="Outstanding" />
+                        <input type="hidden" name="search" value="@Model.Search" />
+                        <input type="hidden" name="weeks" value="@Model.MinWeeksLate" />
+                        <input type="hidden" name="age" value="@Model.Age" />
+                        <input type="date" name="receivedDate" class="form-control form-control-sm"
+                               value="@today.ToString("yyyy-MM-dd")" style="width: 9.5rem;"
+                               @(Model.WaveConnected ? null : "disabled") />
+                        <button type="submit" class="btn btn-sm btn-success"
+                                @(Model.WaveConnected ? null : "disabled")
+                                title="@(Model.WaveConnected ? "Mark paid in Wave to Money in Transit: Received Invoices." : Model.WaveActionBlockedReason)">Receive</button>
+                    </form>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    </div>
+}

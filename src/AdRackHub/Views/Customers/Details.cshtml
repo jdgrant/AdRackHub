@@ -29,6 +29,7 @@
         Name = TempData["ContactName"]?.ToString() ?? "",
         FirstName = TempData["ContactFirstName"]?.ToString(),
         LastName = TempData["ContactLastName"]?.ToString(),
+        Title = TempData["ContactTitle"]?.ToString(),
         Email = TempData["ContactEmail"]?.ToString(),
         Phone = TempData["ContactPhone"]?.ToString(),
         CellPhone = TempData["ContactCellPhone"]?.ToString(),
@@ -37,6 +38,7 @@
         State = TempData["ContactState"]?.ToString(),
         Zip = TempData["ContactZip"]?.ToString(),
         WebUrl = TempData["ContactWebUrl"]?.ToString(),
+        LinkedInUrl = TempData["ContactLinkedInUrl"]?.ToString(),
         Role = Enum.TryParse<ContactRole>(TempData["ContactRole"]?.ToString(), out var role) ? role : ContactRole.Primary,
         SendInvoice = string.Equals(TempData["ContactSendInvoice"]?.ToString(), "true", StringComparison.OrdinalIgnoreCase)
     };
@@ -461,9 +463,23 @@
                                                 {
                                                     <div class="small">@contact.PersonName</div>
                                                 }
+                                                @if (!string.IsNullOrWhiteSpace(contact.Title))
+                                                {
+                                                    <div class="small text-muted">@contact.Title</div>
+                                                }
                                                 <div class="small text-muted">@contact.Role</div>
                                             </div>
-                                            <a asp-controller="Contacts" asp-action="Edit" asp-route-id="@contact.Id" class="btn btn-sm btn-outline-primary">Edit</a>
+                                            <div class="d-flex gap-1">
+                                                @if (!string.IsNullOrWhiteSpace(contact.LinkedInUrl))
+                                                {
+                                                    <a class="btn btn-sm btn-outline-secondary" href="@contact.LinkedInUrl" target="_blank" rel="noopener noreferrer" title="@contact.LinkedInUrl">LinkedIn</a>
+                                                }
+                                                else if (LinkedInSearch.PeopleUrl(contact.PersonName, Model.CustomerName) is string linkedInUrl)
+                                                {
+                                                    <a class="btn btn-sm btn-outline-secondary" href="@linkedInUrl" target="_blank" rel="noopener noreferrer" title="Search LinkedIn for @contact.PersonName">Search LinkedIn</a>
+                                                }
+                                                <a asp-controller="Contacts" asp-action="Edit" asp-route-id="@contact.Id" class="btn btn-sm btn-outline-primary">Edit</a>
+                                            </div>
                                         </div>
                                         <div class="small mt-2">
                                             <div>@(contact.Email ?? "—")</div>
@@ -473,6 +489,10 @@
                                             @if (!string.IsNullOrWhiteSpace(contact.WebUrl))
                                             {
                                                 <div><a href="@contact.WebUrl" target="_blank" rel="noopener noreferrer">@contact.WebUrl</a></div>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(contact.LinkedInUrl))
+                                            {
+                                                <div><a href="@contact.LinkedInUrl" target="_blank" rel="noopener noreferrer">@contact.LinkedInUrl</a></div>
                                             }
                                         </div>
                                         <form asp-controller="Contacts" asp-action="ToggleSendInvoice" method="post" class="mt-3 mb-0">
