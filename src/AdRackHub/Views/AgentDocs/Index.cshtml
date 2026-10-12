@@ -1,0 +1,92 @@
+@model AgentDocsPage
+@{
+    ViewData["Title"] = "Agent API";
+}
+
+@section Styles {
+    <meta name="robots" content="noindex" />
+    <style>
+        .agent-doc pre {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: .5rem;
+            overflow: auto;
+        }
+        .agent-doc code {
+            font-size: .92em;
+        }
+        .agent-key {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        }
+    </style>
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Agent API</h1>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h2 class="h5">Give this to ChatGPT</h2>
+        <p class="mb-2">Paste this address into the chat, or tell ChatGPT to read it. It explains how to list, add, and edit customers and prospects, including contacts.</p>
+        <div class="input-group mb-3">
+            <input id="agent-markdown-url" class="form-control" readonly value="@Model.MarkdownUrl" />
+            <button class="btn btn-outline-primary" type="button" data-copy-target="agent-markdown-url">Copy</button>
+        </div>
+        <p class="mb-0 text-muted">Custom GPT actions can import <a href="@Model.OpenApiUrl">@Model.OpenApiUrl</a> instead. The key stays out of both documents.</p>
+    </div>
+</div>
+
+@if (Model.ShowKey)
+{
+    <div class="card mb-4 border-warning">
+        <div class="card-body">
+            <h2 class="h5">API key</h2>
+            <p>Put this in ChatGPT as a Bearer token. It is shown only while you are signed in as an admin.</p>
+            <div class="input-group">
+                <input id="agent-api-key" class="form-control agent-key" readonly value="@Model.ApiKey" />
+                <button class="btn btn-outline-primary" type="button" data-copy-target="agent-api-key">Copy</button>
+            </div>
+        </div>
+    </div>
+}
+else if (Model.ShowSetup)
+{
+    <div class="alert alert-warning">
+        The data API is off until <code>AgentApi:ApiKey</code> is set. For this machine, put it in <code>src/AdRackHub/appsettings.Development.local.json</code>. On the server, put it in <code>appsettings.Production.json</code>. That file stays off git and is not replaced by a deploy.
+    </div>
+}
+else if (!Model.KeyConfigured)
+{
+    <div class="alert alert-warning">An administrator still needs to configure the API key before ChatGPT can call the data endpoints.</div>
+}
+else
+{
+    <div class="alert alert-secondary">Ask an AdRackHub admin for the API key, then send it as <code>Authorization: Bearer &lt;key&gt;</code>.</div>
+}
+
+<article class="agent-doc">
+    @Html.Raw(Model.Html)
+</article>
+
+@section Scripts {
+    <script>
+        document.querySelectorAll("[data-copy-target]").forEach(function (button) {
+            button.addEventListener("click", function () {
+                var input = document.getElementById(button.getAttribute("data-copy-target"));
+                if (!input) return;
+                var text = input.value;
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(text);
+                } else {
+                    input.focus();
+                    input.select();
+                    document.execCommand("copy");
+                }
+                var original = button.textContent;
+                button.textContent = "Copied";
+                setTimeout(function () { button.textContent = original; }, 1500);
+            });
+        });
+    </script>
+}

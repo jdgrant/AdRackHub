@@ -70,6 +70,8 @@ builder.Services.PostConfigure<MailgunOptions>(options =>
     options.ApiKey = fallback.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
 });
 builder.Services.Configure<WaveSyncOptions>(builder.Configuration.GetSection(WaveSyncOptions.SectionName));
+builder.Services.Configure<AgentApiOptions>(builder.Configuration.GetSection(AgentApiOptions.SectionName));
+builder.Services.AddScoped<AgentCustomerApiService>();
 builder.Services.Configure<DataForSeoOptions>(builder.Configuration.GetSection(DataForSeoOptions.SectionName));
 builder.Services.AddHttpClient();
 builder.Services.AddHttpClient<WaveApiService>();
