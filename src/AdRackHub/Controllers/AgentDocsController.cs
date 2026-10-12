@@ -28,7 +28,7 @@ public class AgentDocsController : Controller
         return View(new AgentDocsPage
         {
             Html = AgentApiGuide.ToHtml(markdown),
-            MarkdownUrl = $"{baseUrl}/docs/agent.md",
+            MarkdownUrl = $"{baseUrl}/docs/agent.html",
             OpenApiUrl = $"{baseUrl}/api/agent/openapi.json",
             KeyConfigured = !string.IsNullOrWhiteSpace(key),
             ShowKey = isAdmin && !string.IsNullOrWhiteSpace(key),
@@ -37,11 +37,9 @@ public class AgentDocsController : Controller
         });
     }
 
+    [HttpGet("/docs/agent.html")]
+    public IActionResult Html() => Index();
+
     [HttpGet("/docs/agent.md")]
-    public IActionResult Markdown()
-    {
-        Response.Headers.CacheControl = "no-store";
-        var markdown = AgentApiGuide.Markdown(AgentApiGuide.BaseUrl(Request));
-        return Content(markdown, "text/plain; charset=utf-8");
-    }
+    public IActionResult Markdown() => Redirect("/docs/agent.html");
 }

@@ -35,8 +35,7 @@ public class AgentApiController : ControllerBase
         return Ok(new
         {
             name = "AdRackHub Agent API",
-            docs = $"{baseUrl}/docs/agent",
-            docsMarkdown = $"{baseUrl}/docs/agent.md",
+            docs = $"{baseUrl}/docs/agent.html",
             openApi = $"{baseUrl}/api/agent/openapi.json",
             authentication = "Authorization: Bearer <api key>",
             canDelete = false

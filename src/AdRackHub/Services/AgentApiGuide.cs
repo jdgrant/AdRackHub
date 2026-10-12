@@ -22,7 +22,7 @@ public static class AgentApiGuide
 
             ## How to connect
 
-            1. Read this page: `BASE_URL/docs/agent.md`
+            1. Read this page: `BASE_URL/docs/agent.html`
             2. For a Custom GPT action, import `BASE_URL/api/agent/openapi.json`
             3. Ask the user for the API key. It is not written in this document.
             4. Send that key on every data request.
@@ -394,7 +394,7 @@ public static class AgentApiGuide
             {
                 ["title"] = "AdRackHub Agent API",
                 ["version"] = "1.0.0",
-                ["description"] = "List, create, and update customers and prospects, including contacts. Delete is not available. Read /docs/agent.md for the full guide."
+                ["description"] = "List, create, and update customers and prospects, including contacts. Delete is not available. Read /docs/agent.html for the full guide."
             },
             ["servers"] = new JsonArray { new JsonObject { ["url"] = baseUrl.TrimEnd('/') } },
             ["security"] = new JsonArray
