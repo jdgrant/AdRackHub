@@ -20,16 +20,18 @@ public class AgentDocsController : Controller
     [HttpGet("/docs/agent")]
     public IActionResult Index()
     {
+        Response.ContentType = "text/html; charset=utf-8";
         Response.Headers.CacheControl = "no-store";
         var baseUrl = AgentApiGuide.BaseUrl(Request);
         var key = _options.ApiKey?.Trim();
         var isAdmin = User.IsInRole(AppRoles.Admin);
         var markdown = AgentApiGuide.Markdown(baseUrl);
-        return View(new AgentDocsPage
+        return View("Index", new AgentDocsPage
         {
             Html = AgentApiGuide.ToHtml(markdown),
             MarkdownUrl = $"{baseUrl}/docs/agent.html",
             OpenApiUrl = $"{baseUrl}/api/agent/openapi.json",
+            McpUrl = $"{baseUrl}/mcp",
             KeyConfigured = !string.IsNullOrWhiteSpace(key),
             ShowKey = isAdmin && !string.IsNullOrWhiteSpace(key),
             ShowSetup = isAdmin && string.IsNullOrWhiteSpace(key),

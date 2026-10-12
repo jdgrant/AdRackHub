@@ -25,6 +25,29 @@
     <h1 class="h2 mb-0">Agent API</h1>
 </div>
 
+<section class="card mb-4" id="chatgpt-plugin">
+    <div class="card-body">
+        <h2 class="h5">ChatGPT Work plugin</h2>
+        <p>Install this as a personal plugin named <strong>Ad-Rack</strong>. ChatGPT's plugin screen does not take the REST API key. It signs in through AdRackHub with an admin account.</p>
+        <ol>
+            <li>Open ChatGPT and go to Plugins.</li>
+            <li>Select +.</li>
+            <li>Select Add custom MCP server.</li>
+            <li>Name the plugin Ad-Rack.</li>
+            <li>Under Connection, paste the server URL below.</li>
+            <li>Set authentication to OAuth.</li>
+            <li>Select Create as a plugin, then install it.</li>
+            <li>When ChatGPT asks to connect, sign in to AdRackHub as an admin and choose Allow.</li>
+        </ol>
+        <label class="form-label" for="agent-mcp-url">MCP server URL</label>
+        <div class="input-group mb-3">
+            <input id="agent-mcp-url" class="form-control" readonly value="@Model.McpUrl" />
+            <button class="btn btn-outline-primary" type="button" data-copy-target="agent-mcp-url">Copy</button>
+        </div>
+        <p class="mb-0">The tools are search, get, create, update, add contact, and update contact. New records default to Prospect. Creating a Customer, or changing a Prospect to Customer, assigns a brochure ID and sends that record to Wave. Nothing can be deleted.</p>
+    </div>
+</section>
+
 <div class="card mb-4">
     <div class="card-body">
         <h2 class="h5">Give this to ChatGPT</h2>
@@ -53,7 +76,7 @@
 else if (Model.ShowSetup)
 {
     <div class="alert alert-warning">
-        The data API is off until <code>AgentApi:ApiKey</code> is set. For this machine, put it in <code>src/AdRackHub/appsettings.Development.local.json</code>. On the server, put it in <code>appsettings.Production.json</code>. That file stays off git and is not replaced by a deploy.
+        The REST data API returns HTTP 503 until <code>AgentApi:ApiKey</code> is set. On this machine, put it in <code>src/AdRackHub/appsettings.Development.local.json</code>. On the server, add it to <code>appsettings.Production.json</code> or set <code>AgentApi__ApiKey</code> or <code>ADRACKHUB_AGENT_API_KEY</code>, then recycle the app pool. A deploy does not upload or replace the production settings file. Do not commit the key.
     </div>
 }
 else if (!Model.KeyConfigured)

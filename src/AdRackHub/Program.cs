@@ -71,7 +71,20 @@ builder.Services.PostConfigure<MailgunOptions>(options =>
 });
 builder.Services.Configure<WaveSyncOptions>(builder.Configuration.GetSection(WaveSyncOptions.SectionName));
 builder.Services.Configure<AgentApiOptions>(builder.Configuration.GetSection(AgentApiOptions.SectionName));
+builder.Services.PostConfigure<AgentApiOptions>(options =>
+{
+    if (!string.IsNullOrWhiteSpace(options.ApiKey))
+        return;
+    options.ApiKey = new[]
+    {
+        builder.Configuration["ADRACKHUB_AGENT_API_KEY"],
+        Environment.GetEnvironmentVariable("ADRACKHUB_AGENT_API_KEY")
+    }.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+});
 builder.Services.AddScoped<AgentCustomerApiService>();
+builder.Services.AddScoped<IAgentCustomerApi>(sp => sp.GetRequiredService<AgentCustomerApiService>());
+builder.Services.AddScoped<IMcpUserDirectory, IdentityMcpUserDirectory>();
+builder.Services.AddAdRackMcp(Path.Combine(builder.Environment.ContentRootPath, "App_Data", "mcp-oauth-store.json"));
 builder.Services.Configure<DataForSeoOptions>(builder.Configuration.GetSection(DataForSeoOptions.SectionName));
 builder.Services.AddHttpClient();
 builder.Services.AddHttpClient<WaveApiService>();
@@ -1055,6 +1068,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapMcp("/mcp").RequireAuthorization(McpPolicies.Read);
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");

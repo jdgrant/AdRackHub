@@ -22,10 +22,40 @@ public static class AgentApiGuide
 
             ## How to connect
 
+            ChatGPT Work plugins do not accept this API key as a custom header. Install the Ad-Rack plugin instead. It signs in with an AdRackHub admin account.
+
             1. Read this page: `BASE_URL/docs/agent.html`
             2. For a Custom GPT action, import `BASE_URL/api/agent/openapi.json`
             3. Ask the user for the API key. It is not written in this document.
-            4. Send that key on every data request.
+            4. Send that key on every REST data request.
+
+            ## ChatGPT Work plugin
+
+            1. Open ChatGPT and go to Plugins.
+            2. Select +.
+            3. Select Add custom MCP server.
+            4. Name the plugin Ad-Rack.
+            5. Server URL: `BASE_URL/mcp`
+            6. Authentication: OAuth.
+            7. Select Create as a plugin, then install it.
+            8. When ChatGPT asks to connect, sign in to AdRackHub as an admin and choose Allow.
+
+            The plugin tools are `search_customers`, `get_customer`, `create_customer`, `update_customer`, `add_contact`, and `update_contact`. New records default to Prospect. Creating a Customer, or changing a Prospect to Customer, assigns a brochure id and sends the customer to Wave. There is no delete tool.
+
+            Search before creating. If create returns possible duplicates, do not create another record until the user picks one, or call create again with `acknowledgeDuplicateIds` set to every returned id.
+
+            On updates, omit a field to leave it unchanged. Send null or an empty string to clear an optional field.
+
+            ## REST API key
+
+            The REST data API is separate from the plugin. If a data call returns HTTP 503 and says AgentApi:ApiKey is not configured, the server has no key. The page at `/docs/agent.html` and `/api/agent/openapi.json` stay available.
+
+            Set one of these, then recycle the site app pool:
+
+            - On the server, add `AgentApi:ApiKey` inside `appsettings.Production.json`. A deploy does not upload that file and does not replace it. Do not commit the key.
+            - Or set the site environment variable `AgentApi__ApiKey` or `ADRACKHUB_AGENT_API_KEY`.
+
+            On a development machine, put the key in `src/AdRackHub/appsettings.Development.local.json`. That file stays off git.
 
             Preferred header:
 

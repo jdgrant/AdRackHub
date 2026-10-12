@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AdRackHub.Services;
 
-public class AgentCustomerApiService
+public class AgentCustomerApiService : IAgentCustomerApi
 {
     public const int DefaultPageSize = 50;
     public const int MaxPageSize = 100;
@@ -369,6 +369,98 @@ public class AgentCustomerApiService
         {
             _logger.LogWarning(ex, "Agent API Wave push failed for customer {CustomerId}.", customerId);
         }
+    }
+
+    public async Task<IReadOnlyList<AgentCustomerDto>> FindPotentialDuplicatesAsync(
+        string? customerName,
+        string? email,
+        string? phone,
+        string hubBase,
+        CancellationToken cancellationToken)
+    {
+        var name = NormalizeName(customerName);
+        var emailNorm = email?.Trim();
+        var phoneDigits = Digits(phone);
+        var phoneTail = phoneDigits.Length >= 7 ? phoneDigits[^7..] : null;
+        var probe = name.Length >= 3 ? (name.Length > 12 ? name[..12] : name) : "";
+
+        IQueryable<Customer>? matches = null;
+        void Include(IQueryable<Customer> next) => matches = matches == null ? next : matches.Union(next);
+
+        var customers = _context.Customers.AsNoTracking();
+        if (probe.Length >= 3)
+            Include(customers.Where(c => c.CustomerName.Contains(probe)));
+        if (!string.IsNullOrWhiteSpace(emailNorm))
+        {
+            Include(customers.Where(c =>
+                c.Email == emailNorm || c.Contacts.Any(ct => ct.Email == emailNorm)));
+        }
+        if (phoneTail != null)
+        {
+            Include(customers.Where(c =>
+                (c.Phone != null && c.Phone.Contains(phoneTail))
+                || c.Contacts.Any(ct =>
+                    (ct.Phone != null && ct.Phone.Contains(phoneTail))
+                    || (ct.CellPhone != null && ct.CellPhone.Contains(phoneTail)))));
+        }
+
+        if (matches == null)
+            return Array.Empty<AgentCustomerDto>();
+
+        var ids = await matches.Select(c => c.Id).Distinct().Take(40).ToListAsync(cancellationToken);
+        if (ids.Count == 0)
+            return Array.Empty<AgentCustomerDto>();
+
+        var rows = await _context.Customers
+            .AsNoTracking()
+            .Where(c => ids.Contains(c.Id))
+            .Include(c => c.Contacts)
+            .Include(c => c.AccountManager)
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .Where(c => IsPotentialDuplicate(c, name, emailNorm, phoneDigits))
+            .OrderBy(c => c.CustomerName)
+            .ThenBy(c => c.Id)
+            .Take(10)
+            .Select(c => Map(c, hubBase))
+            .ToList();
+    }
+
+    private static bool IsPotentialDuplicate(Customer customer, string name, string? email, string phoneDigits)
+    {
+        if (name.Length > 0 && NormalizeName(customer.CustomerName) == name)
+            return true;
+        if (!string.IsNullOrWhiteSpace(email))
+        {
+            if (string.Equals(customer.Email?.Trim(), email, StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (customer.Contacts.Any(ct => string.Equals(ct.Email?.Trim(), email, StringComparison.OrdinalIgnoreCase)))
+                return true;
+        }
+        if (phoneDigits.Length >= 7)
+        {
+            if (Digits(customer.Phone) == phoneDigits)
+                return true;
+            if (customer.Contacts.Any(ct => Digits(ct.Phone) == phoneDigits || Digits(ct.CellPhone) == phoneDigits))
+                return true;
+        }
+        return false;
+    }
+
+    private static string NormalizeName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+        var parts = value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        return string.Join(' ', parts).ToLowerInvariant();
+    }
+
+    private static string Digits(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+        return new string(value.Where(char.IsDigit).ToArray());
     }
 
     private Task<Customer?> LoadAsync(int id, bool tracking, CancellationToken cancellationToken)

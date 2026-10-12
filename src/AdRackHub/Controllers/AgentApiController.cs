@@ -144,7 +144,7 @@ public class AgentApiController : ControllerBase
         if (string.IsNullOrWhiteSpace(expected))
         {
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new AgentErrorDto(
-                "The agent API is not configured. An administrator needs to set AgentApi:ApiKey."));
+                "The agent API is not configured. Set AgentApi:ApiKey in appsettings.Production.json on the server, or set AgentApi__ApiKey or ADRACKHUB_AGENT_API_KEY. Deploys do not upload that file."));
         }
 
         if (!KeysMatch(expected, ReadProvidedKey()))

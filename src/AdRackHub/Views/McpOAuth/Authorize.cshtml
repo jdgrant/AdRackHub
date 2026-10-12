@@ -1,0 +1,36 @@
+@model McpConsentViewModel
+@{
+    ViewData["Title"] = "Connect ChatGPT";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Connect Ad-Rack to ChatGPT</h1>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <p><strong>@Model.ClientName</strong> is asking to use your AdRackHub admin account.</p>
+        <ul>
+            @if (Model.CanRead)
+            {
+                <li>Read customers and prospects, including contacts.</li>
+            }
+            @if (Model.CanWrite)
+            {
+                <li>Add and edit customers, prospects, and contacts. Nothing can be deleted.</li>
+                <li>Creating a Customer, or changing a Prospect to Customer, assigns a brochure ID and sends that record to Wave.</li>
+            }
+        </ul>
+        <form method="post" asp-action="AuthorizeDecision">
+            @Html.AntiForgeryToken()
+            <input type="hidden" asp-for="ClientId" />
+            <input type="hidden" asp-for="RedirectUri" />
+            <input type="hidden" asp-for="State" />
+            <input type="hidden" asp-for="Scope" />
+            <input type="hidden" asp-for="CodeChallenge" />
+            <input type="hidden" asp-for="Resource" />
+            <button class="btn btn-primary" type="submit" name="decision" value="allow">Allow</button>
+            <button class="btn btn-outline-secondary ms-2" type="submit" name="decision" value="deny">Deny</button>
+        </form>
+    </div>
+</div>

@@ -24,6 +24,7 @@ google-service-account.json
 src/AdRackHub/Data/Uploads/
 src/AdRackHub/App_Data/Uploads/
 src/AdRackHub/App_Data/wave-poc-oauth.json
+src/AdRackHub/App_Data/mcp-oauth-store.json
 src/AdRackHub/Data/Scans/Batch-*/
 Data/Uploads/
 Data/Scans/
