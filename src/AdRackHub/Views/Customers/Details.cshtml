@@ -10,6 +10,7 @@
     var listStatus = ViewBag.ListStatus as CustomerStatus?;
     var listHighValue = ViewBag.ListHighValue as bool? == true;
     var listNeedsMoreInfo = ViewBag.ListNeedsMoreInfo as bool? == true;
+    var billingsTab = ViewBag.Billings as CustomerBillingsTabViewModel;
     string NoteStatusBadge(CustomerNoteStatus status) => status switch
     {
         CustomerNoteStatus.Working => "bg-warning text-dark",
@@ -294,6 +295,15 @@
                             @if (Model.Contracts.Count > 0)
                             {
                                 <span class="badge rounded-pill bg-secondary ms-1">@Model.Contracts.Count</span>
+                            }
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @(activeTab == "billings" ? "active" : "")" id="tab-billings-btn" data-bs-toggle="tab" data-bs-target="#tab-billings" type="button" role="tab">
+                            Billings
+                            @if (billingsTab?.AllCount > 0)
+                            {
+                                <span class="badge rounded-pill bg-secondary ms-1">@billingsTab.AllCount</span>
                             }
                         </button>
                     </li>
@@ -1102,6 +1112,19 @@
                             else
                             {
                                 <p class="text-muted mb-0">No routes on active contracts.</p>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade @(activeTab == "billings" ? "show active" : "")" id="tab-billings" role="tabpanel">
+                        <div class="crm-panel">
+                            @if (billingsTab != null)
+                            {
+                                <partial name="_CustomerBillingsTab" model="billingsTab" />
+                            }
+                            else
+                            {
+                                <p class="text-muted mb-0">No bills have been sent yet.</p>
                             }
                         </div>
                     </div>

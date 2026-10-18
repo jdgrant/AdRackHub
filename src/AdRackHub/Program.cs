@@ -324,6 +324,62 @@ using (var scope = app.Services.CreateScope())
         return;
     }
 
+    var regeneratePdfIdsArg = args.FirstOrDefault(a =>
+        a.StartsWith("--regenerate-invoice-pdfs-ids", StringComparison.OrdinalIgnoreCase));
+    if (regeneratePdfIdsArg != null)
+    {
+        var stamp = regeneratePdfIdsArg.Contains('=', StringComparison.Ordinal)
+            ? regeneratePdfIdsArg[(regeneratePdfIdsArg.IndexOf('=') + 1)..].Trim()
+            : "";
+        var ids = stamp.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(part => int.TryParse(part, out var id) ? id : (int?)null)
+            .Where(id => id is > 0)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+        if (ids.Count == 0)
+        {
+            Console.WriteLine("Use --regenerate-invoice-pdfs-ids=24,78");
+            return;
+        }
+
+        var numberKeys = ids.Select(id => id.ToString()).ToList();
+        var matched = await context.BillingRunInvoices
+            .AsNoTracking()
+            .Include(i => i.BillingRun)
+            .Include(i => i.Customer)
+                .ThenInclude(c => c.Contacts)
+            .Where(i => ids.Contains(i.Id)
+                        || (i.WaveInvoiceNumber != null && numberKeys.Contains(i.WaveInvoiceNumber)))
+            .OrderBy(i => i.Id)
+            .ToListAsync();
+        foreach (var invoice in matched)
+        {
+            var customer = invoice.Customer;
+            var contact = customer.Contacts
+                .OrderBy(c => c.Role == ContactRole.Billing ? 0 : c.Role == ContactRole.Primary ? 1 : 2)
+                .ThenBy(c => c.Name)
+                .FirstOrDefault();
+            Console.WriteLine(
+                $"#{invoice.Id} Wave {invoice.WaveInvoiceNumber ?? "—"} {customer.CustomerName} " +
+                $"{BillingDueCalculator.PeriodLabel(invoice.BillingRun.Year, invoice.BillingRun.Month)} {invoice.Status}");
+            Console.WriteLine(
+                $"  customer: {customer.Address}, {customer.City}, {customer.State} {customer.Zip}");
+            if (contact != null)
+            {
+                Console.WriteLine(
+                    $"  contact ({contact.Role}): {contact.PersonName} | {contact.Address}, {contact.City}, {contact.State} {contact.Zip}");
+            }
+        }
+
+        var billing = scope.ServiceProvider.GetRequiredService<MonthlyBillingService>();
+        var (saved, failed, message) = await billing.RegenerateInvoicePdfsForIdsAsync(ids);
+        Console.WriteLine(message);
+        if (failed > 0 && saved == 0)
+            Environment.ExitCode = 1;
+        return;
+    }
+
     var regeneratePdfsArg = args.FirstOrDefault(a =>
         a.StartsWith("--regenerate-invoice-pdfs", StringComparison.OrdinalIgnoreCase));
     if (regeneratePdfsArg != null)

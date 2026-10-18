@@ -35,21 +35,42 @@ public class BrochureLabelPdfGenerator
         _environment = environment;
     }
 
-    public async Task<byte[]> BuildAsync(CancellationToken cancellationToken = default)
+    public async Task<byte[]> BuildAsync(
+        IReadOnlyCollection<int>? customerIds = null,
+        CancellationToken cancellationToken = default)
     {
         await _labelIds.AssignMissingAsync(cancellationToken);
 
-        var customers = await _context.Customers
+        var query = _context.Customers
             .AsNoTracking()
             .Where(c => c.Type == CustomerType.Customer && c.Status == CustomerStatus.Active)
             .Include(c => c.BrochureScans)
             .Include(c => c.WarehouseLocations)
             .Include(c => c.CustomerRoutes)
                 .ThenInclude(cr => cr.Route)
-            .AsSplitQuery()
-            .OrderBy(c => c.BrochureCode)
-            .ThenBy(c => c.CustomerName)
-            .ToListAsync(cancellationToken);
+            .AsSplitQuery();
+
+        List<Customer> customers;
+        if (customerIds == null)
+        {
+            customers = await query
+                .OrderBy(c => c.BrochureCode)
+                .ThenBy(c => c.CustomerName)
+                .ToListAsync(cancellationToken);
+        }
+        else
+        {
+            var selectedIds = customerIds.Where(id => id > 0).Distinct().ToList();
+            var selectedSet = selectedIds.ToHashSet();
+            var loaded = selectedSet.Count == 0
+                ? new List<Customer>()
+                : await query.Where(c => selectedSet.Contains(c.Id)).ToListAsync(cancellationToken);
+            var byId = loaded.ToDictionary(c => c.Id);
+            customers = selectedIds
+                .Where(byId.ContainsKey)
+                .Select(id => byId[id])
+                .ToList();
+        }
 
         var labels = customers
             .SelectMany(ToLabels)
@@ -128,7 +149,7 @@ public class BrochureLabelPdfGenerator
     {
         page.Size(PageSizes.Letter);
         page.Margin(48);
-        page.Content().Text("No active customers to print labels for.");
+        page.Content().Text("No selected customers to print labels for.");
     }
 
     private static void ConfigurePage(PageDescriptor page, IReadOnlyList<BrochureLabel> labels)

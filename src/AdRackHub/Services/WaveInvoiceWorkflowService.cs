@@ -306,6 +306,45 @@ public class WaveInvoiceWorkflowService
         if (invoices.Count == 0)
             return (0, 0, $"No submitted invoices for {BillingDueCalculator.PeriodLabel(year, month)}.");
 
+        return await RegenerateSavedPdfsCoreAsync(
+            invoices,
+            BillingDueCalculator.PeriodLabel(year, month),
+            cancellationToken);
+    }
+
+    public async Task<(int Saved, int Failed, string Message)> RegenerateSavedPdfsForInvoiceIdsAsync(
+        IReadOnlyList<int> invoiceIds,
+        CancellationToken cancellationToken = default)
+    {
+        var ids = invoiceIds.Distinct().ToList();
+        if (ids.Count == 0)
+            return (0, 0, "No invoice IDs were provided.");
+
+        var numberKeys = ids.Select(id => id.ToString()).ToList();
+        var invoices = await _context.BillingRunInvoices
+            .Include(i => i.BillingRun)
+            .Include(i => i.Lines)
+            .Include(i => i.Customer)
+                .ThenInclude(c => c.Contacts)
+            .Where(i => ids.Contains(i.Id)
+                        || (i.WaveInvoiceNumber != null && numberKeys.Contains(i.WaveInvoiceNumber)))
+            .OrderBy(i => i.Id)
+            .ToListAsync(cancellationToken);
+
+        if (invoices.Count == 0)
+            return (0, 0, $"No invoices matched {string.Join(", ", ids)}.");
+
+        return await RegenerateSavedPdfsCoreAsync(
+            invoices,
+            string.Join(", ", invoices.Select(i => $"#{i.Id}")),
+            cancellationToken);
+    }
+
+    private async Task<(int Saved, int Failed, string Message)> RegenerateSavedPdfsCoreAsync(
+        List<BillingRunInvoice> invoices,
+        string label,
+        CancellationToken cancellationToken)
+    {
         var contractIds = invoices
             .SelectMany(i => i.Lines.Select(l => l.CustomerContractId))
             .Distinct()
@@ -315,7 +354,6 @@ public class WaveInvoiceWorkflowService
             .ToListAsync(cancellationToken);
         var byId = contracts.ToDictionary(c => c.Id);
 
-        var invoiceDate = new DateOnly(year, month, 1);
         var saved = 0;
         var failed = 0;
         var errors = new List<string>();
@@ -335,6 +373,7 @@ public class WaveInvoiceWorkflowService
                 continue;
             }
 
+            var invoiceDate = new DateOnly(invoice.BillingRun.Year, invoice.BillingRun.Month, 1);
             var lineItems = invoice.Lines
                 .OrderBy(l => l.RouteName)
                 .Select(l =>
@@ -393,14 +432,13 @@ public class WaveInvoiceWorkflowService
             }
         }
 
-        var period = BillingDueCalculator.PeriodLabel(year, month);
-        var message = $"Rebuilt {saved} Ad-Rack invoice PDF(s) for {period}.";
+        var message = $"Rebuilt {saved} Ad-Rack invoice PDF(s) for {label}.";
         if (failed > 0)
             message += $" {failed} failed. {string.Join(" ", errors.Take(3))}";
 
         _logger.LogInformation(
-            "Regenerated Ad-Rack invoice PDFs for {Period}: saved {Saved}, failed {Failed}.",
-            period,
+            "Regenerated Ad-Rack invoice PDFs for {Label}: saved {Saved}, failed {Failed}.",
+            label,
             saved,
             failed);
 

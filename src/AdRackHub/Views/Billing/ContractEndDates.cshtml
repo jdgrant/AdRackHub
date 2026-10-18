@@ -1,0 +1,101 @@
+@model ContractEndDatesPageViewModel
+@{
+    ViewData["Title"] = "Contract end dates";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Contract end dates</h1>
+</div>
+
+<partial name="_BillingNav" />
+
+<p class="text-muted">Clients with a contract end date, earliest first. Expired contracts stay on this list until the date is cleared or updated.</p>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">With an end date</div>
+                <div class="h3 mb-0">@Model.ContractCount</div>
+                <div class="text-muted small">@Model.ClientCount unique client@(Model.ClientCount == 1 ? "" : "s")</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card danger h-100">
+            <div class="card-body">
+                <div class="text-muted small">Expired</div>
+                <div class="h3 mb-0">@Model.ExpiredCount</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card warning h-100">
+            <div class="card-body">
+                <div class="text-muted small">Ends in @ContractEndDateRow.EndingSoonDays days</div>
+                <div class="h3 mb-0">@Model.EndingSoonCount</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="text-muted small">Later</div>
+                <div class="h3 mb-0">@Model.LaterCount</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th>Client</th>
+                <th>Contract</th>
+                <th>Term</th>
+                <th>Ends</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+        @if (Model.Rows.Count == 0)
+        {
+            <tr>
+                <td colspan="5" class="text-muted">No contracts have an end date set.</td>
+            </tr>
+        }
+        else
+        {
+            foreach (var row in Model.Rows)
+            {
+                <tr class="@(row.IsExpired ? "text-muted" : null)">
+                    <td>
+                        <a asp-controller="Customers" asp-action="Details" asp-route-id="@row.CustomerId">@row.CustomerName</a>
+                    </td>
+                    <td>
+                        <a asp-controller="CustomerContracts" asp-action="Edit" asp-route-id="@row.ContractId">@row.ContractName</a>
+                    </td>
+                    <td>@row.TermLabel</td>
+                    <td class="text-nowrap">@row.EndDate.ToString("MMM d, yyyy")</td>
+                    <td class="text-nowrap">
+                        @if (row.IsExpired)
+                        {
+                            <span class="badge bg-secondary">Expired</span>
+                        }
+                        else if (row.DaysUntilEnd == 0)
+                        {
+                            <span class="badge bg-danger">Ends today</span>
+                        }
+                        else if (row.IsEndingSoon)
+                        {
+                            <span class="badge bg-warning text-dark">Ending soon</span>
+                        }
+                        <span class="small ms-1">@row.StatusLabel</span>
+                    </td>
+                </tr>
+            }
+        }
+        </tbody>
+    </table>
+</div>

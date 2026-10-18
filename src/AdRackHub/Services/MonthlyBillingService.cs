@@ -479,6 +479,11 @@ public class MonthlyBillingService
         CancellationToken cancellationToken = default) =>
         _waveInvoices.RegenerateSavedPdfsAsync(year, month, cancellationToken);
 
+    public Task<(int Saved, int Failed, string Message)> RegenerateInvoicePdfsForIdsAsync(
+        IReadOnlyList<int> invoiceIds,
+        CancellationToken cancellationToken = default) =>
+        _waveInvoices.RegenerateSavedPdfsForInvoiceIdsAsync(invoiceIds, cancellationToken);
+
     public async Task<(bool Success, string Message)> ResetInvoiceForResendAsync(
         int invoiceId,
         CancellationToken cancellationToken = default)

@@ -23,6 +23,8 @@ public class CustomersController : Controller
     private readonly CustomerNeedsMoreInfoService _needsMoreInfoService;
     private readonly BrochureLabelIdService _brochureLabelIds;
     private readonly BrochureWarehouseSheetService _warehouseSheet;
+    private readonly WaveSessionService _waveSession;
+    private readonly InvoicePdfStorageService _invoicePdfs;
     private readonly UserManager<ApplicationUser> _userManager;
 
     public CustomersController(
@@ -36,6 +38,8 @@ public class CustomersController : Controller
         CustomerNeedsMoreInfoService needsMoreInfoService,
         BrochureLabelIdService brochureLabelIds,
         BrochureWarehouseSheetService warehouseSheet,
+        WaveSessionService waveSession,
+        InvoicePdfStorageService invoicePdfs,
         UserManager<ApplicationUser> userManager)
     {
         _context = context;
@@ -48,6 +52,8 @@ public class CustomersController : Controller
         _needsMoreInfoService = needsMoreInfoService;
         _brochureLabelIds = brochureLabelIds;
         _warehouseSheet = warehouseSheet;
+        _waveSession = waveSession;
+        _invoicePdfs = invoicePdfs;
         _userManager = userManager;
     }
 
@@ -150,6 +156,58 @@ public class CustomersController : Controller
             .ToList();
     }
 
+    private async Task<CustomerBillingsTabViewModel> BuildCustomerBillingsTabAsync(int customerId, string? billingStatus)
+    {
+        var invoices = await _context.BillingRunInvoices
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(i => i.BillingRun)
+            .Include(i => i.Lines)
+            .Where(i => i.CustomerId == customerId
+                && (i.Status == BillingRunInvoiceStatus.Submitted
+                    || i.Status == BillingRunInvoiceStatus.Received
+                    || i.Status == BillingRunInvoiceStatus.Canceled))
+            .OrderByDescending(i => i.BillingRun.Year)
+            .ThenByDescending(i => i.BillingRun.Month)
+            .ThenByDescending(i => i.Id)
+            .ToListAsync();
+
+        var notReceived = invoices.Where(i => i.Status == BillingRunInvoiceStatus.Submitted).ToList();
+        var received = invoices.Where(i => i.Status == BillingRunInvoiceStatus.Received).ToList();
+        var filter = (billingStatus ?? string.Empty).Trim().ToLowerInvariant();
+        var shown = filter switch
+        {
+            CustomerBillingsTabViewModel.StatusOutstanding => notReceived,
+            CustomerBillingsTabViewModel.StatusReceived => received,
+            _ => invoices
+        };
+
+        var waveConnected = _waveSession.IsReady && !_waveSession.NeedsBusinessReset;
+        return new CustomerBillingsTabViewModel
+        {
+            CustomerId = customerId,
+            BillingStatus = filter is CustomerBillingsTabViewModel.StatusOutstanding
+                or CustomerBillingsTabViewModel.StatusReceived
+                    ? filter
+                    : null,
+            Invoices = shown,
+            AllCount = invoices.Count,
+            NotReceivedCount = notReceived.Count,
+            ReceivedCount = received.Count,
+            AllAmount = invoices.Sum(i => i.TotalAmount),
+            NotReceivedAmount = notReceived.Sum(i => i.TotalAmount),
+            ReceivedAmount = received.Sum(i => i.TotalAmount),
+            WaveConnected = waveConnected,
+            WaveActionBlockedReason = _waveSession.NeedsBusinessReset
+                ? "Wave session expired. Reset Wave, then try again."
+                : "Connect to Wave to send or receive invoices.",
+            InvoicePdfIds = invoices
+                .Where(i => _invoicePdfs.ResolveFilePath(null, i.WaveInvoiceNumber) != null)
+                .Select(i => i.Id)
+                .ToHashSet()
+        };
+    }
+
     private static CustomerIndexSummary BuildSummary(IReadOnlyList<Customer> customers)
     {
         var withContracts = customers.Where(c => c.Contracts.Count > 0).ToList();
@@ -164,7 +222,7 @@ public class CustomersController : Controller
         };
     }
 
-    public async Task<IActionResult> Details(int? id, string? tab = null, string? search = null, CustomerStatus? status = null, bool highValue = false, bool needsMoreInfo = false)
+    public async Task<IActionResult> Details(int? id, string? tab = null, string? search = null, CustomerStatus? status = null, bool highValue = false, bool needsMoreInfo = false, string? billingStatus = null)
     {
         if (id == null) return NotFound();
 
@@ -197,7 +255,10 @@ public class CustomersController : Controller
             ViewBag.HighValueProximity = await _highValueProximity.GetNearestHitAsync(customer);
         await PopulateListNavigationAsync(customer, search, status, highValue, needsMoreInfo);
         if (customer.Type == CustomerType.Customer)
+        {
             ViewBag.ContractedCustomersByRoute = await GetContractedCustomersByRouteAsync();
+            ViewBag.Billings = await BuildCustomerBillingsTabAsync(customer.Id, billingStatus);
+        }
         return View(customer);
     }
 
@@ -279,6 +340,7 @@ public class CustomersController : Controller
             "map" => "map",
             "routes" when !isProspect => "routes",
             "contracts" when !isProspect => "contracts",
+            "billings" when !isProspect => "billings",
             _ => "activity"
         };
     }

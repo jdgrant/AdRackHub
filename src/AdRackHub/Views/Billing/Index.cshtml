@@ -39,6 +39,7 @@
         }
         <a asp-action="Outstanding" class="btn btn-outline-secondary">Outstanding</a>
         <a asp-action="Forecast" class="btn btn-outline-secondary">Forecast</a>
+        <a asp-action="ContractEndDates" class="btn btn-outline-secondary">End dates</a>
         <a asp-action="WaveOAuthStart" asp-route-year="@Model.Year" asp-route-month="@Model.Month" class="btn btn-outline-primary">Connect to Wave</a>
         @if (Model.CanSendToWave)
         {

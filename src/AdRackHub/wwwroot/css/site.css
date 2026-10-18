@@ -783,6 +783,20 @@ button.brochure-scan-preview {
   }
 }
 
+.brochure-label-grid {
+  max-height: 24rem;
+  overflow: auto;
+  border: 1px solid #dee2e6;
+  border-radius: 0.375rem;
+}
+
+.brochure-label-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #fff;
+}
+
 .invoice-receipt-icon {
   display: inline-flex;
   align-items: center;

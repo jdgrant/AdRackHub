@@ -177,6 +177,42 @@ public class BillingController : Controller
         return View(model);
     }
 
+    public async Task<IActionResult> ContractEndDates()
+    {
+        var asOf = DateOnly.FromDateTime(DateTime.Today);
+        var contracts = await _context.CustomerContracts
+            .AsNoTracking()
+            .Include(c => c.Customer)
+            .Where(c => c.ContractEndDate != null)
+            .OrderBy(c => c.ContractEndDate)
+            .ThenBy(c => c.Customer.CustomerName)
+            .ThenBy(c => c.ContractName)
+            .ToListAsync();
+
+        var model = new ContractEndDatesPageViewModel
+        {
+            AsOf = asOf,
+            Rows = contracts
+                .Select(contract =>
+                {
+                    var endDate = contract.ContractEndDate!.Value;
+                    return new ContractEndDateRow
+                    {
+                        CustomerId = contract.CustomerId,
+                        CustomerName = contract.Customer.CustomerName,
+                        ContractId = contract.Id,
+                        ContractName = contract.ContractName,
+                        TermLabel = BillingTermDisplay.Label(contract),
+                        EndDate = endDate,
+                        DaysUntilEnd = endDate.DayNumber - asOf.DayNumber
+                    };
+                })
+                .ToList()
+        };
+
+        return View(model);
+    }
+
     [HttpPost]
     [ValidateAntiForgeryToken]
     public IActionResult WaveOAuthSaveCredentials(string? clientId, string? clientSecret, int? year, int? month)
@@ -438,9 +474,10 @@ public class BillingController : Controller
         string? returnTo = null,
         string? search = null,
         int? weeks = null,
-        string? age = null)
+        string? age = null,
+        int? customerId = null)
     {
-        if (WaveDisconnectedRedirect(year, month, returnTo, search, weeks, age) is { } blocked)
+        if (WaveDisconnectedRedirect(year, month, returnTo, search, weeks, age, customerId) is { } blocked)
             return blocked;
 
         var (success, message) = await _billingService.UpdateInvoiceWaveStatusAsync(
@@ -456,7 +493,7 @@ public class BillingController : Controller
         else
             TempData["Error"] = message;
 
-        return RedirectAfterInvoiceChange(year, month, returnTo, search, weeks, age);
+        return RedirectAfterInvoiceChange(year, month, returnTo, search, weeks, age, customerId);
     }
 
     [HttpPost]
@@ -471,16 +508,17 @@ public class BillingController : Controller
         string? returnTo = null,
         string? search = null,
         int? weeks = null,
-        string? age = null)
+        string? age = null,
+        int? customerId = null)
     {
         if (!WaveInvoiceStatuses.TryParse(status, out var parsed))
         {
             TempData["Error"] = "Status must be Submitted, Received, or Canceled.";
-            return RedirectAfterInvoiceChange(year, month, returnTo, search, weeks, age);
+            return RedirectAfterInvoiceChange(year, month, returnTo, search, weeks, age, customerId);
         }
 
         if (parsed == BillingRunInvoiceStatus.Received
-            && WaveDisconnectedRedirect(year, month, returnTo, search, weeks, age) is { } blocked)
+            && WaveDisconnectedRedirect(year, month, returnTo, search, weeks, age, customerId) is { } blocked)
             return blocked;
 
         var (success, message) = await _billingService.UpdateInvoiceWaveStatusAsync(
@@ -496,7 +534,7 @@ public class BillingController : Controller
         else
             TempData["Error"] = message;
 
-        return RedirectAfterInvoiceChange(year, month, returnTo, search, weeks, age);
+        return RedirectAfterInvoiceChange(year, month, returnTo, search, weeks, age, customerId);
     }
 
     [HttpPost]
@@ -787,7 +825,8 @@ public class BillingController : Controller
         string? returnTo = null,
         string? search = null,
         int? weeks = null,
-        string? age = null)
+        string? age = null,
+        int? customerId = null)
     {
         if (_waveSession.IsReady && !_waveSession.NeedsBusinessReset)
             return null;
@@ -799,7 +838,7 @@ public class BillingController : Controller
             ? "Wave session expired. Reset Wave, then try again."
             : "Connect to Wave before sending or receiving invoices.";
 
-        return RedirectAfterInvoiceChange(year, month, returnTo, search, weeks, age);
+        return RedirectAfterInvoiceChange(year, month, returnTo, search, weeks, age, customerId);
     }
 
     private IActionResult RedirectAfterInvoiceChange(
@@ -808,10 +847,14 @@ public class BillingController : Controller
         string? returnTo,
         string? search,
         int? weeks,
-        string? age = null)
+        string? age = null,
+        int? customerId = null)
     {
         if (string.Equals(returnTo, nameof(Outstanding), StringComparison.OrdinalIgnoreCase))
             return RedirectToAction(nameof(Outstanding), new { search, weeks, age });
+
+        if (string.Equals(returnTo, "CustomerDetails", StringComparison.OrdinalIgnoreCase) && customerId.HasValue)
+            return RedirectToAction("Details", "Customers", new { id = customerId.Value, tab = "billings" });
 
         return RedirectToAction(nameof(Index), new { year, month });
     }

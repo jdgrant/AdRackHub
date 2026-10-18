@@ -1,0 +1,129 @@
+@model CustomerBillingsTabViewModel
+@{
+    var today = DateOnly.FromDateTime(DateTime.Today);
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="fw-semibold">Bills</div>
+    <a asp-controller="Billing" asp-action="Index" class="btn btn-sm btn-outline-secondary">Open billing</a>
+</div>
+
+<div class="row g-2 mb-3">
+    <div class="col-md-4">
+        <a asp-action="Details" asp-route-id="@Model.CustomerId" asp-route-tab="billings" class="stat-card-link">
+            <div class="card stat-card h-100 @(string.IsNullOrEmpty(Model.BillingStatus) ? "stat-card-current" : null)">
+                <div class="card-body py-2">
+                    <div class="text-muted small">All bills</div>
+                    <div class="h5 mb-0">@($"{Model.AllAmount:C0} / {Model.AllCount}")</div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-4">
+        <a asp-action="Details" asp-route-id="@Model.CustomerId" asp-route-tab="billings"
+           asp-route-billingStatus="@(Model.BillingStatus == CustomerBillingsTabViewModel.StatusOutstanding ? null : CustomerBillingsTabViewModel.StatusOutstanding)"
+           class="stat-card-link">
+            <div class="card stat-card warning h-100 @(Model.BillingStatus == CustomerBillingsTabViewModel.StatusOutstanding ? "stat-card-current" : null)">
+                <div class="card-body py-2">
+                    <div class="text-muted small">Not received</div>
+                    <div class="h5 mb-0">@($"{Model.NotReceivedAmount:C0} / {Model.NotReceivedCount}")</div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-4">
+        <a asp-action="Details" asp-route-id="@Model.CustomerId" asp-route-tab="billings"
+           asp-route-billingStatus="@(Model.BillingStatus == CustomerBillingsTabViewModel.StatusReceived ? null : CustomerBillingsTabViewModel.StatusReceived)"
+           class="stat-card-link">
+            <div class="card stat-card h-100 @(Model.BillingStatus == CustomerBillingsTabViewModel.StatusReceived ? "stat-card-current" : null)">
+                <div class="card-body py-2">
+                    <div class="text-muted small">Received</div>
+                    <div class="h5 mb-0">@($"{Model.ReceivedAmount:C0} / {Model.ReceivedCount}")</div>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+
+@if (Model.Invoices.Count == 0)
+{
+    <p class="text-muted mb-0">
+        @(Model.BillingStatus == CustomerBillingsTabViewModel.StatusOutstanding
+            ? "No bills are waiting to be received."
+            : Model.BillingStatus == CustomerBillingsTabViewModel.StatusReceived
+                ? "No received bills yet."
+                : "No bills have been sent yet.")
+    </p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Period</th>
+                    <th>Wave #</th>
+                    <th>Contracts</th>
+                    <th class="text-end">Amount</th>
+                    <th>Status</th>
+                    <th>Received</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var invoice in Model.Invoices)
+            {
+                var statusLabel = invoice.Status == BillingRunInvoiceStatus.Submitted ? "Not received" : invoice.Status.ToString();
+                var contractNames = string.Join(", ", invoice.Lines.Select(l => l.ContractName).Distinct().OrderBy(n => n));
+                <tr>
+                    <td>
+                        <a asp-controller="Billing" asp-action="Index"
+                           asp-route-year="@invoice.BillingRun.Year"
+                           asp-route-month="@invoice.BillingRun.Month">
+                            @BillingDueCalculator.PeriodLabel(invoice.BillingRun.Year, invoice.BillingRun.Month)
+                        </a>
+                    </td>
+                    <td>
+                        @(invoice.WaveInvoiceNumber ?? "—")
+                        @if (Model.InvoicePdfIds.Contains(invoice.Id))
+                        {
+                            <a class="ms-1" asp-controller="Billing" asp-action="InvoicePdf" asp-route-invoiceId="@invoice.Id">PDF</a>
+                        }
+                    </td>
+                    <td class="small">@contractNames</td>
+                    <td class="text-end">@invoice.TotalAmount.ToString("C")</td>
+                    <td>
+                        <span class="badge @(invoice.Status switch {
+                            BillingRunInvoiceStatus.Submitted => "bg-warning text-dark",
+                            BillingRunInvoiceStatus.Received => "bg-success",
+                            BillingRunInvoiceStatus.Canceled => "bg-dark",
+                            _ => "bg-secondary"
+                        })">@statusLabel</span>
+                    </td>
+                    <td>@(invoice.ReceivedDate?.ToString("MMM d, yyyy") ?? "—")</td>
+                    <td>
+                        @if (invoice.Status == BillingRunInvoiceStatus.Submitted)
+                        {
+                            <form asp-controller="Billing" asp-action="MarkInvoiceReceived" method="post" class="d-flex flex-wrap gap-1 align-items-center">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="year" value="@invoice.BillingRun.Year" />
+                                <input type="hidden" name="month" value="@invoice.BillingRun.Month" />
+                                <input type="hidden" name="invoiceId" value="@invoice.Id" />
+                                <input type="hidden" name="waveInvoiceNumber" value="@invoice.WaveInvoiceNumber" />
+                                <input type="hidden" name="returnTo" value="CustomerDetails" />
+                                <input type="hidden" name="customerId" value="@Model.CustomerId" />
+                                <input type="date" name="receivedDate" class="form-control form-control-sm"
+                                       value="@today.ToString("yyyy-MM-dd")" style="width: 9.5rem;"
+                                       @(Model.WaveConnected ? null : "disabled") />
+                                <button type="submit" class="btn btn-sm btn-success"
+                                        @(Model.WaveConnected ? null : "disabled")
+                                        title="@(Model.WaveConnected ? "Mark this bill received." : Model.WaveActionBlockedReason)">Receive</button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}

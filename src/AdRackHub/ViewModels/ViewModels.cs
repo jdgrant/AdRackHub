@@ -123,6 +123,25 @@ public class ContractedCustomerOption
     public string CustomerName { get; set; } = string.Empty;
 }
 
+public class CustomerBillingsTabViewModel
+{
+    public const string StatusOutstanding = "outstanding";
+    public const string StatusReceived = "received";
+
+    public int CustomerId { get; set; }
+    public string? BillingStatus { get; set; }
+    public List<BillingRunInvoice> Invoices { get; set; } = new();
+    public int AllCount { get; set; }
+    public int NotReceivedCount { get; set; }
+    public int ReceivedCount { get; set; }
+    public decimal AllAmount { get; set; }
+    public decimal NotReceivedAmount { get; set; }
+    public decimal ReceivedAmount { get; set; }
+    public bool WaveConnected { get; set; }
+    public string WaveActionBlockedReason { get; set; } = string.Empty;
+    public HashSet<int> InvoicePdfIds { get; set; } = new();
+}
+
 public class CustomerIndexSummary
 {
     public int ClientCount { get; set; }
@@ -194,4 +213,17 @@ public class RouteAssignCustomerViewModel
     public List<int> SelectedMonthNumbers { get; set; } = Enumerable.Range(1, 12).ToList();
     public List<StopSelectionItem> AvailableStops { get; set; } = new();
     public List<int> SelectedStopIds { get; set; } = new();
+}
+
+public class ReportsIndexViewModel
+{
+    public List<BrochureLabelClientRow> LabelClients { get; set; } = new();
+}
+
+public class BrochureLabelClientRow
+{
+    public int Id { get; set; }
+    public string CustomerName { get; set; } = string.Empty;
+    public string? BrochureCode { get; set; }
+    public DateTime? LastUpdated { get; set; }
 }
