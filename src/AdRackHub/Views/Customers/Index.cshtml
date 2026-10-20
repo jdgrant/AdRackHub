@@ -5,6 +5,7 @@
     var addLabel = isProspect ? "Add Prospect" : "Add Customer";
     var highValueFilter = ViewBag.HighValue as bool? == true;
     var needsMoreInfoFilter = ViewBag.NeedsMoreInfo as bool? == true;
+    var atRiskFilter = ViewBag.AtRisk as bool? == true;
     string ProspectFilterUrl(bool highValue = false, bool needsMoreInfo = false)
     {
         var qs = new List<string>();
@@ -25,7 +26,9 @@
             : needsMoreInfoFilter
                 ? "No prospects that need more info match your filters."
                 : "No prospects match your filters.")
-        : "No customers match your filters.";
+        : (atRiskFilter
+            ? "No at-risk customers match your filters."
+            : "No customers match your filters.");
 }
 
 <div class="page-header">
@@ -140,12 +143,27 @@ else
     {
         <input type="hidden" name="needsMoreInfo" value="true" />
     }
+    @if (!isProspect && atRiskFilter)
+    {
+        <input type="hidden" name="atRisk" value="true" />
+    }
     <div class="col-md-4">
         <input type="text" name="search" value="@ViewBag.Search" class="form-control" placeholder="Search by name or contact..." />
     </div>
     <div class="col-md-3">
-        <select name="status" class="form-select" asp-items="Html.GetEnumSelectList<CustomerStatus>()">
+        <select name="status" class="form-select">
             <option value="">All statuses</option>
+            @foreach (CustomerStatus statusOption in Enum.GetValues<CustomerStatus>())
+            {
+                if (ViewBag.Status is CustomerStatus selectedStatus && selectedStatus == statusOption)
+                {
+                    <option value="@statusOption" selected="selected">@statusOption</option>
+                }
+                else
+                {
+                    <option value="@statusOption">@statusOption</option>
+                }
+            }
         </select>
     </div>
     <div class="col-auto">
@@ -158,6 +176,13 @@ else
     <p class="text-muted mb-3">
         Showing @Model.Customers.Count @(highValueFilter ? "high value prospects" : "prospects that need more info").
         <a href="@ProspectFilterUrl()">Show all</a>
+    </p>
+}
+else if (!isProspect && atRiskFilter)
+{
+    <p class="text-muted mb-3">
+        Showing @Model.Customers.Count at-risk customer@(Model.Customers.Count == 1 ? "" : "s").
+        <a asp-controller="Customers" asp-action="Index">Show all</a>
     </p>
 }
 
@@ -178,6 +203,7 @@ else
                    asp-route-search="@ViewBag.Search" asp-route-status="@ViewBag.Status"
                    asp-route-highValue="@(highValueFilter ? "true" : "")"
                    asp-route-needsMoreInfo="@(needsMoreInfoFilter ? "true" : "")"
+                   asp-route-atRisk="@(atRiskFilter ? "true" : "")"
                    class="customer-card-link text-decoration-none text-body">
                     <div class="customer-card-thumb">
                         @if (previewScan?.IsImage == true)
@@ -210,7 +236,7 @@ else
                             <div class="small text-muted text-truncate mt-1" title="@item.Phone">@item.Phone</div>
                         }
                         <div class="d-flex justify-content-between align-items-center mt-1">
-                            <span class="badge @(item.Status == CustomerStatus.Active ? "bg-success" : "bg-secondary")">@item.Status</span>
+                            <span class="badge @item.Status.BadgeClass()">@item.Status</span>
                             @if (!isProspect)
                             {
                                 <span class="text-muted small">@activeRoutes route@(activeRoutes == 1 ? "" : "s")</span>

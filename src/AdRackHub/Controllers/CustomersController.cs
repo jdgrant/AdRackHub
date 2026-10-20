@@ -57,7 +57,7 @@ public class CustomersController : Controller
         _userManager = userManager;
     }
 
-    public async Task<IActionResult> Index(string? search, CustomerStatus? status)
+    public async Task<IActionResult> Index(string? search, CustomerStatus? status, bool atRisk = false)
     {
         var query = _context.Customers
             .AsNoTracking()
@@ -96,8 +96,12 @@ public class CustomersController : Controller
         if (status.HasValue)
             query = query.Where(c => c.Status == status.Value);
 
+        if (atRisk)
+            query = query.Where(c => c.IsAtRisk);
+
         ViewBag.Search = search;
         ViewBag.Status = status;
+        ViewBag.AtRisk = atRisk;
 
         var customers = await query.OrderBy(c => c.CustomerName).ToListAsync();
         CustomerListNavigation.Store(HttpContext.Session, new CustomerListNavState
@@ -105,6 +109,7 @@ public class CustomersController : Controller
             Type = CustomerType.Customer,
             Search = search,
             Status = status,
+            AtRisk = atRisk,
             Ids = customers.Select(c => c.Id).ToList()
         });
 
@@ -222,7 +227,7 @@ public class CustomersController : Controller
         };
     }
 
-    public async Task<IActionResult> Details(int? id, string? tab = null, string? search = null, CustomerStatus? status = null, bool highValue = false, bool needsMoreInfo = false, string? billingStatus = null)
+    public async Task<IActionResult> Details(int? id, string? tab = null, string? search = null, CustomerStatus? status = null, bool highValue = false, bool needsMoreInfo = false, bool atRisk = false, string? billingStatus = null)
     {
         if (id == null) return NotFound();
 
@@ -253,7 +258,7 @@ public class CustomersController : Controller
         ViewBag.AnnualRevenue = CustomerRevenue.GetAnnual(customer);
         if (CustomerTypeLabels.IsProspectLike(customer.Type))
             ViewBag.HighValueProximity = await _highValueProximity.GetNearestHitAsync(customer);
-        await PopulateListNavigationAsync(customer, search, status, highValue, needsMoreInfo);
+        await PopulateListNavigationAsync(customer, search, status, highValue, needsMoreInfo, atRisk);
         if (customer.Type == CustomerType.Customer)
         {
             ViewBag.ContractedCustomersByRoute = await GetContractedCustomersByRouteAsync();
@@ -262,19 +267,21 @@ public class CustomersController : Controller
         return View(customer);
     }
 
-    private async Task PopulateListNavigationAsync(Customer customer, string? search, CustomerStatus? status, bool highValue, bool needsMoreInfo)
+    private async Task PopulateListNavigationAsync(Customer customer, string? search, CustomerStatus? status, bool highValue, bool needsMoreInfo, bool atRisk)
     {
         var saved = CustomerListNavigation.Load(HttpContext.Session);
-        var hasQueryFilters = search != null || status.HasValue || highValue || needsMoreInfo
+        var hasQueryFilters = search != null || status.HasValue || highValue || needsMoreInfo || atRisk
             || Request.Query.ContainsKey("search")
             || Request.Query.ContainsKey("status")
             || Request.Query.ContainsKey("highValue")
-            || Request.Query.ContainsKey("needsMoreInfo");
+            || Request.Query.ContainsKey("needsMoreInfo")
+            || Request.Query.ContainsKey("atRisk");
 
         string? effectiveSearch;
         CustomerStatus? effectiveStatus;
         var effectiveHighValue = false;
         var effectiveNeedsMoreInfo = false;
+        var effectiveAtRisk = false;
         List<int> ids;
 
         if (hasQueryFilters)
@@ -283,8 +290,9 @@ public class CustomersController : Controller
             effectiveStatus = status;
             effectiveHighValue = highValue;
             effectiveNeedsMoreInfo = needsMoreInfo;
+            effectiveAtRisk = atRisk;
             ids = await CustomerListNavigation.GetOrderedIdsAsync(
-                _context, customer.Type, effectiveSearch, effectiveStatus, effectiveHighValue, effectiveNeedsMoreInfo, saved?.RouteId);
+                _context, customer.Type, effectiveSearch, effectiveStatus, effectiveHighValue, effectiveNeedsMoreInfo, saved?.RouteId, effectiveAtRisk);
         }
         else if (saved != null && saved.Type == customer.Type && saved.Ids.Count > 0)
         {
@@ -292,11 +300,12 @@ public class CustomersController : Controller
             effectiveStatus = saved.Status;
             effectiveHighValue = saved.HighValue;
             effectiveNeedsMoreInfo = saved.NeedsMoreInfo;
+            effectiveAtRisk = saved.AtRisk;
             ids = saved.Ids;
             if (!ids.Contains(customer.Id))
             {
                 ids = await CustomerListNavigation.GetOrderedIdsAsync(
-                    _context, customer.Type, effectiveSearch, effectiveStatus, effectiveHighValue, effectiveNeedsMoreInfo, saved.RouteId);
+                    _context, customer.Type, effectiveSearch, effectiveStatus, effectiveHighValue, effectiveNeedsMoreInfo, saved.RouteId, effectiveAtRisk);
             }
         }
         else
@@ -305,6 +314,7 @@ public class CustomersController : Controller
             effectiveStatus = null;
             effectiveHighValue = false;
             effectiveNeedsMoreInfo = false;
+            effectiveAtRisk = false;
             ids = await CustomerListNavigation.GetOrderedIdsAsync(_context, customer.Type, null, null);
         }
 
@@ -315,6 +325,7 @@ public class CustomersController : Controller
             Status = effectiveStatus,
             HighValue = effectiveHighValue,
             NeedsMoreInfo = effectiveNeedsMoreInfo,
+            AtRisk = effectiveAtRisk,
             RouteId = saved?.RouteId,
             Ids = ids
         });
@@ -328,6 +339,7 @@ public class CustomersController : Controller
         ViewBag.ListStatus = effectiveStatus;
         ViewBag.ListHighValue = effectiveHighValue;
         ViewBag.ListNeedsMoreInfo = effectiveNeedsMoreInfo;
+        ViewBag.ListAtRisk = effectiveAtRisk;
     }
 
     private static string NormalizeDetailTab(string? tab, bool isProspect)

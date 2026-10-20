@@ -6,7 +6,8 @@ namespace AdRackHub.Models;
 public enum CustomerStatus
 {
     Active,
-    Inactive
+    Inactive,
+    Proposed
 }
 
 public enum CustomerType
@@ -107,6 +108,13 @@ public static class EnumDisplay
 
     public static IEnumerable<CustomerNoteKind> ActivityKinds() =>
         Enum.GetValues<CustomerNoteKind>();
+
+    public static string BadgeClass(this CustomerStatus status) => status switch
+    {
+        CustomerStatus.Active => "bg-success",
+        CustomerStatus.Proposed => "bg-warning text-dark",
+        _ => "bg-secondary"
+    };
 }
 
 public enum CustomerTaskStatus

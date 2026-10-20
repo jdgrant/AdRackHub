@@ -129,6 +129,7 @@ public class CustomerContractsController : Controller
             BillingAnchorMonth = source.BillingAnchorMonth,
             ServiceMonthMask = source.ServiceMonthMask,
             AdvertisingSpaces = source.AdvertisingSpaces > 0 ? source.AdvertisingSpaces : 1,
+            IsProposal = source.IsProposal,
             Notes = source.Notes,
             InvoiceNotes = source.InvoiceNotes,
             DriversNotes = source.DriversNotes,
@@ -748,6 +749,15 @@ public class CustomerContractsController : Controller
 
         foreach (var customerRoute in existing.Where(cr => !activeRouteIds.Contains(cr.RouteId)))
             _context.CustomerRoutes.Remove(customerRoute);
+
+        var customer = await _context.Customers.FirstOrDefaultAsync(c => c.Id == customerId);
+        if (customer != null)
+        {
+            customer.Status = CustomerStatusRules.FromContracts(
+                customer.Status,
+                customer.Type,
+                contracts.Select(c => (c.IsProposal, c.ContractEndDate)));
+        }
 
         await _context.SaveChangesAsync();
 

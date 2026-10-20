@@ -12,9 +12,14 @@
         </div>
         <input type="hidden" asp-for="Contract.Term" />
         <div class="mb-3 form-check">
+            <input asp-for="Contract.IsProposal" class="form-check-input" id="contractIsProposal" />
+            <label asp-for="Contract.IsProposal" class="form-check-label"></label>
+            <div class="form-text">Prints as a proposal, not a signed contract. Proposals do not count as live contracted accounts and stay off billing unless you turn that on.</div>
+        </div>
+        <div class="mb-3 form-check">
             <input asp-for="SubmitToBilling" class="form-check-input" id="submitToBilling" />
             <label asp-for="SubmitToBilling" class="form-check-label"></label>
-            <div class="form-text">Turn this off to print a signed contract PDF without a next bill date. The contract will not appear in billing.</div>
+            <div class="form-text">Turn this off to print a PDF without a next bill date. The document will not appear in billing.</div>
         </div>
         <div class="mb-3" id="nextBillDateGroup">
             <label asp-for="Contract.NextBillDate" class="form-label"></label>
@@ -274,6 +279,16 @@
         if (submitToBilling) {
             submitToBilling.addEventListener('change', syncBillingFields);
             syncBillingFields();
+        }
+
+        const proposalInput = document.getElementById('contractIsProposal');
+        if (proposalInput && submitToBilling) {
+            proposalInput.addEventListener('change', function () {
+                if (proposalInput.checked) {
+                    submitToBilling.checked = false;
+                    syncBillingFields();
+                }
+            });
         }
 
         if (matchDatesButton && endDateInput) {

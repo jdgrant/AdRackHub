@@ -52,22 +52,33 @@ public class ContractAgreementPdfGenerator
             : products.Count == 1
                 ? "Exit"
                 : "Ad-Rack";
-        return $"{product} Contract - {customer}.pdf";
+        var kind = contract.IsProposal ? "Proposal" : "Contract";
+        return $"{product} {kind} - {customer}.pdf";
     }
 
     public static ContractAgreementPdfModel Build(CustomerContract contract)
     {
-        var months = AnnualBillingHelper.BillingMonths(contract);
+        var billingMonths = AnnualBillingHelper.BillingMonths(contract);
         var beginning = contract.ContractStartDate ?? contract.NextBillDate;
+        var ending = contract.ContractEndDate;
+        var periodMonths = BillingDueCalculator.ContractPeriodMonths(contract);
+        var dueMonths = Math.Min(Math.Max(billingMonths, 1), periodMonths);
         var lines = BuildRouteLines(contract);
         var monthlyTotal = lines.Where(l => l.Selected).Sum(l => l.MonthlyAmount);
         return new ContractAgreementPdfModel
         {
             CustomerName = (contract.Customer?.CustomerName ?? contract.ContractName).Trim(),
             MonthlyTotal = monthlyTotal,
+            AmountDue = AnnualBillingHelper.MonthlyRateToBillingPeriodAmount(monthlyTotal, dueMonths),
             AdvertisingSpaces = contract.AdvertisingSpaces > 0 ? contract.AdvertisingSpaces : 1,
-            PeriodLabel = $"{months} month{(months == 1 ? "" : "s")}",
+            PeriodLabel = $"{periodMonths} month{(periodMonths == 1 ? "" : "s")}",
             BeginningLabel = beginning?.ToString("MMMM d, yyyy", Us),
+            EndingLabel = ending?.ToString("MMMM d, yyyy", Us),
+            PaidPhrase = BillingTermDisplay.PaidInAdvancePhrase(billingMonths),
+            DocumentTitle = contract.IsProposal ? "PROPOSAL" : "CONTRACT",
+            DocumentNoun = contract.IsProposal ? "proposal" : "contract",
+            IsProposal = contract.IsProposal,
+            TermsText = contract.IsProposal ? WaveOptions.DefaultProposalTerms : WaveOptions.DefaultContractTerms,
             RestAreaLines = lines.Where(l => l.Product == RouteProduct.RestArea).ToList(),
             ExitLines = lines.Where(l => l.Product == RouteProduct.Exits).ToList()
         };
@@ -81,7 +92,7 @@ public class ContractAgreementPdfGenerator
         page.MarginTop(36);
         page.MarginBottom(40);
         page.DefaultTextStyle(text => text.FontSize(10).FontColor(Colors.Grey.Darken4));
-        page.Header().Element(header => ComposeHeader(header, product));
+        page.Header().Element(header => ComposeHeader(header, product, model));
         page.Content().PaddingTop(4).Column(col =>
         {
             col.Item().LineHorizontal(1).LineColor(Rule);
@@ -104,15 +115,15 @@ public class ContractAgreementPdfGenerator
                 totals.Item().PaddingTop(6).Row(due =>
                 {
                     due.RelativeItem().Text("Amount due (USD):").Bold().AlignRight();
-                    due.ConstantItem(78).Text(model.MonthlyTotal.ToString("C", Us)).Bold().AlignRight();
+                    due.ConstantItem(78).Text(model.AmountDue.ToString("C", Us)).Bold().AlignRight();
                 });
             });
-            col.Item().Extend().AlignBottom().Element(DrawSignatures);
+            col.Item().Extend().AlignBottom().Element(sig => DrawSignatures(sig, model));
         });
         page.Footer().Element(ComposeFooter);
     }
 
-    private void ComposeHeader(IContainer container, RouteProduct product)
+    private void ComposeHeader(IContainer container, RouteProduct product, ContractAgreementPdfModel model)
     {
         var subtitle = product == RouteProduct.RestArea
             ? "Rest Area Brochure Distribution"
@@ -137,8 +148,10 @@ public class ContractAgreementPdfGenerator
             row.RelativeItem().AlignRight().Column(col =>
             {
                 col.Spacing(2);
-                col.Item().Text("CONTRACT").FontFamily("Arial").FontSize(30).Bold().AlignRight();
+                col.Item().Text(model.DocumentTitle).FontFamily("Arial").FontSize(30).Bold().AlignRight();
                 col.Item().Text(subtitle).FontSize(8.5f).FontColor(Muted).AlignRight();
+                if (model.IsProposal)
+                    col.Item().Text("Not a signed contract").FontSize(8.5f).FontColor(Muted).AlignRight();
                 col.Item().PaddingTop(6).Column(addr =>
                 {
                     addr.Spacing(1);
@@ -203,7 +216,7 @@ public class ContractAgreementPdfGenerator
             {
                 text.Span("For the sum of ");
                 Blank(text, Money(model.MonthlyTotal), 16);
-                text.Span(" per month, paid quarterly in advance, Ad-Rack agrees to rent ");
+                text.Span($" per month, {model.PaidPhrase}, Ad-Rack agrees to rent ");
                 Blank(text, model.AdvertisingSpaces.ToString(Us), 6);
                 text.Span($" advertising space(s) per {spaceNoun} to ");
                 Blank(text, model.CustomerName, 28);
@@ -217,15 +230,20 @@ public class ContractAgreementPdfGenerator
             });
             col.Item().Text(text =>
             {
-                text.Span("The period of this contract is ");
+                text.Span($"The period of this {model.DocumentNoun} is ");
                 Blank(text, model.PeriodLabel, 16);
                 text.Span(" beginning ");
                 Blank(text, model.BeginningLabel, 22);
+                if (!string.IsNullOrWhiteSpace(model.EndingLabel))
+                {
+                    text.Span(" and ending ");
+                    Blank(text, model.EndingLabel, 22);
+                }
                 text.Span(".");
             });
             col.Item().Hyperlink(WaveOptions.DefaultTermsUrl).Text(text =>
             {
-                text.Span(WaveOptions.DefaultContractTerms + " ");
+                text.Span(model.TermsText + " ");
                 text.Span(DisplayTermsUrl(WaveOptions.DefaultTermsUrl)).FontColor(LinkBlue);
             });
         });
@@ -300,12 +318,12 @@ public class ContractAgreementPdfGenerator
         if (alignRight) text.AlignRight();
     }
 
-    private static void DrawSignatures(IContainer container)
+    private static void DrawSignatures(IContainer container, ContractAgreementPdfModel model)
     {
         container.PaddingBottom(16).Row(row =>
         {
             row.RelativeItem().PaddingRight(16).Text(
-                    "It is the responsibility of the lessee to supply a sufficient number of brochures to stock the display racks for the duration of this contract.")
+                    $"It is the responsibility of the lessee to supply a sufficient number of brochures to stock the display racks for the duration of this {model.DocumentNoun}.")
                 .FontSize(9).FontColor(Muted);
             row.RelativeItem().Column(col =>
             {
@@ -477,9 +495,16 @@ public sealed class ContractAgreementPdfModel
 {
     public string CustomerName { get; init; } = string.Empty;
     public decimal MonthlyTotal { get; init; }
+    public decimal AmountDue { get; init; }
     public int AdvertisingSpaces { get; init; } = 1;
     public string PeriodLabel { get; init; } = string.Empty;
     public string? BeginningLabel { get; init; }
+    public string? EndingLabel { get; init; }
+    public string PaidPhrase { get; init; } = "paid quarterly in advance";
+    public string DocumentTitle { get; init; } = "CONTRACT";
+    public string DocumentNoun { get; init; } = "contract";
+    public bool IsProposal { get; init; }
+    public string TermsText { get; init; } = WaveOptions.DefaultContractTerms;
     public IReadOnlyList<ContractAgreementRouteLine> RestAreaLines { get; init; } =
         Array.Empty<ContractAgreementRouteLine>();
     public IReadOnlyList<ContractAgreementRouteLine> ExitLines { get; init; } =

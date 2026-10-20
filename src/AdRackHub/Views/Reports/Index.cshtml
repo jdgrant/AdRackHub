@@ -30,9 +30,20 @@
         <div class="card h-100">
             <div class="card-body d-flex flex-column">
                 <h2 class="h5">Brochure labels</h2>
-                <p class="text-muted small flex-grow-1">Search and select clients, then print nametag-style warehouse labels for only those selected.</p>
+                <p class="text-muted small flex-grow-1">Pick a route or search clients, then print nametag-style warehouse labels for only those selected.</p>
                 <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#brochureLabelsModal">
                     Print labels
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-4">
+        <div class="card h-100">
+            <div class="card-body d-flex flex-column">
+                <h2 class="h5">Tote labels</h2>
+                <p class="text-muted small flex-grow-1">Same 4.3&quot; width as nametags, 2&quot; high. Client name and warehouse location only.</p>
+                <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#brochureLabelsModal">
+                    Print tote labels
                 </button>
             </div>
         </div>
@@ -81,14 +92,26 @@
             <form asp-action="BrochureLabelsPdf" method="post" id="brochure-labels-form">
                 @Html.AntiForgeryToken()
                 <div class="modal-header">
-                    <h5 class="modal-title" id="brochureLabelsModalTitle">Print warehouse labels</h5>
+                    <h5 class="modal-title" id="brochureLabelsModalTitle">Print labels</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted small">Only selected clients are printed. Newest warehouse or brochure updates are listed first.</p>
-                    <div class="mb-3">
-                        <label class="form-label" for="brochure-label-search">Search clients</label>
-                        <input type="search" id="brochure-label-search" class="form-control" placeholder="Name or brochure ID..." autocomplete="off" />
+                    <p class="text-muted small">Only selected clients are printed. Choose a route to show and select everyone on it. Nametags include the brochure thumbnail; tote labels are 2&quot; high with client and location only.</p>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="brochure-label-route">Route</label>
+                            <select id="brochure-label-route" class="form-select">
+                                <option value="">All routes</option>
+                                @foreach (var route in Model.LabelRoutes)
+                                {
+                                    <option value="@route.Id">@route.RouteName</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="brochure-label-search">Search clients</label>
+                            <input type="search" id="brochure-label-search" class="form-control" placeholder="Name or brochure ID..." autocomplete="off" />
+                        </div>
                     </div>
                     @if (Model.LabelClients.Count == 0)
                     {
@@ -111,8 +134,8 @@
                                 <tbody>
                                 @foreach (var client in Model.LabelClients)
                                 {
-                                    var search = $"{client.CustomerName} {client.BrochureCode}".ToLowerInvariant();
-                                    <tr data-label-row data-search="@search">
+                                    var search = $"{client.CustomerName} {client.BrochureCode} {string.Join(" ", client.RouteNames)}".ToLowerInvariant();
+                                    <tr data-label-row data-search="@search" data-route-ids="@string.Join(" ", client.RouteIds)">
                                         <td class="text-center">
                                             <input type="checkbox" class="form-check-input brochure-label-check"
                                                    name="customerIds" value="@client.Id"
@@ -124,6 +147,10 @@
                                             {
                                                 <div class="small text-muted">@client.BrochureCode</div>
                                             }
+                                            @if (client.RouteNames.Count > 0)
+                                            {
+                                                <div class="small text-muted">@string.Join(" · ", client.RouteNames)</div>
+                                            }
                                         </td>
                                         <td class="text-nowrap">
                                             @(client.LastUpdated?.ToLocalTime().ToString("MMM d, yyyy") ?? "—")
@@ -133,14 +160,15 @@
                                 </tbody>
                             </table>
                         </div>
-                        <p class="text-muted small mt-2 mb-0" id="brochure-label-empty" hidden>No clients match that search.</p>
+                        <p class="text-muted small mt-2 mb-0" id="brochure-label-empty" hidden>No clients match that route or search.</p>
                     }
                 </div>
                 <div class="modal-footer justify-content-between">
                     <span class="text-muted small" id="brochure-label-count">0 selected</span>
                     <div class="d-flex gap-2">
                         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary" id="brochure-label-print" disabled>Print selected</button>
+                        <button type="submit" class="btn btn-outline-primary brochure-label-print" disabled>Print nametags</button>
+                        <button type="submit" class="btn btn-primary brochure-label-print" asp-action="ToteLabelsPdf" disabled>Print tote labels</button>
                     </div>
                 </div>
             </form>
@@ -152,8 +180,9 @@
     <script>
         (function () {
             var search = document.getElementById('brochure-label-search');
+            var routeSelect = document.getElementById('brochure-label-route');
             var selectAll = document.getElementById('brochure-label-select-all');
-            var printBtn = document.getElementById('brochure-label-print');
+            var printBtns = Array.prototype.slice.call(document.querySelectorAll('.brochure-label-print'));
             var countEl = document.getElementById('brochure-label-count');
             var emptyEl = document.getElementById('brochure-label-empty');
             var rows = Array.prototype.slice.call(document.querySelectorAll('[data-label-row]'));
@@ -163,11 +192,19 @@
                 return rows.filter(function (row) { return !row.hidden; });
             }
 
+            function onRoute(row, routeId) {
+                if (!routeId) return true;
+                var ids = (row.getAttribute('data-route-ids') || '').split(/\s+/);
+                return ids.indexOf(routeId) !== -1;
+            }
+
             function sync() {
                 var query = (search.value || '').trim().toLowerCase();
+                var routeId = routeSelect ? routeSelect.value : '';
                 var shown = 0;
                 rows.forEach(function (row) {
-                    var match = !query || (row.getAttribute('data-search') || '').indexOf(query) !== -1;
+                    var match = (!query || (row.getAttribute('data-search') || '').indexOf(query) !== -1)
+                        && onRoute(row, routeId);
                     row.hidden = !match;
                     if (match) shown += 1;
                 });
@@ -185,10 +222,21 @@
 
                 var selected = document.querySelectorAll('.brochure-label-check:checked').length;
                 if (countEl) countEl.textContent = selected + ' selected';
-                if (printBtn) printBtn.disabled = selected === 0;
+                printBtns.forEach(function (btn) { btn.disabled = selected === 0; });
             }
 
             search.addEventListener('input', sync);
+            if (routeSelect) {
+                routeSelect.addEventListener('change', function () {
+                    sync();
+                    if (!routeSelect.value) return;
+                    visibleRows().forEach(function (row) {
+                        var box = row.querySelector('.brochure-label-check');
+                        if (box) box.checked = true;
+                    });
+                    sync();
+                });
+            }
             if (selectAll) {
                 selectAll.addEventListener('change', function () {
                     visibleRows().forEach(function (row) {

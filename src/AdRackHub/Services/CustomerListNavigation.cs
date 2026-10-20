@@ -12,6 +12,7 @@ public class CustomerListNavState
     public CustomerStatus? Status { get; set; }
     public bool HighValue { get; set; }
     public bool NeedsMoreInfo { get; set; }
+    public bool AtRisk { get; set; }
     public int? RouteId { get; set; }
     public List<int> Ids { get; set; } = new();
 }
@@ -32,7 +33,8 @@ public static class CustomerListNavigation
         CustomerStatus? status,
         bool highValue = false,
         bool needsMoreInfo = false,
-        int? routeId = null)
+        int? routeId = null,
+        bool atRisk = false)
     {
         query = query.Where(c => c.Type == type);
 
@@ -56,6 +58,9 @@ public static class CustomerListNavigation
         if (needsMoreInfo)
             query = query.Where(c => c.NeedsMoreInfo);
 
+        if (atRisk)
+            query = query.Where(c => c.IsAtRisk);
+
         if (routeId.HasValue)
             query = query.Where(c => c.ExpandedProspectRouteId == routeId.Value);
 
@@ -72,9 +77,10 @@ public static class CustomerListNavigation
         bool highValue = false,
         bool needsMoreInfo = false,
         int? routeId = null,
+        bool atRisk = false,
         CancellationToken cancellationToken = default)
     {
-        var query = ApplyListFilters(context.Set<Customer>().AsQueryable(), type, search, status, highValue, needsMoreInfo, routeId);
+        var query = ApplyListFilters(context.Set<Customer>().AsQueryable(), type, search, status, highValue, needsMoreInfo, routeId, atRisk);
         return await query.Select(c => c.Id).ToListAsync(cancellationToken);
     }
 

@@ -692,6 +692,9 @@ namespace AdRackHub.Data.Migrations
                     b.Property<DateTime?>("ContractEndDate")
                         .HasColumnType("date");
 
+                    b.Property<bool>("IsProposal")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime?>("ContractStartDate")
                         .HasColumnType("date");
 

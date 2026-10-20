@@ -218,6 +218,13 @@ public class RouteAssignCustomerViewModel
 public class ReportsIndexViewModel
 {
     public List<BrochureLabelClientRow> LabelClients { get; set; } = new();
+    public List<BrochureLabelRouteOption> LabelRoutes { get; set; } = new();
+}
+
+public class BrochureLabelRouteOption
+{
+    public int Id { get; set; }
+    public string RouteName { get; set; } = string.Empty;
 }
 
 public class BrochureLabelClientRow
@@ -226,4 +233,6 @@ public class BrochureLabelClientRow
     public string CustomerName { get; set; } = string.Empty;
     public string? BrochureCode { get; set; }
     public DateTime? LastUpdated { get; set; }
+    public List<int> RouteIds { get; set; } = new();
+    public List<string> RouteNames { get; set; } = new();
 }

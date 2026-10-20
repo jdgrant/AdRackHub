@@ -26,6 +26,9 @@ public static class BillingDueCalculator
 
     public static bool WouldBeDueOn(CustomerContract contract, DateOnly billDate, bool ignoreEndDate = false)
     {
+        if (contract.IsProposal)
+            return false;
+
         if (!contract.ContractRoutes.Any())
             return false;
 
@@ -124,8 +127,20 @@ public static class BillingDueCalculator
         return (end.Year - start.Year) * 12 + (end.Month - start.Month) + 1;
     }
 
+    public static int ContractPeriodMonths(CustomerContract contract)
+    {
+        var start = contract.ContractStartDate ?? contract.NextBillDate;
+        if (start.HasValue && contract.ContractEndDate.HasValue)
+            return Math.Max(InclusiveMonthCount(start.Value, contract.ContractEndDate.Value), 1);
+
+        return AnnualBillingHelper.BillingMonths(contract);
+    }
+
     public static bool IsActiveContract(CustomerContract contract, DateOnly? asOf = null)
     {
+        if (contract.IsProposal)
+            return false;
+
         asOf ??= DateOnly.FromDateTime(DateTime.Today);
         return !contract.ContractEndDate.HasValue || contract.ContractEndDate.Value >= asOf.Value;
     }

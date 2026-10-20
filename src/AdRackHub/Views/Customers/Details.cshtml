@@ -10,6 +10,7 @@
     var listStatus = ViewBag.ListStatus as CustomerStatus?;
     var listHighValue = ViewBag.ListHighValue as bool? == true;
     var listNeedsMoreInfo = ViewBag.ListNeedsMoreInfo as bool? == true;
+    var listAtRisk = ViewBag.ListAtRisk as bool? == true;
     var billingsTab = ViewBag.Billings as CustomerBillingsTabViewModel;
     string NoteStatusBadge(CustomerNoteStatus status) => status switch
     {
@@ -112,6 +113,7 @@
                        asp-route-status="@listStatus"
                        asp-route-highValue="@(listHighValue ? "true" : "")"
                        asp-route-needsMoreInfo="@(listNeedsMoreInfo ? "true" : "")"
+                       asp-route-atRisk="@(listAtRisk ? "true" : "")"
                        class="text-decoration-none">@listTitle</a>
                     <span class="mx-1">/</span>
                     <span>Record</span>
@@ -124,7 +126,7 @@
                 </h1>
                 <div class="d-flex flex-wrap gap-2 align-items-center">
                     <span class="badge @CustomerTypeLabels.BadgeClass(Model.Type)">@CustomerTypeLabels.Singular(Model.Type)</span>
-                    <span class="badge @(Model.Status == CustomerStatus.Active ? "bg-success" : "bg-secondary")">@Model.Status</span>
+                    <span class="badge @Model.Status.BadgeClass()">@Model.Status</span>
                     @if (!string.IsNullOrWhiteSpace(Model.BrochureCode))
                     {
                         <span class="badge bg-dark">@Model.BrochureCode</span>
@@ -214,6 +216,7 @@
                        asp-route-status="@listStatus"
                        asp-route-highValue="@(listHighValue ? "true" : "")"
                        asp-route-needsMoreInfo="@(listNeedsMoreInfo ? "true" : "")"
+                       asp-route-atRisk="@(listAtRisk ? "true" : "")"
                        class="btn btn-outline-secondary"
                        title="Previous in list">&lt;</a>
                 }
@@ -229,6 +232,7 @@
                        asp-route-status="@listStatus"
                        asp-route-highValue="@(listHighValue ? "true" : "")"
                        asp-route-needsMoreInfo="@(listNeedsMoreInfo ? "true" : "")"
+                       asp-route-atRisk="@(listAtRisk ? "true" : "")"
                        class="btn btn-outline-secondary"
                        title="Next in list">&gt;</a>
                 }
@@ -247,6 +251,7 @@
                asp-route-status="@listStatus"
                asp-route-highValue="@(listHighValue ? "true" : "")"
                asp-route-needsMoreInfo="@(listNeedsMoreInfo ? "true" : "")"
+               asp-route-atRisk="@(listAtRisk ? "true" : "")"
                class="btn btn-outline-secondary">Back</a>
         </div>
     </div>
@@ -988,6 +993,10 @@
                                             <tr class="@(isExpired ? "text-muted" : "")">
                                                 <td>
                                                     @contract.ContractName
+                                                    @if (contract.IsProposal)
+                                                    {
+                                                        <span class="badge text-bg-warning text-dark ms-1">Proposal</span>
+                                                    }
                                                     <form asp-controller="CustomerContracts" asp-action="SaveInvoiceNotes" method="post" class="d-flex gap-1 align-items-center mt-1">
                                                         <input type="hidden" name="id" value="@contract.Id" />
                                                         <input type="text" name="invoiceNotes" class="form-control form-control-sm" maxlength="1000" placeholder="Invoice notes" value="@contract.InvoiceNotes" style="max-width: 14rem;" />
@@ -1051,7 +1060,7 @@
                                                 </td>
                                                 <td class="text-end">@total.ToString("C")</td>
                                                 <td class="text-end text-nowrap">
-                                                    <a asp-controller="CustomerContracts" asp-action="AgreementPdf" asp-route-id="@contract.Id" class="btn btn-sm btn-outline-secondary" target="_blank">Contract PDF</a>
+                                                    <a asp-controller="CustomerContracts" asp-action="AgreementPdf" asp-route-id="@contract.Id" class="btn btn-sm btn-outline-secondary" target="_blank">@(contract.IsProposal ? "Proposal PDF" : "Contract PDF")</a>
                                                     <a asp-controller="CustomerContracts" asp-action="Duplicate" asp-route-id="@contract.Id" class="btn btn-sm btn-outline-secondary">Duplicate</a>
                                                     <a asp-controller="CustomerContracts" asp-action="Edit" asp-route-id="@contract.Id" class="btn btn-sm btn-outline-primary">Edit</a>
                                                     <a asp-controller="CustomerContracts" asp-action="Delete" asp-route-id="@contract.Id" class="btn btn-sm btn-outline-danger">Delete</a>

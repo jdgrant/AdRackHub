@@ -37,6 +37,9 @@ public class CustomerContract
     [Display(Name = "Contract End Date")]
     public DateOnly? ContractEndDate { get; set; }
 
+    [Display(Name = "This is a proposal")]
+    public bool IsProposal { get; set; }
+
     [Display(Name = "Beginning Date")]
     public DateOnly? ContractStartDate { get; set; }
 

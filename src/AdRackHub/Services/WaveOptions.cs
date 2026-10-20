@@ -60,6 +60,8 @@ public class WaveOptions
         "Payment of this invoice constitutes acceptance of and agreement to Terms and Conditions. Please note new payment information below.";
     public const string DefaultContractTerms =
         "Signing this contract constitutes acceptance of and agreement to Terms and Conditions.";
+    public const string DefaultProposalTerms =
+        "This proposal is not a signed contract. Accepting this proposal constitutes agreement to Terms and Conditions.";
 
     public const string PaymentChangeNotice =
         "Please note: Our mailing address and ACH payment account have changed. To avoid delays, please update any payment information you have saved and use the details below for future payments.";

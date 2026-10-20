@@ -106,6 +106,7 @@ builder.Services.AddSingleton<ContractAgreementPdfGenerator>();
 builder.Services.AddScoped<RouteCustomerReportPdfGenerator>();
 builder.Services.AddScoped<BrochureLabelIdService>();
 builder.Services.AddScoped<BrochureLabelPdfGenerator>();
+builder.Services.AddScoped<ToteLabelPdfGenerator>();
 builder.Services.AddScoped<DriverNotesSheetImportService>();
 builder.Services.AddScoped<BrochureOptimizeService>();
 builder.Services.AddScoped<ProspectHotelDiscoveryService>();

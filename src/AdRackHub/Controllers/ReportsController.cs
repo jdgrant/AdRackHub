@@ -14,6 +14,7 @@ public class ReportsController : Controller
     private readonly ApplicationDbContext _context;
     private readonly RouteCustomerReportPdfGenerator _routeCustomerReportPdf;
     private readonly BrochureLabelPdfGenerator _brochureLabelPdf;
+    private readonly ToteLabelPdfGenerator _toteLabelPdf;
     private readonly BrochureWarehouseSheetService _warehouseSheet;
     private readonly BrochureInventoryReportService _inventoryReport;
 
@@ -21,21 +22,25 @@ public class ReportsController : Controller
         ApplicationDbContext context,
         RouteCustomerReportPdfGenerator routeCustomerReportPdf,
         BrochureLabelPdfGenerator brochureLabelPdf,
+        ToteLabelPdfGenerator toteLabelPdf,
         BrochureWarehouseSheetService warehouseSheet,
         BrochureInventoryReportService inventoryReport)
     {
         _context = context;
         _routeCustomerReportPdf = routeCustomerReportPdf;
         _brochureLabelPdf = brochureLabelPdf;
+        _toteLabelPdf = toteLabelPdf;
         _warehouseSheet = warehouseSheet;
         _inventoryReport = inventoryReport;
     }
 
     public async Task<IActionResult> Index(CancellationToken cancellationToken)
     {
+        var labelClients = await LoadLabelClientsAsync(cancellationToken);
         var model = new ReportsIndexViewModel
         {
-            LabelClients = await LoadLabelClientsAsync(cancellationToken)
+            LabelClients = labelClients,
+            LabelRoutes = await LoadLabelRoutesAsync(labelClients, cancellationToken)
         };
         return View(model);
     }
@@ -80,6 +85,28 @@ public class ReportsController : Controller
         return File(pdf, "application/pdf", $"Brochure-labels-nametags-{DateTime.Today:yyyyMMdd}.pdf");
     }
 
+    [HttpGet]
+    public IActionResult ToteLabelsPdf()
+    {
+        TempData["Error"] = "Select one or more clients to print tote labels.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ToteLabelsPdf(int[]? customerIds, CancellationToken cancellationToken)
+    {
+        var ids = customerIds?.Where(id => id > 0).Distinct().ToArray() ?? Array.Empty<int>();
+        if (ids.Length == 0)
+        {
+            TempData["Error"] = "Select one or more clients to print tote labels.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var pdf = await _toteLabelPdf.BuildAsync(ids, cancellationToken);
+        return File(pdf, "application/pdf", $"Tote-labels-{DateTime.Today:yyyyMMdd}.pdf");
+    }
+
     private async Task<List<BrochureLabelClientRow>> LoadLabelClientsAsync(CancellationToken cancellationToken)
     {
         var rows = await _context.Customers
@@ -91,7 +118,10 @@ public class ReportsController : Controller
                 c.CustomerName,
                 c.BrochureCode,
                 LastInventoryAt = c.BrochureInventories.Max(i => (DateTime?)i.CreatedAt),
-                LastScanAt = c.BrochureScans.Max(s => (DateTime?)s.UploadedAt)
+                LastScanAt = c.BrochureScans.Max(s => (DateTime?)s.UploadedAt),
+                Routes = c.CustomerRoutes
+                    .Where(cr => cr.Status == CustomerRouteStatus.Active)
+                    .Select(cr => new { cr.RouteId, cr.Route.RouteName })
             })
             .ToListAsync(cancellationToken);
 
@@ -103,12 +133,39 @@ public class ReportsController : Controller
                 BrochureCode = row.BrochureCode,
                 LastUpdated = row.LastInventoryAt.HasValue && row.LastScanAt.HasValue
                     ? (row.LastInventoryAt > row.LastScanAt ? row.LastInventoryAt : row.LastScanAt)
-                    : row.LastInventoryAt ?? row.LastScanAt
+                    : row.LastInventoryAt ?? row.LastScanAt,
+                RouteIds = row.Routes.Select(r => r.RouteId).Distinct().ToList(),
+                RouteNames = row.Routes
+                    .Select(r => r.RouteName)
+                    .Where(name => !string.IsNullOrWhiteSpace(name))
+                    .Distinct()
+                    .OrderBy(name => name)
+                    .ToList()
             })
             .OrderByDescending(row => row.LastUpdated.HasValue)
             .ThenByDescending(row => row.LastUpdated)
             .ThenBy(row => row.CustomerName)
             .ToList();
+    }
+
+    private async Task<List<BrochureLabelRouteOption>> LoadLabelRoutesAsync(
+        IReadOnlyList<BrochureLabelClientRow> clients,
+        CancellationToken cancellationToken)
+    {
+        var routeIds = clients.SelectMany(c => c.RouteIds).Distinct().ToList();
+        if (routeIds.Count == 0)
+            return new List<BrochureLabelRouteOption>();
+
+        return await _context.Routes
+            .AsNoTracking()
+            .Where(r => routeIds.Contains(r.Id))
+            .OrderBy(r => r.RouteName)
+            .Select(r => new BrochureLabelRouteOption
+            {
+                Id = r.Id,
+                RouteName = r.RouteName
+            })
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<IActionResult> WarehouseSheet(CancellationToken cancellationToken)

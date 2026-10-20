@@ -11,7 +11,7 @@
     <button type="submit" class="btn btn-primary">Save Contract</button>
     @if (Model.Contract.Id > 0)
     {
-        <a asp-action="AgreementPdf" asp-route-id="@Model.Contract.Id" class="btn btn-outline-primary" target="_blank">Print contract PDF</a>
+        <a asp-action="AgreementPdf" asp-route-id="@Model.Contract.Id" class="btn btn-outline-primary" target="_blank">@(Model.Contract.IsProposal ? "Print proposal PDF" : "Print contract PDF")</a>
         <a asp-action="Duplicate" asp-route-id="@Model.Contract.Id" class="btn btn-outline-secondary">Duplicate</a>
     }
     <a asp-controller="Customers" asp-action="Details" asp-route-id="@customerId" class="btn btn-outline-secondary">Cancel</a>
