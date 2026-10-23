@@ -78,14 +78,14 @@ public class KyBrochureProspectImportService
             .Select(c => new { c.Id, c.CustomerName, c.Type })
             .ToListAsync(cancellationToken);
 
-        var customerIdByName = customersByName
+        var customerMatchByName = customersByName
             .Where(c => !string.IsNullOrWhiteSpace(c.CustomerName))
             .GroupBy(c => NormalizeName(c.CustomerName), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 g => g.Key,
                 g => g.OrderBy(c => c.Type == CustomerType.Customer ? 0 : 1)
                     .ThenByDescending(c => c.Id)
-                    .First().Id,
+                    .First(),
                 StringComparer.OrdinalIgnoreCase);
 
         foreach (var group in groups)
@@ -95,12 +95,23 @@ public class KyBrochureProspectImportService
             var key = NormalizeName(attractionName);
 
             int customerId;
+            var replaceExistingScans = false;
             if (existingLookup.Contains(key))
             {
-                result.SkippedExisting++;
-                result.SkippedNames.Add(attractionName);
-                if (!customerIdByName.TryGetValue(key, out customerId))
+                if (!customerMatchByName.TryGetValue(key, out var match))
                     continue;
+                customerId = match.Id;
+                if (match.Type == CustomerType.Customer)
+                {
+                    replaceExistingScans = true;
+                    result.UpdatedExisting++;
+                    result.UpdatedNames.Add(attractionName);
+                }
+                else
+                {
+                    result.SkippedExisting++;
+                    result.SkippedNames.Add(attractionName);
+                }
             }
             else if (!createMissing)
             {
@@ -125,7 +136,7 @@ public class KyBrochureProspectImportService
                 await _context.SaveChangesAsync(cancellationToken);
 
                 existingLookup.Add(key);
-                customerIdByName[key] = customer.Id;
+                customerMatchByName[key] = new { customer.Id, customer.CustomerName, customer.Type };
                 customerId = customer.Id;
                 result.Created++;
 
@@ -151,6 +162,25 @@ public class KyBrochureProspectImportService
 
                 await _context.SaveChangesAsync(cancellationToken);
                 result.CreatedNames.Add(attractionName);
+            }
+
+            if (replaceExistingScans)
+            {
+                var oldScanIds = await _context.CustomerBrochureScans
+                    .Where(s => s.CustomerId == customerId)
+                    .Select(s => s.Id)
+                    .ToListAsync(cancellationToken);
+                foreach (var scanId in oldScanIds)
+                {
+                    try
+                    {
+                        await _brochureScanService.DeleteAsync(scanId, cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Could not delete old scan {ScanId} for customer {CustomerId}", scanId, customerId);
+                    }
+                }
             }
 
             var existingOriginals = await _context.CustomerBrochureScans
@@ -353,9 +383,11 @@ public class KyBrochureProspectImportResult
     public int UniqueAttractions { get; set; }
     public int Created { get; set; }
     public int SkippedExisting { get; set; }
+    public int UpdatedExisting { get; set; }
     public int BrochuresAttached { get; set; }
     public List<string> CreatedNames { get; } = new();
     public List<string> SkippedNames { get; } = new();
+    public List<string> UpdatedNames { get; } = new();
     public List<string> UnmatchedNames { get; } = new();
     public List<string> MissingScanFiles { get; } = new();
     public List<string> BrochureErrors { get; } = new();

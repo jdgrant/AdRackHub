@@ -16,7 +16,7 @@ public static class AgentApiGuide
         return """
             # AdRackHub agent API
 
-            Use this API to list, add, and update customers and prospects, including their contacts.
+            Use this API to list, add, and update customers and prospects, including their contacts. It can also read open activities and log a stop visit with the driver and before and after photos.
 
             Base URL: `BASE_URL`
 
@@ -40,7 +40,9 @@ public static class AgentApiGuide
             7. Select Create as a plugin, then install it.
             8. When ChatGPT asks to connect, sign in to AdRackHub as an admin and choose Allow.
 
-            The plugin tools are `search_customers`, `get_customer`, `create_customer`, `update_customer`, `add_contact`, and `update_contact`. New records default to Prospect. Creating a Customer, or changing a Prospect to Customer, assigns a brochure id and sends the customer to Wave. There is no delete tool.
+            The plugin tools are `search_customers`, `get_customer`, `create_customer`, `update_customer`, `add_contact`, `update_contact`, `list_activities`, `search_stops`, `list_visits`, and `log_stop_visit`. New records default to Prospect. Creating a Customer, or changing a Prospect to Customer, assigns a brochure id and sends the customer to Wave. There is no delete tool.
+
+            `list_activities` reads open Hub tasks and email follow-ups. `log_stop_visit` records the driver and the before and after photos. Pass each email image attachment as base64.
 
             Search before creating. If create returns possible duplicates, do not create another record until the user picks one, or call create again with `acknowledgeDuplicateIds` set to every returned id.
 
@@ -79,10 +81,13 @@ public static class AgentApiGuide
             - Update a customer or prospect.
             - Add a contact.
             - Update a contact.
+            - List activities. Open tasks and email follow-ups are included by default.
+            - Search stops and list visits.
+            - Log a stop visit with the driver and before and after photos.
 
-            Do not send DELETE. Delete requests return HTTP 405. This API cannot delete customers, prospects, or contacts.
+            Do not send DELETE. Delete requests return HTTP 405. This API cannot delete records.
 
-            Billing, contracts, routes, stops, warehouse bins, notes, and tasks are outside this API.
+            Billing, contracts, and warehouse bins are outside this API. Activities are read-only. A stop visit can be logged with photos.
 
             ## Records
 
@@ -227,6 +232,53 @@ public static class AgentApiGuide
             Writable fields: `name`, `firstName`, `lastName`, `title`, `email`, `phone`, `cellPhone`, `address`, `city`, `state`, `zip`, `webUrl`, `linkedInUrl`, `role`, `sendInvoice`.
 
             The response is HTTP 200 and the full customer or prospect, including every contact.
+
+            ## Activities
+
+            `GET /api/agent/activities`
+
+            Use this for a twice-daily review. The default `status` is `open`, which means `New` and `Working`. That includes tasks and email follow-ups along with other open notes.
+
+            Query parameters:
+
+            - `status` — `open` (default), `all`, `New`, `Working`, or `Done`.
+            - `kind` — `Note`, `Call`, `Email`, `Meeting`, `Action`, `Task`, `BrochuresNeeded`, or `all`.
+            - `customerId` — limit to one customer or prospect.
+            - `search` — matches the note, the business name, or who logged it.
+            - `page` and `pageSize` — same limits as the customer list.
+
+            Each item includes `customerId`, `customerName`, `kind`, `status`, `dueDate`, `body`, `createdAt`, `createdBy`, `isOverdue`, and `hubUrl`.
+
+            ## Stops
+
+            `GET /api/agent/stops`
+
+            `search` matches the stop name, route name, city, or highway exit. `routeId` limits the list to one route. Use the returned `id` as `stopId` when logging a visit.
+
+            ## Visits
+
+            `GET /api/agent/visits` lists recent visits. Optional filters are `stopId` and `routeId`.
+
+            `POST /api/agent/visits` logs one visit. The plugin tool with the same job is `log_stop_visit`.
+
+            ```json
+            {
+              "stopId": 12,
+              "driverName": "Sam Rivera",
+              "visitedAt": "2026-10-22T18:30:00Z",
+              "notes": "Restocked the rack",
+              "beforeFileName": "before.jpg",
+              "beforeImageBase64": "<base64 from the email attachment>",
+              "afterFileName": "after.jpg",
+              "afterImageBase64": "<base64 from the email attachment>"
+            }
+            ```
+
+            Send `stopId`, or `stopName` plus an optional `routeName` when that pair matches one stop. `driverName` is required. `visitedAt` is optional and defaults to now. Both photos are required. Each one is a JPG, PNG, GIF, or WEBP image, 8 MB or smaller. A data URL (`data:image/jpeg;base64,...`) is accepted. The bytes are checked, so a renamed file that is not an image is rejected.
+
+            If several stops match, the response is HTTP 409 and nothing is saved. Call `GET /api/agent/stops` and send `stopId`.
+
+            The saved visit includes the driver, who logged it, and links to the before and after photos. Those photo links require an AdRackHub login.
 
             ## Fields
 
@@ -413,6 +465,11 @@ public static class AgentApiGuide
         var customerRef = "#/components/schemas/Customer";
         var writeRef = "#/components/schemas/CustomerWrite";
         var contactWriteRef = "#/components/schemas/ContactWrite";
+        var activityListRef = "#/components/schemas/ActivityList";
+        var stopListRef = "#/components/schemas/StopList";
+        var visitListRef = "#/components/schemas/VisitList";
+        var visitRef = "#/components/schemas/Visit";
+        var visitWriteRef = "#/components/schemas/VisitWrite";
         JsonObject ErrorResponse() => Response("Invalid request.", errorRef);
         JsonObject Unauthorized() => Response("Missing or wrong API key.", errorRef);
         JsonObject NotFound() => Response("No record with that id.", errorRef);
@@ -424,7 +481,7 @@ public static class AgentApiGuide
             {
                 ["title"] = "AdRackHub Agent API",
                 ["version"] = "1.0.0",
-                ["description"] = "List, create, and update customers and prospects, including contacts. Delete is not available. Read /docs/agent.html for the full guide."
+                ["description"] = "List, create, and update customers and prospects, including contacts. Read activities. Log a stop visit with before and after photos. Delete is not available. Read /docs/agent.html for the full guide."
             },
             ["servers"] = new JsonArray { new JsonObject { ["url"] = baseUrl.TrimEnd('/') } },
             ["security"] = new JsonArray
@@ -501,6 +558,59 @@ public static class AgentApiGuide
                         ["401"] = Unauthorized(),
                         ["404"] = NotFound()
                     })
+                },
+                ["/api/agent/activities"] = new JsonObject
+                {
+                    ["get"] = Operation("listActivities", "List activities. Default status is open, which includes tasks and email follow-ups.", new JsonArray
+                    {
+                        QueryParam("status", "open, all, New, Working, or Done."),
+                        QueryParam("kind", "Note, Call, Email, Meeting, Action, Task, BrochuresNeeded, or all."),
+                        QueryParam("customerId", "Limit to one customer or prospect.", "integer"),
+                        QueryParam("search", "Note text, business name, or who logged it."),
+                        QueryParam("page", "Page number, starting at 1.", "integer"),
+                        QueryParam("pageSize", "Default 50. Maximum 100.", "integer")
+                    }, new JsonObject
+                    {
+                        ["200"] = Response("A page of activities.", activityListRef),
+                        ["400"] = ErrorResponse(),
+                        ["401"] = Unauthorized()
+                    })
+                },
+                ["/api/agent/stops"] = new JsonObject
+                {
+                    ["get"] = Operation("searchStops", "Find a stop before logging a visit.", new JsonArray
+                    {
+                        QueryParam("search", "Stop name, route name, city, or highway exit."),
+                        QueryParam("routeId", "Limit to one route.", "integer"),
+                        QueryParam("page", "Page number, starting at 1.", "integer"),
+                        QueryParam("pageSize", "Default 50. Maximum 100.", "integer")
+                    }, new JsonObject
+                    {
+                        ["200"] = Response("A page of stops.", stopListRef),
+                        ["401"] = Unauthorized()
+                    })
+                },
+                ["/api/agent/visits"] = new JsonObject
+                {
+                    ["get"] = Operation("listVisits", "List stop visits, including the driver and photo links.", new JsonArray
+                    {
+                        QueryParam("stopId", "Limit to one stop.", "integer"),
+                        QueryParam("routeId", "Limit to one route.", "integer"),
+                        QueryParam("page", "Page number, starting at 1.", "integer"),
+                        QueryParam("pageSize", "Default 50. Maximum 100.", "integer")
+                    }, new JsonObject
+                    {
+                        ["200"] = Response("A page of visits.", visitListRef),
+                        ["401"] = Unauthorized()
+                    }),
+                    ["post"] = Operation("logVisit", "Log a stop visit with the driver and before and after photos. Pass email attachments as base64.", null, visitWriteRef, new JsonObject
+                    {
+                        ["201"] = Response("The saved visit.", visitRef),
+                        ["400"] = ErrorResponse(),
+                        ["401"] = Unauthorized(),
+                        ["404"] = NotFound(),
+                        ["409"] = Response("More than one stop matches. Nothing was saved.", errorRef)
+                    })
                 }
             },
             ["components"] = new JsonObject
@@ -542,6 +652,98 @@ public static class AgentApiGuide
                     ["CustomerWrite"] = CustomerSchema(includeId: false),
                     ["Contact"] = ContactSchema(includeId: true),
                     ["ContactWrite"] = ContactSchema(includeId: false),
+                    ["ActivityList"] = PageSchema("#/components/schemas/Activity"),
+                    ["Activity"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["id"] = IntProp(),
+                            ["customerId"] = IntProp(),
+                            ["customerName"] = StringProp("Business name."),
+                            ["customerType"] = StringProp("Customer, Prospect, or ExpandedProspect."),
+                            ["kind"] = StringProp("Note, Call, Email, Meeting, Action, Task, or BrochuresNeeded."),
+                            ["status"] = StringProp("New, Working, or Done."),
+                            ["dueDate"] = StringProp("yyyy-MM-dd, or null."),
+                            ["body"] = StringProp("Activity text."),
+                            ["createdAt"] = StringProp("When it was logged."),
+                            ["createdBy"] = StringProp("Who logged it."),
+                            ["isOverdue"] = new JsonObject { ["type"] = "boolean" },
+                            ["hubUrl"] = StringProp("Link to the customer in AdRackHub.")
+                        }
+                    },
+                    ["StopList"] = PageSchema("#/components/schemas/Stop"),
+                    ["Stop"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["id"] = IntProp(),
+                            ["stopName"] = StringProp("Stop name."),
+                            ["routeId"] = IntProp(),
+                            ["routeName"] = StringProp("Route name."),
+                            ["city"] = StringProp("City."),
+                            ["state"] = StringProp("State."),
+                            ["highwayExit"] = StringProp("Highway or exit."),
+                            ["lastVisitedAt"] = StringProp("Last visit time."),
+                            ["hubUrl"] = StringProp("Link to the stop in AdRackHub.")
+                        }
+                    },
+                    ["VisitList"] = PageSchema("#/components/schemas/Visit"),
+                    ["Visit"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["id"] = IntProp(),
+                            ["stopId"] = IntProp(),
+                            ["stopName"] = StringProp("Stop name."),
+                            ["routeId"] = IntProp(),
+                            ["routeName"] = StringProp("Route name."),
+                            ["visitedAt"] = StringProp("When the visit happened."),
+                            ["driverName"] = StringProp("Driver who made the visit."),
+                            ["visitedByName"] = StringProp("Who logged the visit."),
+                            ["notes"] = StringProp("Optional note."),
+                            ["hubUrl"] = StringProp("Link to the stop in AdRackHub."),
+                            ["photos"] = new JsonObject
+                            {
+                                ["type"] = "array",
+                                ["items"] = new JsonObject { ["$ref"] = "#/components/schemas/VisitPhoto" }
+                            }
+                        }
+                    },
+                    ["VisitPhoto"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["id"] = IntProp(),
+                            ["kind"] = StringProp("Before or After."),
+                            ["fileName"] = StringProp("Original file name."),
+                            ["contentType"] = StringProp("Image type."),
+                            ["hubUrl"] = StringProp("Photo link. Requires an AdRackHub login.")
+                        }
+                    },
+                    ["VisitWrite"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["required"] = new JsonArray { "driverName", "beforeImageBase64", "afterImageBase64" },
+                        ["properties"] = new JsonObject
+                        {
+                            ["stopId"] = IntProp(),
+                            ["routeName"] = StringProp("Used with stopName when stopId is omitted."),
+                            ["stopName"] = StringProp("Used when stopId is omitted."),
+                            ["driverName"] = StringProp("Driver who made the visit."),
+                            ["visitedAt"] = StringProp("ISO-8601 date and time. Omit for now."),
+                            ["notes"] = StringProp("Optional note, up to 1000 characters."),
+                            ["beforeFileName"] = StringProp("Original before file name."),
+                            ["beforeContentType"] = StringProp("Optional. The image type is detected from the bytes."),
+                            ["beforeImageBase64"] = StringProp("Before photo from the email, as base64 or a data URL."),
+                            ["afterFileName"] = StringProp("Original after file name."),
+                            ["afterContentType"] = StringProp("Optional. The image type is detected from the bytes."),
+                            ["afterImageBase64"] = StringProp("After photo from the email, as base64 or a data URL.")
+                        }
+                    },
                     ["Error"] = new JsonObject
                     {
                         ["type"] = "object",
@@ -622,6 +824,24 @@ public static class AgentApiGuide
         ["in"] = "path",
         ["required"] = true,
         ["schema"] = new JsonObject { ["type"] = "integer" }
+    };
+
+    private static JsonObject PageSchema(string itemRef) => new()
+    {
+        ["type"] = "object",
+        ["properties"] = new JsonObject
+        {
+            ["page"] = IntProp(),
+            ["pageSize"] = IntProp(),
+            ["total"] = IntProp(),
+            ["totalPages"] = IntProp(),
+            ["hasMore"] = new JsonObject { ["type"] = "boolean" },
+            ["items"] = new JsonObject
+            {
+                ["type"] = "array",
+                ["items"] = new JsonObject { ["$ref"] = itemRef }
+            }
+        }
     };
 
     private static JsonObject IntProp() => new() { ["type"] = "integer" };

@@ -46,6 +46,7 @@ public class BrochureLabelPdfGenerator
             .Where(c => c.Type == CustomerType.Customer && c.Status == CustomerStatus.Active)
             .Include(c => c.BrochureScans)
             .Include(c => c.WarehouseLocations)
+            .Include(c => c.Contracts)
             .Include(c => c.CustomerRoutes)
                 .ThenInclude(cr => cr.Route)
             .AsSplitQuery();
@@ -140,6 +141,7 @@ public class BrochureLabelPdfGenerator
                 Code = customer.BrochureCode ?? string.Empty,
                 LocationLines = locationLines,
                 Routes = routes,
+                DriversNotes = DriversNotesLine(customer),
                 ImagePath = scan == null ? null : _brochureScans.ResolveFilePath(scan, _environment)
             };
         }
@@ -192,47 +194,67 @@ public class BrochureLabelPdfGenerator
         if (label == null)
             return;
 
-        box.Row(content =>
+        box.Decoration(decoration =>
         {
-            content.ConstantItem(1.5f, Unit.Inch).PaddingRight(8).Element(thumb =>
+            if (!string.IsNullOrWhiteSpace(label.DriversNotes))
             {
-                if (!string.IsNullOrWhiteSpace(label.ImagePath) && File.Exists(label.ImagePath))
-                {
-                    thumb.AlignCenter().AlignMiddle().Image(label.ImagePath).FitArea();
-                    return;
-                }
+                decoration.After().PaddingTop(4).Text(label.DriversNotes)
+                    .FontSize(8);
+            }
 
-                thumb.Border(0.5f)
-                    .BorderColor(Colors.Grey.Lighten1)
-                    .Background(Colors.Grey.Lighten4)
-                    .AlignCenter()
-                    .AlignMiddle()
-                    .Text("No scan")
-                    .FontSize(8)
-                    .FontColor(Colors.Grey.Medium);
-            });
-
-            content.RelativeItem().AlignMiddle().Column(info =>
+            decoration.Content().Row(content =>
             {
-                info.Item().Text(label.Name).FontSize(9).Bold();
-                if (!string.IsNullOrWhiteSpace(label.Code))
-                    info.Item().PaddingTop(2).Text(label.Code).FontSize(18).ExtraBold();
-
-                if (label.LocationLines.Count > 0)
+                content.ConstantItem(1.5f, Unit.Inch).PaddingRight(8).Element(thumb =>
                 {
-                    info.Item().PaddingTop(6).Text("Locations").FontSize(8).Bold();
-                    foreach (var location in label.LocationLines)
-                        info.Item().Text(location).FontSize(14).ExtraBold();
-                }
+                    if (!string.IsNullOrWhiteSpace(label.ImagePath) && File.Exists(label.ImagePath))
+                    {
+                        thumb.AlignCenter().AlignMiddle().Image(label.ImagePath).FitArea();
+                        return;
+                    }
 
-                info.Item().PaddingTop(6).Text(text =>
+                    thumb.Border(0.5f)
+                        .BorderColor(Colors.Grey.Lighten1)
+                        .Background(Colors.Grey.Lighten4)
+                        .AlignCenter()
+                        .AlignMiddle()
+                        .Text("No scan")
+                        .FontSize(8)
+                        .FontColor(Colors.Grey.Medium);
+                });
+
+                content.RelativeItem().AlignMiddle().Column(info =>
                 {
-                    text.Span("Routes  ").FontSize(8).Bold();
-                    text.Span(label.Routes.Count == 0 ? "None" : string.Join(", ", label.Routes))
-                        .FontSize(8);
+                    info.Item().Text(label.Name).FontSize(9).Bold();
+                    if (!string.IsNullOrWhiteSpace(label.Code))
+                        info.Item().PaddingTop(2).Text(label.Code).FontSize(18).ExtraBold();
+
+                    if (label.LocationLines.Count > 0)
+                    {
+                        info.Item().PaddingTop(6).Text("Locations").FontSize(8).Bold();
+                        foreach (var location in label.LocationLines)
+                            info.Item().Text(location).FontSize(14).ExtraBold();
+                    }
+
+                    info.Item().PaddingTop(6).Text(text =>
+                    {
+                        text.Span("Routes  ").FontSize(8).Bold();
+                        text.Span(label.Routes.Count == 0 ? "None" : string.Join(", ", label.Routes))
+                            .FontSize(8);
+                    });
                 });
             });
         });
+    }
+
+    private static string? DriversNotesLine(Customer customer)
+    {
+        var notes = customer.Contracts
+            .Where(c => BillingDueCalculator.IsActiveContract(c))
+            .Select(c => WarehouseLocation.NullIfEmpty(c.DriversNotes))
+            .Where(note => note != null)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return notes.Count == 0 ? null : string.Join(" · ", notes);
     }
 
     private sealed class BrochureLabel
@@ -241,6 +263,7 @@ public class BrochureLabelPdfGenerator
         public string Code { get; init; } = string.Empty;
         public IReadOnlyList<string> LocationLines { get; init; } = Array.Empty<string>();
         public IReadOnlyList<string> Routes { get; init; } = Array.Empty<string>();
+        public string? DriversNotes { get; init; }
         public string? ImagePath { get; init; }
     }
 }

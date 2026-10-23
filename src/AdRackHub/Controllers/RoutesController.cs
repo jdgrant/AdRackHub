@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text.RegularExpressions;
 using AdRackHub.Data;
 using AdRackHub.Models;
@@ -311,6 +312,17 @@ public class RoutesController : Controller
         ViewBag.GoogleSheetsConfigured = _routeSheetSyncService.IsConfigured;
         ViewBag.RouteSheetSlug = RouteSheetMap.GetSlugForRouteName(route.RouteName);
 
+        var stopIds = route.Stops.Select(s => s.Id).ToList();
+        ViewBag.RecentVisits = stopIds.Count == 0
+            ? new List<StopVisit>()
+            : await _context.StopVisits
+                .Include(v => v.Stop)
+                .Include(v => v.Photos)
+                .Where(v => stopIds.Contains(v.StopId))
+                .OrderByDescending(v => v.VisitedAt)
+                .Take(25)
+                .ToListAsync();
+
         return View(route);
     }
 
@@ -374,6 +386,49 @@ public class RoutesController : Controller
 
         var count = await _visitService.LogVisitsForStopsAsync(stops, User, notes);
         TempData["Message"] = $"Logged visits for {count} stops on {route.RouteName}.";
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [RequestSizeLimit(20 * 1024 * 1024)]
+    public async Task<IActionResult> LogPhotoVisit(
+        int id,
+        int stopId,
+        string? driverName,
+        string? visitedAt,
+        string? notes,
+        IFormFile? beforePhoto,
+        IFormFile? afterPhoto)
+    {
+        var stop = await _context.Stops.FirstOrDefaultAsync(s => s.Id == stopId && s.RouteId == id && s.Status == StopStatus.Active);
+        if (stop == null)
+        {
+            TempData["Error"] = "Choose a stop on this route.";
+            return RedirectToAction(nameof(Details), new { id });
+        }
+
+        try
+        {
+            var before = VisitImageRules.FromUpload(beforePhoto, "Before photo");
+            var after = VisitImageRules.FromUpload(afterPhoto, "After photo");
+            var when = VisitImageRules.ParseVisitedAt(visitedAt);
+            await _visitService.LogWithPhotosAsync(
+                stop,
+                User.FindFirstValue(ClaimTypes.NameIdentifier),
+                User.Identity?.Name,
+                driverName,
+                notes,
+                when,
+                before,
+                after);
+            TempData["Message"] = $"Visit logged for {stop.StopName} by {driverName?.Trim()}.";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+
         return RedirectToAction(nameof(Details), new { id });
     }
 

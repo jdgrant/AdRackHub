@@ -970,6 +970,10 @@ namespace AdRackHub.Data.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("DriverName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<string>("Notes")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
@@ -993,6 +997,47 @@ namespace AdRackHub.Data.Migrations
                     b.HasIndex("StopId", "VisitedAt");
 
                     b.ToTable("StopVisits");
+                });
+
+            modelBuilder.Entity("AdRackHub.Models.StopVisitPhoto", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("OriginalFileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("StopVisitId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("StoredFileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StopVisitId");
+
+                    b.ToTable("StopVisitPhotos");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
@@ -1344,6 +1389,17 @@ namespace AdRackHub.Data.Migrations
                     b.Navigation("Stop");
                 });
 
+            modelBuilder.Entity("AdRackHub.Models.StopVisitPhoto", b =>
+                {
+                    b.HasOne("AdRackHub.Models.StopVisit", "StopVisit")
+                        .WithMany("Photos")
+                        .HasForeignKey("StopVisitId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("StopVisit");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
@@ -1446,6 +1502,11 @@ namespace AdRackHub.Data.Migrations
                     b.Navigation("CustomerRouteStops");
 
                     b.Navigation("Visits");
+                });
+
+            modelBuilder.Entity("AdRackHub.Models.StopVisit", b =>
+                {
+                    b.Navigation("Photos");
                 });
 #pragma warning restore 612, 618
         }

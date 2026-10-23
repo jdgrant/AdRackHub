@@ -20,8 +20,14 @@ public class StopVisit
     [Display(Name = "Visited By")]
     public string? VisitedByName { get; set; }
 
+    [StringLength(200)]
+    [Display(Name = "Driver")]
+    public string? DriverName { get; set; }
+
     [StringLength(1000)]
     public string? Notes { get; set; }
 
     public Stop Stop { get; set; } = null!;
+
+    public ICollection<StopVisitPhoto> Photos { get; set; } = new List<StopVisitPhoto>();
 }

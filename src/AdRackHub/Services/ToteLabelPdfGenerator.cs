@@ -31,6 +31,7 @@ public class ToteLabelPdfGenerator
             .AsNoTracking()
             .Where(c => c.Type == CustomerType.Customer && c.Status == CustomerStatus.Active)
             .Include(c => c.WarehouseLocations)
+            .Include(c => c.Contracts)
             .AsSplitQuery();
 
         List<Customer> customers;
@@ -96,12 +97,14 @@ public class ToteLabelPdfGenerator
                 locationLines.Add(line);
         }
 
+        var driversNotes = DriversNotesLine(customer);
         if (locationLines.Count == 0)
         {
             yield return new ToteLabel
             {
                 Name = customer.CustomerName.Trim(),
-                Location = null
+                Location = null,
+                DriversNotes = driversNotes
             };
             yield break;
         }
@@ -111,7 +114,8 @@ public class ToteLabelPdfGenerator
             yield return new ToteLabel
             {
                 Name = customer.CustomerName.Trim(),
-                Location = location
+                Location = location,
+                DriversNotes = driversNotes
             };
         }
     }
@@ -164,17 +168,43 @@ public class ToteLabelPdfGenerator
         if (label == null)
             return;
 
-        box.AlignCenter().AlignMiddle().Column(info =>
+        var notes = WarehouseLocation.NullIfEmpty(label.DriversNotes);
+        box.Layers(layers =>
         {
-            info.Item().AlignCenter().Text(label.Name).FontSize(16).Bold();
-            if (!string.IsNullOrWhiteSpace(label.Location))
-                info.Item().PaddingTop(8).AlignCenter().Text(label.Location).FontSize(22).ExtraBold();
+            layers.PrimaryLayer()
+                .PaddingBottom(notes == null ? 0 : 18)
+                .AlignCenter()
+                .AlignMiddle()
+                .Column(info =>
+                {
+                    info.Item().AlignCenter().Text(label.Name).FontSize(16).Bold();
+                    if (!string.IsNullOrWhiteSpace(label.Location))
+                        info.Item().PaddingTop(8).AlignCenter().Text(label.Location).FontSize(22).ExtraBold();
+                });
+
+            if (notes != null)
+            {
+                layers.Layer().AlignBottom().AlignCenter().Text(notes)
+                    .FontSize(9);
+            }
         });
+    }
+
+    private static string? DriversNotesLine(Customer customer)
+    {
+        var notes = customer.Contracts
+            .Where(c => BillingDueCalculator.IsActiveContract(c))
+            .Select(c => WarehouseLocation.NullIfEmpty(c.DriversNotes))
+            .Where(note => note != null)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        return notes.Count == 0 ? null : string.Join(" · ", notes);
     }
 
     private sealed class ToteLabel
     {
         public string Name { get; init; } = string.Empty;
         public string? Location { get; init; }
+        public string? DriversNotes { get; init; }
     }
 }

@@ -36,6 +36,7 @@ SKIP_REMOTE_PREFIXES = (
 ENSURE_REMOTE_DIRS = (
     "App_Data/Uploads/brochures",
     "App_Data/Uploads/invoices",
+    "App_Data/Uploads/visits",
     "logs",
 )
 

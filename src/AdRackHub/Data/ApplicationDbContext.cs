@@ -16,6 +16,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<Models.Route> Routes => Set<Models.Route>();
     public DbSet<Stop> Stops => Set<Stop>();
     public DbSet<StopVisit> StopVisits => Set<StopVisit>();
+    public DbSet<StopVisitPhoto> StopVisitPhotos => Set<StopVisitPhoto>();
     public DbSet<CustomerRoute> CustomerRoutes => Set<CustomerRoute>();
     public DbSet<CustomerRouteStop> CustomerRouteStops => Set<CustomerRouteStop>();
     public DbSet<CustomerContract> CustomerContracts => Set<CustomerContract>();
@@ -166,6 +167,19 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             e.HasOne(v => v.Stop)
                 .WithMany(s => s.Visits)
                 .HasForeignKey(v => v.StopId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<StopVisitPhoto>(e =>
+        {
+            e.Property(p => p.Kind).HasConversion<string>().HasMaxLength(20);
+            e.Property(p => p.OriginalFileName).HasMaxLength(255);
+            e.Property(p => p.StoredFileName).HasMaxLength(255);
+            e.Property(p => p.ContentType).HasMaxLength(100);
+            e.HasIndex(p => p.StopVisitId);
+            e.HasOne(p => p.StopVisit)
+                .WithMany(v => v.Photos)
+                .HasForeignKey(p => p.StopVisitId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

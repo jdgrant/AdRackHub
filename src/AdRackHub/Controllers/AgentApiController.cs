@@ -15,15 +15,26 @@ namespace AdRackHub.Controllers;
 public class AgentApiController : ControllerBase
 {
     private readonly AgentCustomerApiService _api;
+    private readonly IAgentActivityApi _activities;
+    private readonly IAgentVisitApi _visits;
     private readonly AgentApiOptions _options;
+    private static readonly JsonSerializerOptions VisitJson = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     private readonly ILogger<AgentApiController> _logger;
 
     public AgentApiController(
         AgentCustomerApiService api,
+        IAgentActivityApi activities,
+        IAgentVisitApi visits,
         IOptions<AgentApiOptions> options,
         ILogger<AgentApiController> logger)
     {
         _api = api;
+        _activities = activities;
+        _visits = visits;
         _options = options.Value;
         _logger = logger;
     }
@@ -90,6 +101,67 @@ public class AgentApiController : ControllerBase
         return Execute(() => _api.UpdateContactAsync(id, contactId, body, AgentApiGuide.BaseUrl(Request), cancellationToken));
     }
 
+    [HttpGet("activities")]
+    public Task<IActionResult> Activities(
+        [FromQuery] string? status,
+        [FromQuery] string? kind,
+        [FromQuery] int? customerId,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = AgentCustomerApiService.DefaultPageSize,
+        CancellationToken cancellationToken = default)
+    {
+        return Execute(() => _activities.ListAsync(status, kind, customerId, search, page, pageSize, AgentApiGuide.BaseUrl(Request), cancellationToken));
+    }
+
+    [HttpGet("stops")]
+    public Task<IActionResult> Stops(
+        [FromQuery] string? search,
+        [FromQuery] int? routeId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = AgentCustomerApiService.DefaultPageSize,
+        CancellationToken cancellationToken = default)
+    {
+        return Execute(() => _visits.SearchStopsAsync(search, routeId, page, pageSize, AgentApiGuide.BaseUrl(Request), cancellationToken));
+    }
+
+    [HttpGet("visits")]
+    public Task<IActionResult> Visits(
+        [FromQuery] int? stopId,
+        [FromQuery] int? routeId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = AgentCustomerApiService.DefaultPageSize,
+        CancellationToken cancellationToken = default)
+    {
+        return Execute(() => _visits.ListVisitsAsync(stopId, routeId, page, pageSize, AgentApiGuide.BaseUrl(Request), cancellationToken));
+    }
+
+    [HttpPost("visits")]
+    [RequestSizeLimit(28 * 1024 * 1024)]
+    public Task<IActionResult> LogVisit([FromBody] JsonElement body, CancellationToken cancellationToken)
+    {
+        var denied = Guard();
+        if (denied != null)
+            return Task.FromResult(denied);
+
+        AgentVisitUpload? upload;
+        try
+        {
+            upload = body.ValueKind == JsonValueKind.Object
+                ? JsonSerializer.Deserialize<AgentVisitUpload>(body.GetRawText(), VisitJson)
+                : null;
+        }
+        catch (JsonException)
+        {
+            upload = null;
+        }
+
+        if (upload == null)
+            return Task.FromResult<IActionResult>(BadRequest(new AgentErrorDto("Send a JSON object with the stop, driver, and before and after photos.")));
+
+        return Execute(() => _visits.LogAsync(upload, AgentApiGuide.BaseUrl(Request), null, "Agent API", cancellationToken));
+    }
+
     [HttpPut("customers/{id:int}")]
     [HttpPut("customers/{id:int}/contacts/{contactId:int}")]
     public IActionResult PutNotAllowed()
@@ -109,7 +181,7 @@ public class AgentApiController : ControllerBase
         if (denied != null)
             return denied;
         return StatusCode(StatusCodes.Status405MethodNotAllowed, new AgentErrorDto(
-            "Delete is not available. This API can list, create, and update customers, prospects, and contacts."));
+            "Delete is not available. This API can list, create, and update customers, prospects, and contacts, list activities, and log stop visits."));
     }
 
     private async Task<IActionResult> Execute<T>(Func<Task<AgentCallResult<T>>> action)

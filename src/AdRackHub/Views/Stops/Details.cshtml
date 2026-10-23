@@ -57,6 +57,39 @@
     <dd class="col-sm-9">@VisitDisplay.Format(Model.LastVisitedAt)</dd>
 </dl>
 
+@if (Model.Status == StopStatus.Active)
+{
+    <h3 class="h5 mt-4">Log a visit</h3>
+    <form asp-action="LogPhotoVisit" asp-route-id="@Model.Id" method="post" enctype="multipart/form-data" class="card mb-4">
+        <div class="card-body">
+            <p class="text-muted">Upload the before and after photos and name the driver who made the stop.</p>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label" for="visit-driver">Driver</label>
+                    <input class="form-control" id="visit-driver" name="driverName" maxlength="200" required />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="visit-when">Visited</label>
+                    <input class="form-control" id="visit-when" name="visitedAt" type="datetime-local" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="visit-notes">Notes</label>
+                    <input class="form-control" id="visit-notes" name="notes" maxlength="1000" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="visit-before">Before photo</label>
+                    <input class="form-control" id="visit-before" name="beforePhoto" type="file" accept="image/jpeg,image/png,image/gif,image/webp" required />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label" for="visit-after">After photo</label>
+                    <input class="form-control" id="visit-after" name="afterPhoto" type="file" accept="image/jpeg,image/png,image/gif,image/webp" required />
+                </div>
+            </div>
+            <button type="submit" class="btn btn-success mt-3">Log Visit</button>
+        </div>
+    </form>
+}
+
 <h3 class="h5 mt-4">Visit History</h3>
 @if (Model.Visits.Any())
 {
@@ -64,6 +97,9 @@
         <thead>
             <tr>
                 <th>Visited At</th>
+                <th>Driver</th>
+                <th>Before</th>
+                <th>After</th>
                 <th>Visited By</th>
                 <th>Notes</th>
             </tr>
@@ -71,8 +107,31 @@
         <tbody>
         @foreach (var visit in Model.Visits)
         {
+            var before = visit.Photos.FirstOrDefault(p => p.Kind == StopVisitPhotoKind.Before);
+            var after = visit.Photos.FirstOrDefault(p => p.Kind == StopVisitPhotoKind.After);
             <tr>
                 <td>@VisitDisplay.Format(visit.VisitedAt)</td>
+                <td>@(visit.DriverName ?? "—")</td>
+                <td>
+                    @if (before != null)
+                    {
+                        <a asp-action="VisitPhoto" asp-route-id="@before.Id"><img src="@Url.Action("VisitPhoto", new { id = before.Id })" alt="Before" style="height:64px" /></a>
+                    }
+                    else
+                    {
+                        <span class="text-muted">—</span>
+                    }
+                </td>
+                <td>
+                    @if (after != null)
+                    {
+                        <a asp-action="VisitPhoto" asp-route-id="@after.Id"><img src="@Url.Action("VisitPhoto", new { id = after.Id })" alt="After" style="height:64px" /></a>
+                    }
+                    else
+                    {
+                        <span class="text-muted">—</span>
+                    }
+                </td>
                 <td>@(visit.VisitedByName ?? "—")</td>
                 <td>@(visit.Notes ?? "—")</td>
             </tr>

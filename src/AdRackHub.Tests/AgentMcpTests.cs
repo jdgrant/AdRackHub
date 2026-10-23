@@ -33,6 +33,8 @@ public class AgentMcpTests
         Assert.True(AgentMcpTools.Instructions.Length <= 512);
         Assert.Contains("Prospect", AgentMcpTools.Instructions);
         Assert.Contains("Wave", AgentMcpTools.Instructions);
+        Assert.Contains("list_activities", AgentMcpTools.Instructions);
+        Assert.Contains("log_stop_visit", AgentMcpTools.Instructions);
     }
 
     [Fact]
@@ -180,9 +182,15 @@ public class AgentMcpTests
 
         var tools = await client.ListToolsAsync();
         Assert.Equal(
-            new[] { "add_contact", "create_customer", "get_customer", "search_customers", "update_contact", "update_customer" },
+            new[]
+            {
+                "add_contact", "create_customer", "get_customer", "list_activities", "list_visits",
+                "log_stop_visit", "search_customers", "search_stops", "update_contact", "update_customer"
+            },
             tools.Select(tool => tool.Name).OrderBy(name => name).ToArray());
         Assert.True(tools.Single(tool => tool.Name == "search_customers").ProtocolTool.Annotations?.ReadOnlyHint);
+        Assert.True(tools.Single(tool => tool.Name == "list_activities").ProtocolTool.Annotations?.ReadOnlyHint);
+        Assert.False(tools.Single(tool => tool.Name == "log_stop_visit").ProtocolTool.Annotations?.ReadOnlyHint);
         Assert.True(tools.Single(tool => tool.Name == "get_customer").ProtocolTool.Annotations?.ReadOnlyHint);
         Assert.False(tools.Single(tool => tool.Name == "create_customer").ProtocolTool.Annotations?.ReadOnlyHint);
         Assert.Contains("Wave", tools.Single(tool => tool.Name == "create_customer").Description);
@@ -279,6 +287,8 @@ public class AgentMcpTests
 
         return new AgentMcpTools(
             fake,
+            new FakeActivityApi(),
+            new FakeVisitApi(),
             new HttpContextAccessor { HttpContext = context },
             Options.Create(new WaveOptions()),
             NullLogger<AgentMcpTools>.Instance);
@@ -314,6 +324,24 @@ public class AgentMcpTests
         throw new InvalidOperationException("AdRackHub project was not found.");
     }
 
+    private sealed class FakeActivityApi : IAgentActivityApi
+    {
+        public Task<AgentCallResult<AgentActivityListDto>> ListAsync(string? status, string? kind, int? customerId, string? search, int page, int pageSize, string hubBase, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class FakeVisitApi : IAgentVisitApi
+    {
+        public Task<AgentCallResult<AgentStopListDto>> SearchStopsAsync(string? search, int? routeId, int page, int pageSize, string hubBase, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<AgentCallResult<AgentVisitListDto>> ListVisitsAsync(int? stopId, int? routeId, int page, int pageSize, string hubBase, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<AgentCallResult<AgentVisitDto>> LogAsync(AgentVisitUpload upload, string hubBase, string? userId, string? userName, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+    }
+
     private sealed class DirectoryUser : IMcpUserDirectory
     {
         public Task<McpDirectoryUser?> FindAsync(string userId, CancellationToken cancellationToken) =>
@@ -336,6 +364,8 @@ public class AgentMcpTests
             builder.Services.AddAuthorization();
             builder.Services.AddControllers().AddApplicationPart(typeof(McpMetadataController).Assembly);
             builder.Services.AddSingleton<IAgentCustomerApi>(fake);
+            builder.Services.AddSingleton<IAgentActivityApi>(new FakeActivityApi());
+            builder.Services.AddSingleton<IAgentVisitApi>(new FakeVisitApi());
             builder.Services.AddSingleton<IMcpUserDirectory>(new DirectoryUser());
             builder.Services.Configure<WaveOptions>(_ => { });
             builder.Services.AddAdRackMcp(null);

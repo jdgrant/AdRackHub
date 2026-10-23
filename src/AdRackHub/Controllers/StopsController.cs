@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using AdRackHub.Data;
 using AdRackHub.Models;
 using AdRackHub.Services;
@@ -13,11 +14,13 @@ public class StopsController : Controller
 {
     private readonly ApplicationDbContext _context;
     private readonly StopVisitService _visitService;
+    private readonly VisitPhotoStore _photos;
 
-    public StopsController(ApplicationDbContext context, StopVisitService visitService)
+    public StopsController(ApplicationDbContext context, StopVisitService visitService, VisitPhotoStore photos)
     {
         _context = context;
         _visitService = visitService;
+        _photos = photos;
     }
 
     public async Task<IActionResult> Index(int? routeId, StopStatus? status, StopType? stopType)
@@ -50,6 +53,7 @@ public class StopsController : Controller
                 .ThenInclude(crs => crs.CustomerRoute)
                     .ThenInclude(cr => cr.Customer)
             .Include(s => s.Visits.OrderByDescending(v => v.VisitedAt).Take(25))
+                .ThenInclude(v => v.Photos)
             .FirstOrDefaultAsync(s => s.Id == id);
 
         if (stop == null) return NotFound();
@@ -66,6 +70,53 @@ public class StopsController : Controller
         await _visitService.LogVisitAsync(stop, User, notes);
         TempData["Message"] = $"Visit logged for {stop.StopName}.";
         return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [RequestSizeLimit(20 * 1024 * 1024)]
+    public async Task<IActionResult> LogPhotoVisit(
+        int id,
+        string? driverName,
+        string? visitedAt,
+        string? notes,
+        IFormFile? beforePhoto,
+        IFormFile? afterPhoto)
+    {
+        var stop = await _context.Stops.FirstOrDefaultAsync(s => s.Id == id && s.Status == StopStatus.Active);
+        if (stop == null) return NotFound();
+
+        try
+        {
+            var before = VisitImageRules.FromUpload(beforePhoto, "Before photo");
+            var after = VisitImageRules.FromUpload(afterPhoto, "After photo");
+            var when = VisitImageRules.ParseVisitedAt(visitedAt);
+            await _visitService.LogWithPhotosAsync(
+                stop,
+                User.FindFirstValue(ClaimTypes.NameIdentifier),
+                User.Identity?.Name,
+                driverName,
+                notes,
+                when,
+                before,
+                after);
+            TempData["Message"] = $"Visit logged for {stop.StopName} by {driverName?.Trim()}.";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    public async Task<IActionResult> VisitPhoto(int id)
+    {
+        var photo = await _context.StopVisitPhotos.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id);
+        if (photo == null) return NotFound();
+        var path = _photos.PathFor(photo);
+        if (!System.IO.File.Exists(path)) return NotFound();
+        return PhysicalFile(path, photo.ContentType);
     }
 
     public async Task<IActionResult> Create(int? routeId)

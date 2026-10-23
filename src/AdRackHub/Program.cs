@@ -83,6 +83,11 @@ builder.Services.PostConfigure<AgentApiOptions>(options =>
 });
 builder.Services.AddScoped<AgentCustomerApiService>();
 builder.Services.AddScoped<IAgentCustomerApi>(sp => sp.GetRequiredService<AgentCustomerApiService>());
+builder.Services.AddScoped<AgentActivityService>();
+builder.Services.AddScoped<IAgentActivityApi>(sp => sp.GetRequiredService<AgentActivityService>());
+builder.Services.AddScoped<VisitPhotoStore>();
+builder.Services.AddScoped<AgentVisitService>();
+builder.Services.AddScoped<IAgentVisitApi>(sp => sp.GetRequiredService<AgentVisitService>());
 builder.Services.AddScoped<IMcpUserDirectory, IdentityMcpUserDirectory>();
 builder.Services.AddAdRackMcp(Path.Combine(builder.Environment.ContentRootPath, "App_Data", "mcp-oauth-store.json"));
 builder.Services.Configure<DataForSeoOptions>(builder.Configuration.GetSection(DataForSeoOptions.SectionName));
@@ -811,7 +816,7 @@ using (var scope = app.Services.CreateScope())
         var attachOnly = args.Contains("--attach-only");
         var result = await importService.ImportAsync(jsonPath, scansDir, createMissing: !attachOnly);
         Console.WriteLine(
-            $"Brochure Prospect Batch {batchKey}: {result.Created} created, {result.SkippedExisting} skipped (already exist), {result.BrochuresAttached} brochures attached.");
+            $"Brochure Prospect Batch {batchKey}: {result.Created} created, {result.UpdatedExisting} customers updated, {result.SkippedExisting} skipped (already exist), {result.BrochuresAttached} brochures attached.");
         if (result.MissingScanFiles.Count > 0)
             Console.WriteLine($"Missing scan files: {string.Join(", ", result.MissingScanFiles)}");
         if (result.BrochureErrors.Count > 0)
@@ -820,6 +825,8 @@ using (var scope = app.Services.CreateScope())
             Console.WriteLine($"Unmatched attractions: {string.Join(" | ", result.UnmatchedNames)}");
         foreach (var name in result.CreatedNames)
             Console.WriteLine($"  + {name}");
+        foreach (var name in result.UpdatedNames)
+            Console.WriteLine($"  updated {name}");
         foreach (var name in result.SkippedNames)
             Console.WriteLine($"  skip {name}");
         return;
