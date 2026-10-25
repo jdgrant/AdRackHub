@@ -610,7 +610,7 @@
                         <hr class="my-4" />
 
                         <div class="fw-semibold mb-2">Warehouse inventory</div>
-                        <p class="text-muted small mb-3">Log a monthly count and the warehouse/rack/bin where these brochures sit. A new rack/bin is added to the locations list.</p>
+                        <p class="text-muted small mb-3">Log a received shipment or an inventory count. Save the cases, the case count (brochures in one case), and the total. A new rack/bin is added to the locations list.</p>
 
                         <div class="crm-warehouse-location mb-3">
                             <div class="d-flex flex-wrap align-items-baseline gap-2 mb-2">
@@ -667,16 +667,33 @@
                             </form>
                         </div>
 
-                        <form asp-action="AddBrochureInventory" method="post" class="crm-composer mb-4">
+                        <partial name="_CaseWeightCalculator" model="@("customer")" />
+
+                        <form asp-action="AddBrochureInventory" method="post" class="crm-composer mb-4" id="inventory-log-form" data-inventory-entry>
                             <input type="hidden" name="customerId" value="@Model.Id" />
                             <div class="row g-2 align-items-end">
                                 <div class="col-sm-6 col-md-2">
-                                    <label class="form-label small mb-1" for="inventoryDate">Inventory date</label>
+                                    <label class="form-label small mb-1" for="inventoryDate">Date</label>
                                     <input type="date" class="form-control" id="inventoryDate" name="inventoryDate" value="@DateOnly.FromDateTime(DateTime.Today).ToString("yyyy-MM-dd")" required />
                                 </div>
                                 <div class="col-sm-6 col-md-2">
-                                    <label class="form-label small mb-1" for="quantity">Count</label>
-                                    <input type="number" class="form-control" id="quantity" name="quantity" min="0" step="1" required placeholder="0" />
+                                    <label class="form-label small mb-1" for="inventoryKind">Record</label>
+                                    <select class="form-select" id="inventoryKind" name="kind">
+                                        <option value="Count" selected>Inventory count</option>
+                                        <option value="Received">Received</option>
+                                    </select>
+                                </div>
+                                <div class="col-4 col-md-2">
+                                    <label class="form-label small mb-1" for="inventoryCases">Cases</label>
+                                    <input type="number" class="form-control" id="inventoryCases" name="cases" min="0" step="any" data-cases placeholder="0" />
+                                </div>
+                                <div class="col-4 col-md-2">
+                                    <label class="form-label small mb-1" for="inventoryCaseCount">Case count</label>
+                                    <input type="number" class="form-control" id="inventoryCaseCount" name="caseCount" min="0" step="1" data-case-count placeholder="0" title="Brochures in one case" />
+                                </div>
+                                <div class="col-4 col-md-2">
+                                    <label class="form-label small mb-1" for="quantity">Total</label>
+                                    <input type="number" class="form-control" id="quantity" name="quantity" min="0" step="1" data-total placeholder="0" />
                                 </div>
                                 <div class="col-6 col-md-2">
                                     <label class="form-label small mb-1" for="inventoryWarehouse">Warehouse</label>
@@ -709,6 +726,7 @@
                                     <button type="submit" class="btn btn-primary btn-sm">Log inventory</button>
                                 </div>
                             </div>
+                            <div class="form-text mt-2">Total fills in from cases × case count. Change the total when some brochures are loose.</div>
                         </form>
 
                         @if (Model.BrochureInventories.Any())
@@ -717,8 +735,11 @@
                                 <table class="table table-sm table-hover align-middle mb-0">
                                     <thead>
                                         <tr>
-                                            <th>Inventory date</th>
-                                            <th class="text-end">Count</th>
+                                            <th>Date</th>
+                                            <th>Record</th>
+                                            <th class="text-end">Cases</th>
+                                            <th class="text-end">Case count</th>
+                                            <th class="text-end">Total</th>
                                             <th>Warehouse</th>
                                             <th>Rack</th>
                                             <th>Bin</th>
@@ -732,8 +753,28 @@
                                     <tbody>
                                     @foreach (var item in Model.BrochureInventories)
                                     {
+                                        var packCases = item.Cases;
+                                        var packCount = item.CaseCount;
+                                        if (packCases is null && packCount is null)
+                                        {
+                                            var parsedPack = BrochureInventoryEntry.PackFromNotes(item.Notes);
+                                            packCases = parsedPack.Cases;
+                                            packCount = parsedPack.CaseCount;
+                                        }
                                         <tr id="inventory-view-@item.Id">
                                             <td>@item.InventoryDate.ToString("MMM d, yyyy")</td>
+                                            <td>
+                                                @if (item.Kind == BrochureInventoryKind.Received)
+                                                {
+                                                    <span class="badge text-bg-success">Received</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge text-bg-secondary">Inventory count</span>
+                                                }
+                                            </td>
+                                            <td class="text-end">@(packCases?.ToString("0.##") ?? "—")</td>
+                                            <td class="text-end">@(packCount?.ToString("N0") ?? "—")</td>
                                             <td class="text-end fw-semibold">@item.Quantity.ToString("N0")</td>
                                             <td>@(WarehouseLocation.Code(item.Warehouse) ?? "—")</td>
                                             <td>@(string.IsNullOrWhiteSpace(item.Rack) ? "—" : item.Rack)</td>
@@ -755,17 +796,32 @@
                                             </td>
                                         </tr>
                                         <tr id="inventory-edit-@item.Id" class="d-none">
-                                            <td colspan="10">
-                                                <form asp-action="EditBrochureInventory" method="post" class="row g-2 align-items-end">
+                                            <td colspan="13">
+                                                <form asp-action="EditBrochureInventory" method="post" class="row g-2 align-items-end" data-inventory-entry>
                                                     <input type="hidden" name="id" value="@item.Id" />
                                                     <input type="hidden" name="customerId" value="@Model.Id" />
                                                     <div class="col-sm-6 col-md-2">
-                                                        <label class="form-label small mb-1" for="inventoryDate-@item.Id">Inventory date</label>
+                                                        <label class="form-label small mb-1" for="inventoryDate-@item.Id">Date</label>
                                                         <input type="date" class="form-control" id="inventoryDate-@item.Id" name="inventoryDate" value="@item.InventoryDate.ToString("yyyy-MM-dd")" required />
                                                     </div>
                                                     <div class="col-sm-6 col-md-2">
-                                                        <label class="form-label small mb-1" for="quantity-@item.Id">Count</label>
-                                                        <input type="number" class="form-control" id="quantity-@item.Id" name="quantity" min="0" step="1" value="@item.Quantity" required />
+                                                        <label class="form-label small mb-1" for="inventoryKind-@item.Id">Record</label>
+                                                        <select class="form-select" id="inventoryKind-@item.Id" name="kind">
+                                                            <option value="Count" selected="@(item.Kind != BrochureInventoryKind.Received)">Inventory count</option>
+                                                            <option value="Received" selected="@(item.Kind == BrochureInventoryKind.Received)">Received</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-4 col-md-2">
+                                                        <label class="form-label small mb-1" for="inventoryCases-@item.Id">Cases</label>
+                                                        <input type="number" class="form-control" id="inventoryCases-@item.Id" name="cases" min="0" step="any" value="@item.Cases" data-cases />
+                                                    </div>
+                                                    <div class="col-4 col-md-2">
+                                                        <label class="form-label small mb-1" for="inventoryCaseCount-@item.Id">Case count</label>
+                                                        <input type="number" class="form-control" id="inventoryCaseCount-@item.Id" name="caseCount" min="0" step="1" value="@item.CaseCount" data-case-count />
+                                                    </div>
+                                                    <div class="col-4 col-md-2">
+                                                        <label class="form-label small mb-1" for="quantity-@item.Id">Total</label>
+                                                        <input type="number" class="form-control" id="quantity-@item.Id" name="quantity" min="0" step="1" value="@item.Quantity" data-total required />
                                                     </div>
                                                     <div class="col-6 col-md-2">
                                                         <label class="form-label small mb-1" for="inventoryWarehouse-@item.Id">Warehouse</label>

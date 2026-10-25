@@ -12,7 +12,7 @@
     </div>
 </div>
 
-<p class="text-muted">As of @Model.AsOf.ToString("MMM d, yyyy"). Last is last count / last received from warehouse inventory records.</p>
+<p class="text-muted">As of @Model.AsOf.ToString("MMM d, yyyy"). Last is last inventory count / last received. Case count is the brochures in one case.</p>
 
 @if (Model.Warehouses.Count == 0)
 {
@@ -49,6 +49,7 @@ else
                         <th>Location</th>
                         <th>Contract</th>
                         <th class="text-end">Last</th>
+                        <th class="text-end">Case count</th>
                         <th>Counted</th>
                     </tr>
                 </thead>
@@ -63,6 +64,7 @@ else
                         <td>@(row.Location ?? "—")</td>
                         <td class="small text-nowrap">@(string.IsNullOrWhiteSpace(row.ContractLabel) ? "—" : row.ContractLabel)</td>
                         <td class="text-end text-nowrap">@(string.IsNullOrEmpty(row.LastLabel) ? "—" : row.LastLabel)</td>
+                        <td class="text-end">@(row.CaseCount?.ToString("N0") ?? "—")</td>
                         <td>@(row.InventoryDate?.ToString("MMM d, yyyy") ?? "—")</td>
                     </tr>
                 }

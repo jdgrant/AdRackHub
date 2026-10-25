@@ -1,9 +1,12 @@
+using AdRackHub.Models;
+
 namespace AdRackHub.ViewModels;
 
 public class WarehouseInvoicePageViewModel
 {
     public DateOnly InventoryDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
     public string? CountedBy { get; set; }
+    public BrochureInventoryKind Kind { get; set; } = BrochureInventoryKind.Count;
     public string ActiveWarehouse { get; set; } = "K";
     public List<WarehouseInvoiceTabViewModel> Tabs { get; set; } = new();
     public List<WarehouseInvoiceRowForm> Rows { get; set; } = new();
@@ -30,7 +33,7 @@ public class WarehouseInvoiceRowForm
     public int? LastQuantity { get; set; }
     public int? LastReceivedQuantity { get; set; }
     public DateOnly? LastCountedDate { get; set; }
-    public int? Cases { get; set; }
-    public int? PerCase { get; set; }
+    public decimal? Cases { get; set; }
+    public int? CaseCount { get; set; }
     public int? Total { get; set; }
 }

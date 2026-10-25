@@ -11,7 +11,7 @@
     </div>
 </div>
 
-<p class="text-muted">Warehouse inventory count sheet. Fill cases and per case (or a total) for Kentucky and Ohio, then save to log counts for every brochure in this batch.</p>
+<p class="text-muted">Warehouse inventory count sheet. Choose inventory count or received, then fill cases and case count (or a total).</p>
 
 <form asp-action="Invoice" method="post" id="warehouse-invoice-form">
     @Html.AntiForgeryToken()
@@ -23,15 +23,22 @@
                 <div class="fw-bold">WAREHOUSE INVENTORY COUNT SHEET</div>
             </div>
             <div class="row g-3">
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label asp-for="InventoryDate" class="form-label">Date</label>
                     <input asp-for="InventoryDate" type="date" class="form-control" />
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label asp-for="CountedBy" class="form-label">Counted by</label>
                     <input asp-for="CountedBy" class="form-control" />
                 </div>
-                <div class="col-md-4 d-flex align-items-end">
+                <div class="col-md-3">
+                    <label asp-for="Kind" class="form-label">Record as</label>
+                    <select asp-for="Kind" class="form-select">
+                        <option value="Count">Inventory count</option>
+                        <option value="Received">Received</option>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
                     <button type="submit" class="btn btn-primary">Save inventory logs</button>
                 </div>
             </div>
@@ -71,7 +78,7 @@
                                 <th>Location</th>
                                 <th class="text-end" style="width: 6rem;">Last</th>
                                 <th class="text-end" style="width: 6.5rem;">Cases</th>
-                                <th class="text-end" style="width: 6.5rem;">Per case</th>
+                                <th class="text-end" style="width: 7rem;">Case count</th>
                                 <th class="text-end" style="width: 7rem;">Total</th>
                             </tr>
                         </thead>
@@ -96,7 +103,7 @@
                                     <input name="Rows[@index].Cases" value="@row.Cases" inputmode="numeric" class="form-control form-control-sm text-end" data-cases />
                                 </td>
                                 <td>
-                                    <input name="Rows[@index].PerCase" value="@row.PerCase" inputmode="numeric" class="form-control form-control-sm text-end" data-per-case />
+                                    <input name="Rows[@index].CaseCount" value="@row.CaseCount" inputmode="numeric" class="form-control form-control-sm text-end" data-case-count />
                                 </td>
                                 <td>
                                     <input name="Rows[@index].Total" value="@row.Total" inputmode="numeric" class="form-control form-control-sm text-end" data-total />
@@ -164,19 +171,19 @@
 
             function bindRow(row) {
                 const casesInput = row.querySelector('[data-cases]');
-                const perCaseInput = row.querySelector('[data-per-case]');
+                const caseCountInput = row.querySelector('[data-case-count]');
                 const totalInput = row.querySelector('[data-total]');
-                if (!casesInput || !perCaseInput || !totalInput) return;
+                if (!casesInput || !caseCountInput || !totalInput) return;
                 function recalc() {
-                    const cases = parseInt(casesInput.value, 10);
-                    const perCase = parseInt(perCaseInput.value, 10);
-                    if (!Number.isNaN(cases) && !Number.isNaN(perCase) && cases >= 0 && perCase >= 0) {
-                        totalInput.value = String(cases * perCase);
+                    const cases = parseFloat(casesInput.value);
+                    const caseCount = parseInt(caseCountInput.value, 10);
+                    if (!Number.isNaN(cases) && !Number.isNaN(caseCount) && cases >= 0 && caseCount >= 0) {
+                        totalInput.value = String(Math.round(cases * caseCount));
                     }
                     updateWarehouseTotals();
                 }
                 casesInput.addEventListener('input', recalc);
-                perCaseInput.addEventListener('input', recalc);
+                caseCountInput.addEventListener('input', recalc);
                 totalInput.addEventListener('input', updateWarehouseTotals);
             }
 
@@ -189,7 +196,7 @@
                         .some(function (input) { return String(input.value || '').trim() !== ''; });
                     if (!hasCount) {
                         event.preventDefault();
-                        alert('Enter a total (or cases and per case) on at least one brochure.');
+                        alert('Enter a total (or cases and a case count) on at least one brochure.');
                     }
                 });
             }

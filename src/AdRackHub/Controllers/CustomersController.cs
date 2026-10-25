@@ -477,6 +477,9 @@ public class CustomersController : Controller
     public async Task<IActionResult> AddBrochureInventory(
         int customerId,
         DateOnly? inventoryDate,
+        BrochureInventoryKind kind,
+        decimal? cases,
+        int? caseCount,
         int? quantity,
         string? warehouse,
         string? rack,
@@ -490,9 +493,10 @@ public class CustomersController : Controller
         if (customer == null)
             return NotFound();
 
-        if (!quantity.HasValue || quantity.Value < 0)
+        var total = BrochureInventoryEntry.ResolveTotal(cases, caseCount, quantity);
+        if (!total.HasValue)
         {
-            TempData["Error"] = "Enter a brochure count of zero or greater.";
+            TempData["Error"] = "Enter a total, or both cases and a case count. Counts must be zero or greater.";
             return RedirectToAction(nameof(Details), new { id = customerId, tab = "brochures" });
         }
 
@@ -515,7 +519,10 @@ public class CustomersController : Controller
         _context.CustomerBrochureInventories.Add(new CustomerBrochureInventory
         {
             CustomerId = customerId,
-            Quantity = quantity.Value,
+            Quantity = total.Value,
+            Cases = cases,
+            CaseCount = caseCount,
+            Kind = kind,
             InventoryDate = inventoryDate ?? DateOnly.FromDateTime(DateTime.Today),
             Warehouse = locationWarehouse,
             Rack = locationRack,
@@ -527,7 +534,9 @@ public class CustomersController : Controller
         });
 
         await _context.SaveChangesAsync();
-        TempData["Message"] = "Inventory recorded.";
+        TempData["Message"] = kind == BrochureInventoryKind.Received
+            ? "Received shipment recorded."
+            : "Inventory count recorded.";
         return RedirectToAction(nameof(Details), new { id = customerId, tab = "brochures" });
     }
 
@@ -537,6 +546,9 @@ public class CustomersController : Controller
         int id,
         int customerId,
         DateOnly? inventoryDate,
+        BrochureInventoryKind kind,
+        decimal? cases,
+        int? caseCount,
         int? quantity,
         string? warehouse,
         string? rack,
@@ -549,13 +561,17 @@ public class CustomersController : Controller
         if (inventory == null)
             return NotFound();
 
-        if (!quantity.HasValue || quantity.Value < 0)
+        var total = BrochureInventoryEntry.ResolveTotal(cases, caseCount, quantity);
+        if (!total.HasValue)
         {
-            TempData["Error"] = "Enter a brochure count of zero or greater.";
+            TempData["Error"] = "Enter a total, or both cases and a case count. Counts must be zero or greater.";
             return RedirectToAction(nameof(Details), new { id = customerId, tab = "brochures" });
         }
 
-        inventory.Quantity = quantity.Value;
+        inventory.Quantity = total.Value;
+        inventory.Cases = cases;
+        inventory.CaseCount = caseCount;
+        inventory.Kind = kind;
         inventory.InventoryDate = inventoryDate ?? inventory.InventoryDate;
         inventory.Rack = WarehouseLocation.NullIfEmpty(rack);
         inventory.Bin = WarehouseLocation.NullIfEmpty(bin);

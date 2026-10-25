@@ -13,7 +13,7 @@
     </div>
 </div>
 
-<p class="text-muted">Select Kentucky, Ohio, or unassigned customers, enter counts, and save once. Print count sheets is one PDF with a page for each of those three groups.</p>
+<p class="text-muted">Select Kentucky, Ohio, or unassigned customers. Record an inventory count or a receipt with cases, case count, and total. Print count sheets is one PDF, and it prints the case count when we know it.</p>
 
 <form method="get" class="card mb-3">
     <div class="card-body">
@@ -44,20 +44,29 @@
     <div class="card mb-3">
         <div class="card-body">
             <div class="row g-3">
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label asp-for="InventoryDate" class="form-label">Date</label>
                     <input asp-for="InventoryDate" type="date" class="form-control" />
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label asp-for="CountedBy" class="form-label">Counted by</label>
                     <input asp-for="CountedBy" class="form-control" />
                 </div>
-                <div class="col-md-4 d-flex align-items-end">
+                <div class="col-md-3">
+                    <label asp-for="Kind" class="form-label">Record as</label>
+                    <select asp-for="Kind" class="form-select">
+                        <option value="Count">Inventory count</option>
+                        <option value="Received">Received</option>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
                     <button type="submit" class="btn btn-primary">Save inventory</button>
                 </div>
             </div>
         </div>
     </div>
+
+    <partial name="_CaseWeightCalculator" model="@("inventory")" />
 
     <div class="table-responsive">
         <table class="table table-sm table-hover align-middle" id="inventory-table">
@@ -69,7 +78,7 @@
                     <th class="text-end" title="Last count / last received">Last</th>
                     <th>Last counted</th>
                     <th class="text-end" style="width: 6.5rem;">Cases</th>
-                    <th class="text-end" style="width: 6.5rem;">Per case</th>
+                    <th class="text-end" style="width: 7rem;" title="Brochures in one case. Filled from the last saved case count.">Case count</th>
                     <th class="text-end" style="width: 7rem;">Total</th>
                 </tr>
             </thead>
@@ -80,7 +89,7 @@
                 var rackKey = WarehouseLocation.NullIfEmpty(row.Rack) ?? "";
                 var previousRack = index == 0 ? null : WarehouseLocation.NullIfEmpty(Model.Rows[index - 1].Rack);
                 var rackBreak = index > 0 && !string.Equals(rackKey, previousRack ?? "", StringComparison.OrdinalIgnoreCase);
-                <tr data-inventory-row data-rack="@rackKey.ToLowerInvariant()" data-name="@((row.BrochureName + " " + (row.BrochureCode ?? "") + " " + (row.ContractLabel ?? "")).ToLowerInvariant())" class="@(rackBreak ? "inventory-rack-break" : null)">
+                <tr data-inventory-row data-row-index="@index" data-rack="@rackKey.ToLowerInvariant()" data-label="@row.BrochureName@(string.IsNullOrWhiteSpace(row.Location) ? "" : " — " + row.Location)" data-name="@((row.BrochureName + " " + (row.BrochureCode ?? "") + " " + (row.ContractLabel ?? "")).ToLowerInvariant())" class="@(rackBreak ? "inventory-rack-break" : null)">
                     <td>
                         <input type="hidden" name="Rows[@index].CustomerId" value="@row.CustomerId" />
                         <input type="hidden" name="Rows[@index].Warehouse" value="@row.Warehouse" />
@@ -101,7 +110,7 @@
                         <input name="Rows[@index].Cases" value="@row.Cases" inputmode="numeric" class="form-control form-control-sm text-end" data-cases />
                     </td>
                     <td>
-                        <input name="Rows[@index].PerCase" value="@row.PerCase" inputmode="numeric" class="form-control form-control-sm text-end" data-per-case />
+                        <input name="Rows[@index].CaseCount" value="@row.CaseCount" inputmode="numeric" class="form-control form-control-sm text-end" data-case-count title="Brochures in one case" />
                     </td>
                     <td>
                         <input name="Rows[@index].Total" value="@row.Total" inputmode="numeric" class="form-control form-control-sm text-end" data-total />
@@ -183,19 +192,19 @@
 
             function bindRow(row) {
                 const casesInput = row.querySelector('[data-cases]');
-                const perCaseInput = row.querySelector('[data-per-case]');
+                const caseCountInput = row.querySelector('[data-case-count]');
                 const totalInput = row.querySelector('[data-total]');
-                if (!casesInput || !perCaseInput || !totalInput) return;
+                if (!casesInput || !caseCountInput || !totalInput) return;
                 function recalc() {
-                    const cases = parseInt(casesInput.value, 10);
-                    const perCase = parseInt(perCaseInput.value, 10);
-                    if (!Number.isNaN(cases) && !Number.isNaN(perCase) && cases >= 0 && perCase >= 0) {
-                        totalInput.value = String(cases * perCase);
+                    const cases = parseFloat(casesInput.value);
+                    const caseCount = parseInt(caseCountInput.value, 10);
+                    if (!Number.isNaN(cases) && !Number.isNaN(caseCount) && cases >= 0 && caseCount >= 0) {
+                        totalInput.value = String(Math.round(cases * caseCount));
                     }
                     updateWarehouseTotal();
                 }
                 casesInput.addEventListener('input', recalc);
-                perCaseInput.addEventListener('input', recalc);
+                caseCountInput.addEventListener('input', recalc);
                 totalInput.addEventListener('input', updateWarehouseTotal);
             }
 
@@ -208,7 +217,7 @@
                         .some(function (input) { return String(input.value || '').trim() !== ''; });
                     if (!hasCount) {
                         event.preventDefault();
-                        alert('Enter a total (or cases and per case) on at least one customer.');
+                        alert('Enter a total (or cases and a case count) on at least one customer.');
                     }
                 });
             }

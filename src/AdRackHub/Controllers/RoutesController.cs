@@ -143,11 +143,12 @@ public class RoutesController : Controller
 
         if (toLog.Count == 0)
         {
-            TempData["Error"] = "Enter a total (or cases and per case) on at least one brochure.";
+            TempData["Error"] = "Enter a total (or cases and a case count) on at least one customer.";
             var emptyReport = await _inventoryReport.BuildAsync();
             var page = BuildInventoryPage(emptyReport, countedBy, model.ActiveWarehouse);
             page.InventoryDate = date;
             page.CountedBy = countedBy;
+            page.Kind = model.Kind;
             CopyEnteredCounts(page.Rows, rows);
             return onEmpty(page);
         }
@@ -172,17 +173,18 @@ public class RoutesController : Controller
             if (warehouse != null || rack != null || bin != null || shelf != null)
                 WarehouseLocation.Upsert(customer, warehouse, rack, bin, shelf);
 
-            var notes = InventoryNote(row);
             _context.CustomerBrochureInventories.Add(new CustomerBrochureInventory
             {
                 CustomerId = customer.Id,
                 Quantity = quantity,
+                Cases = row.Cases,
+                CaseCount = row.CaseCount,
+                Kind = model.Kind,
                 InventoryDate = date,
                 Warehouse = warehouse,
                 Rack = rack,
                 Bin = bin,
                 Shelf = shelf,
-                Notes = notes,
                 CreatedAt = DateTime.UtcNow,
                 CreatedBy = countedBy
             });
@@ -190,9 +192,11 @@ public class RoutesController : Controller
         }
 
         await _context.SaveChangesAsync();
+        var noun = model.Kind == BrochureInventoryKind.Received ? "received record" : "inventory count";
+        var nouns = model.Kind == BrochureInventoryKind.Received ? "received records" : "inventory counts";
         TempData["Message"] = logged == 1
-            ? "Saved 1 inventory log."
-            : $"Saved {logged} inventory logs.";
+            ? $"Saved 1 {noun}."
+            : $"Saved {logged} {nouns}.";
         return RedirectToAction(nameof(Inventory), new { warehouse = model.ActiveWarehouse });
     }
 
@@ -227,7 +231,7 @@ public class RoutesController : Controller
                 LastQuantity = row.Quantity,
                 LastReceivedQuantity = row.ReceivedQuantity,
                 LastCountedDate = row.InventoryDate,
-                PerCase = row.PerCase
+                CaseCount = row.CaseCount
             });
         }
 
@@ -247,26 +251,13 @@ public class RoutesController : Controller
             if (!byKey.TryGetValue(key, out var entered))
                 continue;
             row.Cases = entered.Cases;
-            row.PerCase = entered.PerCase;
+            row.CaseCount = entered.CaseCount;
             row.Total = entered.Total;
         }
     }
 
-    private static int? ResolveQuantity(WarehouseInvoiceRowForm row)
-    {
-        if (row.Total.HasValue)
-            return row.Total.Value;
-        if (row.Cases.HasValue && row.PerCase.HasValue)
-            return row.Cases.Value * row.PerCase.Value;
-        return null;
-    }
-
-    private static string? InventoryNote(WarehouseInvoiceRowForm row)
-    {
-        if (row.Cases.HasValue && row.PerCase.HasValue)
-            return $"{row.Cases.Value} cases × {row.PerCase.Value}";
-        return null;
-    }
+    private static int? ResolveQuantity(WarehouseInvoiceRowForm row) =>
+        BrochureInventoryEntry.ResolveTotal(row.Cases, row.CaseCount, row.Total);
 
     private async Task<string> GetCurrentUserLabelAsync()
     {

@@ -90,6 +90,11 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             e.Property(i => i.Shelf)
                 .HasConversion<string>()
                 .HasMaxLength(8);
+            e.Property(i => i.Cases)
+                .HasColumnType("decimal(8,2)");
+            e.Property(i => i.Kind)
+                .HasConversion<string>()
+                .HasMaxLength(20);
             e.HasOne(i => i.Customer)
                 .WithMany(c => c.BrochureInventories)
                 .HasForeignKey(i => i.CustomerId)

@@ -388,6 +388,17 @@ namespace AdRackHub.Data.Migrations
                         .HasMaxLength(8)
                         .HasColumnType("nvarchar(8)");
 
+                    b.Property<decimal?>("Cases")
+                        .HasColumnType("decimal(8,2)");
+
+                    b.Property<int?>("CaseCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CustomerId", "InventoryDate");

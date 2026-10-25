@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using AdRackHub.Data;
 using AdRackHub.Models;
 using Microsoft.EntityFrameworkCore;
@@ -35,7 +34,7 @@ public sealed class BrochureInventoryRow
     public int? Quantity { get; init; }
     public int? ReceivedQuantity { get; init; }
     public DateOnly? InventoryDate { get; init; }
-    public int? PerCase { get; init; }
+    public int? CaseCount { get; init; }
     public string? ContractLabel { get; init; }
 
     public string LastLabel => FormatLast(Quantity, ReceivedQuantity);
@@ -94,7 +93,7 @@ public class BrochureInventoryReportService
                     Quantity = LatestCountQuantity(customer, slot.Warehouse, slot.Rack, slot.Bin, slot.Shelf, slot.IsFirst),
                     ReceivedQuantity = LatestReceivedQuantity(customer, slot.Warehouse, slot.Rack, slot.Bin, slot.Shelf, slot.IsFirst),
                     InventoryDate = LatestInventoryDate(customer, slot.Warehouse, slot.Rack, slot.Bin, slot.Shelf, slot.IsFirst),
-                    PerCase = LatestPerCase(customer, slot.Warehouse, slot.Rack, slot.Bin, slot.Shelf, slot.IsFirst),
+                    CaseCount = LatestCaseCount(customer, slot.Warehouse, slot.Rack, slot.Bin, slot.Shelf, slot.IsFirst),
                     ContractLabel = contractLabels.GetValueOrDefault(customer.Id)
                 })))
             .GroupBy(item => item.Warehouse)
@@ -183,7 +182,7 @@ public class BrochureInventoryReportService
                     page.Header().Element(header => DrawHeader(header, sheet.Title, report.AsOf));
                     page.Footer().AlignCenter().DefaultTextStyle(text => text.FontSize(8)).Text(text =>
                     {
-                        text.Span("Fill cases, per case, and total. Per case is printed when known.  Page ");
+                        text.Span("Fill cases, case count, and total. Case count is printed when known.  Page ");
                         text.CurrentPageNumber();
                         text.Span(" of ");
                         text.TotalPages();
@@ -229,7 +228,7 @@ public class BrochureInventoryReportService
                 columns.ConstantColumn(110);
                 columns.ConstantColumn(82);
                 columns.ConstantColumn(58);
-                columns.ConstantColumn(58);
+                columns.ConstantColumn(72);
                 columns.ConstantColumn(64);
             });
 
@@ -240,7 +239,7 @@ public class BrochureInventoryReportService
                 HeaderCell(header.Cell(), "Contract");
                 HeaderCell(header.Cell(), "Last", true);
                 HeaderCell(header.Cell(), "Cases", true);
-                HeaderCell(header.Cell(), "Per case", true);
+                HeaderCell(header.Cell(), "Case count", true);
                 HeaderCell(header.Cell(), "Total", true);
             });
 
@@ -259,7 +258,7 @@ public class BrochureInventoryReportService
                     row.Location,
                     row.ContractLabel,
                     row.LastLabel,
-                    row.PerCase,
+                    row.CaseCount,
                     rackBreak);
             }
 
@@ -282,7 +281,7 @@ public class BrochureInventoryReportService
         string? location,
         string? contractLabel,
         string lastLabel,
-        int? perCase,
+        int? caseCount,
         bool rackBreak)
     {
         table.Cell().Element(cell => TextCell(cell, name, rackBreak));
@@ -290,7 +289,7 @@ public class BrochureInventoryReportService
         table.Cell().Element(cell => TextCell(cell, contractLabel ?? "", rackBreak));
         table.Cell().Element(cell => TextCell(cell, lastLabel, rackBreak, alignRight: true));
         table.Cell().Element(cell => WriteInBox(cell, null, rackBreak));
-        table.Cell().Element(cell => WriteInBox(cell, perCase?.ToString("N0"), rackBreak));
+        table.Cell().Element(cell => WriteInBox(cell, caseCount?.ToString("N0"), rackBreak));
         table.Cell().Element(cell => WriteInBox(cell, null, rackBreak));
     }
 
@@ -502,13 +501,8 @@ public class BrochureInventoryReportService
         return items.FirstOrDefault(i => i.Id != lastCount?.Id)?.Quantity;
     }
 
-    private static bool IsReceivedInventory(CustomerBrochureInventory inventory)
-    {
-        var notes = inventory.Notes;
-        if (string.IsNullOrWhiteSpace(notes))
-            return false;
-        return notes.Contains("receiv", StringComparison.OrdinalIgnoreCase);
-    }
+    private static bool IsReceivedInventory(CustomerBrochureInventory inventory) =>
+        inventory.Kind == BrochureInventoryKind.Received;
 
     private static DateOnly? LatestInventoryDate(
         Customer customer,
@@ -519,21 +513,12 @@ public class BrochureInventoryReportService
         bool isFirstSlot) =>
         LatestCountInventory(customer, warehouse, rack, bin, shelf, isFirstSlot)?.InventoryDate;
 
-    private static readonly Regex PerCasePattern = new(
-        @"cases\s*[×x]\s*(\d+)",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static int? CaseCountOf(CustomerBrochureInventory inventory) =>
+        inventory.CaseCount is > 0
+            ? inventory.CaseCount
+            : BrochureInventoryEntry.CaseCountFromNotes(inventory.Notes);
 
-    public static int? PerCaseFromNotes(string? notes)
-    {
-        if (string.IsNullOrWhiteSpace(notes))
-            return null;
-        var match = PerCasePattern.Match(notes);
-        if (!match.Success || !int.TryParse(match.Groups[1].Value, out var perCase) || perCase <= 0)
-            return null;
-        return perCase;
-    }
-
-    private static int? LatestPerCase(
+    private static int? LatestCaseCount(
         Customer customer,
         BrochureWarehouse? warehouse,
         string? rack,
@@ -548,9 +533,9 @@ public class BrochureInventoryReportService
             .OrderByDescending(i => i.InventoryDate)
             .ThenByDescending(i => i.Id))
         {
-            var perCase = PerCaseFromNotes(inventory.Notes);
-            if (perCase.HasValue)
-                return perCase;
+            var caseCount = CaseCountOf(inventory);
+            if (caseCount.HasValue)
+                return caseCount;
         }
 
         if (!isFirstSlot)
@@ -560,9 +545,9 @@ public class BrochureInventoryReportService
             .OrderByDescending(i => i.InventoryDate)
             .ThenByDescending(i => i.Id))
         {
-            var perCase = PerCaseFromNotes(inventory.Notes);
-            if (perCase.HasValue)
-                return perCase;
+            var caseCount = CaseCountOf(inventory);
+            if (caseCount.HasValue)
+                return caseCount;
         }
 
         return null;

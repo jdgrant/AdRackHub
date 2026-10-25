@@ -2,6 +2,24 @@ using System.ComponentModel.DataAnnotations;
 
 namespace AdRackHub.Models;
 
+public enum BrochureInventoryKind
+{
+    [Display(Name = "Inventory count")]
+    Count = 0,
+
+    [Display(Name = "Received")]
+    Received = 1
+}
+
+public static class BrochureInventoryKinds
+{
+    public static string Label(BrochureInventoryKind kind) => kind switch
+    {
+        BrochureInventoryKind.Received => "Received",
+        _ => "Inventory count"
+    };
+}
+
 public class CustomerBrochureInventory
 {
     public int Id { get; set; }
@@ -13,6 +31,18 @@ public class CustomerBrochureInventory
     [Display(Name = "Count")]
     [Range(0, int.MaxValue, ErrorMessage = "Count must be zero or greater.")]
     public int Quantity { get; set; }
+
+    [Display(Name = "Cases")]
+    [Range(typeof(decimal), "0", "999999")]
+    public decimal? Cases { get; set; }
+
+    [Display(Name = "Case count")]
+    [Range(0, int.MaxValue, ErrorMessage = "Case count must be zero or greater.")]
+    public int? CaseCount { get; set; }
+
+    [Required]
+    [Display(Name = "Record")]
+    public BrochureInventoryKind Kind { get; set; } = BrochureInventoryKind.Count;
 
     [Required]
     [Display(Name = "Inventory Date")]
