@@ -192,3 +192,129 @@ public class AgentVisitUpload
     public string? AfterFileName { get; set; }
     public string? AfterContentType { get; set; }
 }
+
+public class AgentBillingDueDto
+{
+    public int Year { get; set; }
+    public int Month { get; set; }
+    public string PeriodLabel { get; set; } = string.Empty;
+    public decimal DueTotal { get; set; }
+    public int DueCustomerCount { get; set; }
+    public int DueContractCount { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public int Total { get; set; }
+    public int TotalPages { get; set; }
+    public bool HasMore { get; set; }
+    public string HubUrl { get; set; } = string.Empty;
+    public List<AgentBillingDueItemDto> Items { get; set; } = new();
+    public List<AgentBillingInvoiceDto> SubmittedInvoices { get; set; } = new();
+}
+
+public class AgentBillingDueItemDto
+{
+    public int CustomerId { get; set; }
+    public string CustomerName { get; set; } = string.Empty;
+    public int ContractId { get; set; }
+    public string ContractName { get; set; } = string.Empty;
+    public string Term { get; set; } = string.Empty;
+    public string NextBillDate { get; set; } = string.Empty;
+    public List<string> Routes { get; set; } = new();
+    public decimal Amount { get; set; }
+    public string HubUrl { get; set; } = string.Empty;
+}
+
+public class AgentBillingInvoiceDto
+{
+    public int InvoiceId { get; set; }
+    public int CustomerId { get; set; }
+    public string CustomerName { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string PeriodLabel { get; set; } = string.Empty;
+    public string? WaveInvoiceNumber { get; set; }
+    public decimal Amount { get; set; }
+    public string? ContractNames { get; set; }
+    public string HubUrl { get; set; } = string.Empty;
+}
+
+public class AgentBillingOutstandingDto
+{
+    public string AsOf { get; set; } = string.Empty;
+    public decimal TotalAmount { get; set; }
+    public int InvoiceCount { get; set; }
+    public int ClientCount { get; set; }
+    public AgentBillingAgingDto Under30 { get; set; } = new();
+    public AgentBillingAgingDto From30To60 { get; set; } = new();
+    public AgentBillingAgingDto Over60 { get; set; } = new();
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public int Total { get; set; }
+    public int TotalPages { get; set; }
+    public bool HasMore { get; set; }
+    public string HubUrl { get; set; } = string.Empty;
+    public List<AgentBillingOutstandingItemDto> Items { get; set; } = new();
+}
+
+public class AgentBillingAgingDto
+{
+    public decimal Amount { get; set; }
+    public int InvoiceCount { get; set; }
+}
+
+public class AgentBillingOutstandingItemDto
+{
+    public int InvoiceId { get; set; }
+    public int CustomerId { get; set; }
+    public string CustomerName { get; set; } = string.Empty;
+    public string PeriodLabel { get; set; } = string.Empty;
+    public string InvoiceDate { get; set; } = string.Empty;
+    public int DaysLate { get; set; }
+    public int WeeksLate { get; set; }
+    public string? WaveInvoiceNumber { get; set; }
+    public string ContractNames { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+    public string HubUrl { get; set; } = string.Empty;
+}
+
+public class AgentBillingForecastDto
+{
+    public decimal ForecastTotal { get; set; }
+    public int ForecastInvoiceCount { get; set; }
+    public int SelectedYear { get; set; }
+    public int SelectedMonth { get; set; }
+    public string SelectedPeriodLabel { get; set; } = string.Empty;
+    public bool IgnoreEndDate { get; set; }
+    public string HubUrl { get; set; } = string.Empty;
+    public List<AgentBillingForecastMonthDto> Months { get; set; } = new();
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public int Total { get; set; }
+    public int TotalPages { get; set; }
+    public bool HasMore { get; set; }
+    public List<AgentBillingForecastLineDto> Lines { get; set; } = new();
+}
+
+public class AgentBillingForecastMonthDto
+{
+    public int Year { get; set; }
+    public int Month { get; set; }
+    public string Label { get; set; } = string.Empty;
+    public int InvoiceCount { get; set; }
+    public int CustomerCount { get; set; }
+    public decimal Amount { get; set; }
+    public bool IsCurrentMonth { get; set; }
+    public bool IsSelected { get; set; }
+}
+
+public class AgentBillingForecastLineDto
+{
+    public int CustomerId { get; set; }
+    public string CustomerName { get; set; } = string.Empty;
+    public int ContractId { get; set; }
+    public string ContractName { get; set; } = string.Empty;
+    public string Term { get; set; } = string.Empty;
+    public string? ContractEndDate { get; set; }
+    public decimal Amount { get; set; }
+    public bool Sent { get; set; }
+    public string HubUrl { get; set; } = string.Empty;
+}

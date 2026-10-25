@@ -17,6 +17,7 @@ public class AgentApiController : ControllerBase
     private readonly AgentCustomerApiService _api;
     private readonly IAgentActivityApi _activities;
     private readonly IAgentVisitApi _visits;
+    private readonly IAgentBillingApi _billing;
     private readonly AgentApiOptions _options;
     private static readonly JsonSerializerOptions VisitJson = new()
     {
@@ -29,12 +30,14 @@ public class AgentApiController : ControllerBase
         AgentCustomerApiService api,
         IAgentActivityApi activities,
         IAgentVisitApi visits,
+        IAgentBillingApi billing,
         IOptions<AgentApiOptions> options,
         ILogger<AgentApiController> logger)
     {
         _api = api;
         _activities = activities;
         _visits = visits;
+        _billing = billing;
         _options = options.Value;
         _logger = logger;
     }
@@ -134,6 +137,43 @@ public class AgentApiController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         return Execute(() => _visits.ListVisitsAsync(stopId, routeId, page, pageSize, AgentApiGuide.BaseUrl(Request), cancellationToken));
+    }
+
+    [HttpGet("billing/due")]
+    public Task<IActionResult> BillingDue(
+        [FromQuery] int? year,
+        [FromQuery] int? month,
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = AgentCustomerApiService.DefaultPageSize,
+        CancellationToken cancellationToken = default)
+    {
+        return Execute(() => _billing.DueAsync(year, month, search, page, pageSize, AgentApiGuide.BaseUrl(Request), cancellationToken));
+    }
+
+    [HttpGet("billing/outstanding")]
+    public Task<IActionResult> BillingOutstanding(
+        [FromQuery] string? search,
+        [FromQuery] string? age,
+        [FromQuery] int? weeks,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = AgentCustomerApiService.DefaultPageSize,
+        CancellationToken cancellationToken = default)
+    {
+        return Execute(() => _billing.OutstandingAsync(search, age, weeks, page, pageSize, AgentApiGuide.BaseUrl(Request), cancellationToken));
+    }
+
+    [HttpGet("billing/forecast")]
+    public Task<IActionResult> BillingForecast(
+        [FromQuery] int? year,
+        [FromQuery] int? month,
+        [FromQuery] int? months,
+        [FromQuery] bool ignoreEndDate = false,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = AgentCustomerApiService.DefaultPageSize,
+        CancellationToken cancellationToken = default)
+    {
+        return Execute(() => _billing.ForecastAsync(year, month, months, ignoreEndDate, page, pageSize, AgentApiGuide.BaseUrl(Request), cancellationToken));
     }
 
     [HttpPost("visits")]

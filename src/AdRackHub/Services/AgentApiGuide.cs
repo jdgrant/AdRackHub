@@ -40,9 +40,9 @@ public static class AgentApiGuide
             7. Select Create as a plugin, then install it.
             8. When ChatGPT asks to connect, sign in to AdRackHub as an admin and choose Allow.
 
-            The plugin tools are `search_customers`, `get_customer`, `create_customer`, `update_customer`, `add_contact`, `update_contact`, `list_activities`, `search_stops`, `list_visits`, and `log_stop_visit`. New records default to Prospect. Creating a Customer, or changing a Prospect to Customer, assigns a brochure id and sends the customer to Wave. There is no delete tool.
+            The plugin tools are `search_customers`, `get_customer`, `create_customer`, `update_customer`, `add_contact`, `update_contact`, `list_activities`, `billing_due`, `billing_outstanding`, `billing_forecast`, `search_stops`, `list_visits`, and `log_stop_visit`. New records default to Prospect. Creating a Customer, or changing a Prospect to Customer, assigns a brochure id and sends the customer to Wave. There is no delete tool.
 
-            `list_activities` reads open Hub tasks and email follow-ups. `log_stop_visit` records the driver and the before and after photos. Pass each email image attachment as base64.
+            `list_activities` reads open Hub tasks and email follow-ups. `billing_due`, `billing_outstanding`, and `billing_forecast` read bills due, unpaid invoices, and the billing forecast. They do not send invoices or mark them received. `log_stop_visit` records the driver and the before and after photos. Pass each email image attachment as base64.
 
             Search before creating. If create returns possible duplicates, do not create another record until the user picks one, or call create again with `acknowledgeDuplicateIds` set to every returned id.
 
@@ -84,10 +84,11 @@ public static class AgentApiGuide
             - List activities. Open tasks and email follow-ups are included by default.
             - Search stops and list visits.
             - Log a stop visit with the driver and before and after photos.
+            - Read bills due, outstanding invoices, and the billing forecast.
 
             Do not send DELETE. Delete requests return HTTP 405. This API cannot delete records.
 
-            Billing, contracts, and warehouse bins are outside this API. Activities are read-only. A stop visit can be logged with photos.
+            Billing can be read. This API cannot send invoices, mark them received, or change contracts. Warehouse bins are outside this API. Activities are read-only. A stop visit can be logged with photos.
 
             ## Records
 
@@ -280,6 +281,26 @@ public static class AgentApiGuide
 
             The saved visit includes the driver, who logged it, and links to the before and after photos. Those photo links require an AdRackHub login.
 
+            ## Bills due
+
+            `GET /api/agent/billing/due`
+
+            Omit `year` and `month` for the current month. Send both together to choose another month. `search` matches the customer, contract, or route.
+
+            `dueTotal` is the amount still to bill. `items` are those contracts. `submittedInvoices` are the invoices already created for that month, including received and canceled ones. This call does not send anything to Wave.
+
+            ## Outstanding
+
+            `GET /api/agent/billing/outstanding`
+
+            Submitted invoices that have not been marked received. The aging buckets are `under30`, `from30To60`, and `over60`. `age` filters the list to `under30`, `30-60`, or `over60`. `weeks` is the minimum weeks late. `totalAmount` is the filtered list. The aging buckets stay based on the search, before the age and weeks filters.
+
+            ## Forecast
+
+            `GET /api/agent/billing/forecast`
+
+            `months` defaults to 12 and cannot exceed 24. The forecast starts at the current month. `year` and `month` choose which month's contract lines are returned. `months` in the response is every month total. `lines` are the selected month. `sent` is true when that invoice was already submitted. `ignoreEndDate=true` keeps contracts after their end date.
+
             ## Fields
 
             Customer or prospect:
@@ -470,6 +491,9 @@ public static class AgentApiGuide
         var visitListRef = "#/components/schemas/VisitList";
         var visitRef = "#/components/schemas/Visit";
         var visitWriteRef = "#/components/schemas/VisitWrite";
+        var billingDueRef = "#/components/schemas/BillingDue";
+        var billingOutstandingRef = "#/components/schemas/BillingOutstanding";
+        var billingForecastRef = "#/components/schemas/BillingForecast";
         JsonObject ErrorResponse() => Response("Invalid request.", errorRef);
         JsonObject Unauthorized() => Response("Missing or wrong API key.", errorRef);
         JsonObject NotFound() => Response("No record with that id.", errorRef);
@@ -481,7 +505,7 @@ public static class AgentApiGuide
             {
                 ["title"] = "AdRackHub Agent API",
                 ["version"] = "1.0.0",
-                ["description"] = "List, create, and update customers and prospects, including contacts. Read activities. Log a stop visit with before and after photos. Delete is not available. Read /docs/agent.html for the full guide."
+                ["description"] = "List, create, and update customers and prospects, including contacts. Read activities, bills due, outstanding invoices, and the billing forecast. Log a stop visit with before and after photos. Delete is not available. Read /docs/agent.html for the full guide."
             },
             ["servers"] = new JsonArray { new JsonObject { ["url"] = baseUrl.TrimEnd('/') } },
             ["security"] = new JsonArray
@@ -610,6 +634,55 @@ public static class AgentApiGuide
                         ["401"] = Unauthorized(),
                         ["404"] = NotFound(),
                         ["409"] = Response("More than one stop matches. Nothing was saved.", errorRef)
+                    })
+                },
+                ["/api/agent/billing/due"] = new JsonObject
+                {
+                    ["get"] = Operation("billingDue", "Contracts due to be billed for a month, plus invoices already submitted. Does not send invoices.", new JsonArray
+                    {
+                        QueryParam("year", "Billing year. Send with month, or omit both for the current month.", "integer"),
+                        QueryParam("month", "Billing month, 1 through 12.", "integer"),
+                        QueryParam("search", "Customer, contract, or route name."),
+                        QueryParam("page", "Page number, starting at 1.", "integer"),
+                        QueryParam("pageSize", "Default 50. Maximum 100.", "integer")
+                    }, new JsonObject
+                    {
+                        ["200"] = Response("Bills due for the month.", billingDueRef),
+                        ["400"] = ErrorResponse(),
+                        ["401"] = Unauthorized()
+                    })
+                },
+                ["/api/agent/billing/outstanding"] = new JsonObject
+                {
+                    ["get"] = Operation("billingOutstanding", "Submitted invoices that have not been received, with aging.", new JsonArray
+                    {
+                        QueryParam("search", "Customer, contract, period, invoice id, or Wave invoice number."),
+                        QueryParam("age", "under30, 30-60, or over60."),
+                        QueryParam("weeks", "Minimum weeks late.", "integer"),
+                        QueryParam("page", "Page number, starting at 1.", "integer"),
+                        QueryParam("pageSize", "Default 50. Maximum 100.", "integer")
+                    }, new JsonObject
+                    {
+                        ["200"] = Response("Outstanding invoices.", billingOutstandingRef),
+                        ["400"] = ErrorResponse(),
+                        ["401"] = Unauthorized()
+                    })
+                },
+                ["/api/agent/billing/forecast"] = new JsonObject
+                {
+                    ["get"] = Operation("billingForecast", "Billing forecast by month, with contract lines for the selected month.", new JsonArray
+                    {
+                        QueryParam("year", "Selected year. Send with month, or omit both for the current month.", "integer"),
+                        QueryParam("month", "Selected month, 1 through 12.", "integer"),
+                        QueryParam("months", "How many months to forecast, from 1 to 24. Default 12.", "integer"),
+                        QueryParam("ignoreEndDate", "When true, contracts past their end date stay in the forecast.", "boolean"),
+                        QueryParam("page", "Page number for the selected month's lines.", "integer"),
+                        QueryParam("pageSize", "Default 50. Maximum 100.", "integer")
+                    }, new JsonObject
+                    {
+                        ["200"] = Response("The billing forecast.", billingForecastRef),
+                        ["400"] = ErrorResponse(),
+                        ["401"] = Unauthorized()
                     })
                 }
             },
@@ -744,6 +817,159 @@ public static class AgentApiGuide
                             ["afterImageBase64"] = StringProp("After photo from the email, as base64 or a data URL.")
                         }
                     },
+                    ["BillingDue"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["year"] = IntProp(),
+                            ["month"] = IntProp(),
+                            ["periodLabel"] = StringProp("Month label."),
+                            ["dueTotal"] = NumberProp("Amount still to bill."),
+                            ["dueCustomerCount"] = IntProp(),
+                            ["dueContractCount"] = IntProp(),
+                            ["page"] = IntProp(),
+                            ["pageSize"] = IntProp(),
+                            ["total"] = IntProp(),
+                            ["totalPages"] = IntProp(),
+                            ["hasMore"] = new JsonObject { ["type"] = "boolean" },
+                            ["hubUrl"] = StringProp("Billing page for this month."),
+                            ["items"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["$ref"] = "#/components/schemas/BillingDueItem" } },
+                            ["submittedInvoices"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["$ref"] = "#/components/schemas/BillingInvoice" } }
+                        }
+                    },
+                    ["BillingDueItem"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["customerId"] = IntProp(),
+                            ["customerName"] = StringProp("Customer name."),
+                            ["contractId"] = IntProp(),
+                            ["contractName"] = StringProp("Contract name."),
+                            ["term"] = StringProp("Billing term."),
+                            ["nextBillDate"] = StringProp("yyyy-MM-dd."),
+                            ["routes"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string" } },
+                            ["amount"] = NumberProp("Amount due for this contract."),
+                            ["hubUrl"] = StringProp("Customer page.")
+                        }
+                    },
+                    ["BillingInvoice"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["invoiceId"] = IntProp(),
+                            ["customerId"] = IntProp(),
+                            ["customerName"] = StringProp("Customer name."),
+                            ["status"] = StringProp("Submitted, Received, or Canceled."),
+                            ["periodLabel"] = StringProp("Billing month."),
+                            ["waveInvoiceNumber"] = StringProp("Wave invoice number."),
+                            ["amount"] = NumberProp("Invoice total."),
+                            ["contractNames"] = StringProp("Contracts on the invoice."),
+                            ["hubUrl"] = StringProp("Customer page.")
+                        }
+                    },
+                    ["BillingOutstanding"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["asOf"] = StringProp("Aging date, yyyy-MM-dd."),
+                            ["totalAmount"] = NumberProp("Filtered outstanding total."),
+                            ["invoiceCount"] = IntProp(),
+                            ["clientCount"] = IntProp(),
+                            ["under30"] = new JsonObject { ["$ref"] = "#/components/schemas/BillingAging" },
+                            ["from30To60"] = new JsonObject { ["$ref"] = "#/components/schemas/BillingAging" },
+                            ["over60"] = new JsonObject { ["$ref"] = "#/components/schemas/BillingAging" },
+                            ["page"] = IntProp(),
+                            ["pageSize"] = IntProp(),
+                            ["total"] = IntProp(),
+                            ["totalPages"] = IntProp(),
+                            ["hasMore"] = new JsonObject { ["type"] = "boolean" },
+                            ["hubUrl"] = StringProp("Outstanding invoices page."),
+                            ["items"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["$ref"] = "#/components/schemas/BillingOutstandingItem" } }
+                        }
+                    },
+                    ["BillingAging"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["amount"] = NumberProp("Amount in this age bucket."),
+                            ["invoiceCount"] = IntProp()
+                        }
+                    },
+                    ["BillingOutstandingItem"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["invoiceId"] = IntProp(),
+                            ["customerId"] = IntProp(),
+                            ["customerName"] = StringProp("Customer name."),
+                            ["periodLabel"] = StringProp("Billing month."),
+                            ["invoiceDate"] = StringProp("yyyy-MM-dd."),
+                            ["daysLate"] = IntProp(),
+                            ["weeksLate"] = IntProp(),
+                            ["waveInvoiceNumber"] = StringProp("Wave invoice number."),
+                            ["contractNames"] = StringProp("Contracts on the invoice."),
+                            ["amount"] = NumberProp("Invoice total."),
+                            ["hubUrl"] = StringProp("Customer page.")
+                        }
+                    },
+                    ["BillingForecast"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["forecastTotal"] = NumberProp("Total across the forecast months."),
+                            ["forecastInvoiceCount"] = IntProp(),
+                            ["selectedYear"] = IntProp(),
+                            ["selectedMonth"] = IntProp(),
+                            ["selectedPeriodLabel"] = StringProp("Selected month."),
+                            ["ignoreEndDate"] = new JsonObject { ["type"] = "boolean" },
+                            ["hubUrl"] = StringProp("Forecast page."),
+                            ["months"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["$ref"] = "#/components/schemas/BillingForecastMonth" } },
+                            ["page"] = IntProp(),
+                            ["pageSize"] = IntProp(),
+                            ["total"] = IntProp(),
+                            ["totalPages"] = IntProp(),
+                            ["hasMore"] = new JsonObject { ["type"] = "boolean" },
+                            ["lines"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["$ref"] = "#/components/schemas/BillingForecastLine" } }
+                        }
+                    },
+                    ["BillingForecastMonth"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["year"] = IntProp(),
+                            ["month"] = IntProp(),
+                            ["label"] = StringProp("Month label."),
+                            ["invoiceCount"] = IntProp(),
+                            ["customerCount"] = IntProp(),
+                            ["amount"] = NumberProp("Forecast amount for the month."),
+                            ["isCurrentMonth"] = new JsonObject { ["type"] = "boolean" },
+                            ["isSelected"] = new JsonObject { ["type"] = "boolean" }
+                        }
+                    },
+                    ["BillingForecastLine"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["customerId"] = IntProp(),
+                            ["customerName"] = StringProp("Customer name."),
+                            ["contractId"] = IntProp(),
+                            ["contractName"] = StringProp("Contract name."),
+                            ["term"] = StringProp("Billing term."),
+                            ["contractEndDate"] = StringProp("yyyy-MM-dd, or null."),
+                            ["amount"] = NumberProp("Forecast amount."),
+                            ["sent"] = new JsonObject { ["type"] = "boolean", ["description"] = "True when the invoice was already submitted." },
+                            ["hubUrl"] = StringProp("Customer page.")
+                        }
+                    },
                     ["Error"] = new JsonObject
                     {
                         ["type"] = "object",
@@ -845,6 +1071,12 @@ public static class AgentApiGuide
     };
 
     private static JsonObject IntProp() => new() { ["type"] = "integer" };
+
+    private static JsonObject NumberProp(string description) => new()
+    {
+        ["type"] = "number",
+        ["description"] = description
+    };
 
     private static JsonObject StringProp(string description) => new()
     {

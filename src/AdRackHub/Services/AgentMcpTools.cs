@@ -14,11 +14,12 @@ namespace AdRackHub.Services;
 public sealed class AgentMcpTools
 {
     public const string Instructions =
-        "Use search_customers before create_customer. New records default to Prospect. Creating a Customer, or changing a Prospect to Customer, assigns a brochure ID and sends it to Wave. Omit unchanged fields; null or \"\" clears a field. No delete. list_activities reads open tasks and email follow-ups. log_stop_visit saves the driver and before and after photos from an email.";
+        "Use search_customers before create_customer. New records default to Prospect. Creating a Customer, or changing a Prospect to Customer, assigns a brochure ID and sends it to Wave. Omit unchanged fields; null or \"\" clears a field. No delete. list_activities reads open tasks and email follow-ups. billing_due, billing_outstanding, and billing_forecast are read-only. log_stop_visit saves the driver and before and after photos from an email.";
 
     private readonly IAgentCustomerApi _api;
     private readonly IAgentActivityApi _activities;
     private readonly IAgentVisitApi _visits;
+    private readonly IAgentBillingApi _billing;
     private readonly IHttpContextAccessor _http;
     private readonly IOptions<WaveOptions> _wave;
     private readonly ILogger<AgentMcpTools> _logger;
@@ -27,6 +28,7 @@ public sealed class AgentMcpTools
         IAgentCustomerApi api,
         IAgentActivityApi activities,
         IAgentVisitApi visits,
+        IAgentBillingApi billing,
         IHttpContextAccessor http,
         IOptions<WaveOptions> wave,
         ILogger<AgentMcpTools> logger)
@@ -34,6 +36,7 @@ public sealed class AgentMcpTools
         _api = api;
         _activities = activities;
         _visits = visits;
+        _billing = billing;
         _http = http;
         _wave = wave;
         _logger = logger;
@@ -165,6 +168,52 @@ public sealed class AgentMcpTools
     {
         RequireScope(McpPolicies.ReadScope);
         return Complete(_activities.ListAsync(status, kind, customerId, search, page, pageSize, HubBase(), cancellationToken), "list_activities");
+    }
+
+    [Authorize(Policy = McpPolicies.Read)]
+    [McpServerTool(Name = "billing_due", Title = "Bills due", ReadOnly = true, OpenWorld = false, Destructive = false, Idempotent = true, UseStructuredContent = true)]
+    [Description("Read contracts due to be billed for a month, plus invoices already submitted for that month. Omit year and month for the current month. This does not send invoices or change billing.")]
+    public Task<AgentBillingDueDto> BillingDue(
+        [Description("Billing year. Send with month, or omit both for the current month.")] int? year,
+        [Description("Billing month, 1 through 12.")] int? month,
+        [Description("Matches customer, contract, or route name.")] string? search,
+        [Description("Page number, starting at 1.")] int page = 1,
+        [Description("Page size. Default 50. Maximum 100.")] int pageSize = 50,
+        CancellationToken cancellationToken = default)
+    {
+        RequireScope(McpPolicies.ReadScope);
+        return Complete(_billing.DueAsync(year, month, search, page, pageSize, HubBase(), cancellationToken), "billing_due");
+    }
+
+    [Authorize(Policy = McpPolicies.Read)]
+    [McpServerTool(Name = "billing_outstanding", Title = "Outstanding invoices", ReadOnly = true, OpenWorld = false, Destructive = false, Idempotent = true, UseStructuredContent = true)]
+    [Description("Read submitted invoices that have not been received, with totals and aging. age can be under30, 30-60, or over60. weeks is the minimum weeks late. This does not mark invoices received.")]
+    public Task<AgentBillingOutstandingDto> BillingOutstanding(
+        [Description("Matches customer, contract, period, invoice id, or Wave invoice number.")] string? search,
+        [Description("under30, 30-60, or over60.")] string? age,
+        [Description("Minimum weeks late. Omit for every outstanding invoice.")] int? weeks,
+        [Description("Page number, starting at 1.")] int page = 1,
+        [Description("Page size. Default 50. Maximum 100.")] int pageSize = 50,
+        CancellationToken cancellationToken = default)
+    {
+        RequireScope(McpPolicies.ReadScope);
+        return Complete(_billing.OutstandingAsync(search, age, weeks, page, pageSize, HubBase(), cancellationToken), "billing_outstanding");
+    }
+
+    [Authorize(Policy = McpPolicies.Read)]
+    [McpServerTool(Name = "billing_forecast", Title = "Billing forecast", ReadOnly = true, OpenWorld = false, Destructive = false, Idempotent = true, UseStructuredContent = true)]
+    [Description("Read the billing forecast. Months lists each upcoming month total. Lines are the contracts in the selected month. months defaults to 12 and cannot exceed 24. ignoreEndDate includes contracts past their end date. This does not create invoices.")]
+    public Task<AgentBillingForecastDto> BillingForecast(
+        [Description("Selected year. Send with month, or omit both for the current month.")] int? year,
+        [Description("Selected month, 1 through 12.")] int? month,
+        [Description("How many months to forecast, from 1 to 24. Default 12.")] int? months,
+        [Description("When true, contracts past their end date stay in the forecast.")] bool ignoreEndDate = false,
+        [Description("Page number for the selected month's lines, starting at 1.")] int page = 1,
+        [Description("Page size. Default 50. Maximum 100.")] int pageSize = 50,
+        CancellationToken cancellationToken = default)
+    {
+        RequireScope(McpPolicies.ReadScope);
+        return Complete(_billing.ForecastAsync(year, month, months, ignoreEndDate, page, pageSize, HubBase(), cancellationToken), "billing_forecast");
     }
 
     [Authorize(Policy = McpPolicies.Read)]

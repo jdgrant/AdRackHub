@@ -34,6 +34,7 @@ public class AgentMcpTests
         Assert.Contains("Prospect", AgentMcpTools.Instructions);
         Assert.Contains("Wave", AgentMcpTools.Instructions);
         Assert.Contains("list_activities", AgentMcpTools.Instructions);
+        Assert.Contains("billing_outstanding", AgentMcpTools.Instructions);
         Assert.Contains("log_stop_visit", AgentMcpTools.Instructions);
     }
 
@@ -184,12 +185,16 @@ public class AgentMcpTests
         Assert.Equal(
             new[]
             {
-                "add_contact", "create_customer", "get_customer", "list_activities", "list_visits",
-                "log_stop_visit", "search_customers", "search_stops", "update_contact", "update_customer"
+                "add_contact", "billing_due", "billing_forecast", "billing_outstanding", "create_customer",
+                "get_customer", "list_activities", "list_visits", "log_stop_visit", "search_customers",
+                "search_stops", "update_contact", "update_customer"
             },
             tools.Select(tool => tool.Name).OrderBy(name => name).ToArray());
         Assert.True(tools.Single(tool => tool.Name == "search_customers").ProtocolTool.Annotations?.ReadOnlyHint);
         Assert.True(tools.Single(tool => tool.Name == "list_activities").ProtocolTool.Annotations?.ReadOnlyHint);
+        Assert.True(tools.Single(tool => tool.Name == "billing_due").ProtocolTool.Annotations?.ReadOnlyHint);
+        Assert.True(tools.Single(tool => tool.Name == "billing_outstanding").ProtocolTool.Annotations?.ReadOnlyHint);
+        Assert.True(tools.Single(tool => tool.Name == "billing_forecast").ProtocolTool.Annotations?.ReadOnlyHint);
         Assert.False(tools.Single(tool => tool.Name == "log_stop_visit").ProtocolTool.Annotations?.ReadOnlyHint);
         Assert.True(tools.Single(tool => tool.Name == "get_customer").ProtocolTool.Annotations?.ReadOnlyHint);
         Assert.False(tools.Single(tool => tool.Name == "create_customer").ProtocolTool.Annotations?.ReadOnlyHint);
@@ -289,6 +294,7 @@ public class AgentMcpTests
             fake,
             new FakeActivityApi(),
             new FakeVisitApi(),
+            new FakeBillingApi(),
             new HttpContextAccessor { HttpContext = context },
             Options.Create(new WaveOptions()),
             NullLogger<AgentMcpTools>.Instance);
@@ -322,6 +328,18 @@ public class AgentMcpTests
         }
 
         throw new InvalidOperationException("AdRackHub project was not found.");
+    }
+
+    private sealed class FakeBillingApi : IAgentBillingApi
+    {
+        public Task<AgentCallResult<AgentBillingDueDto>> DueAsync(int? year, int? month, string? search, int page, int pageSize, string hubBase, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<AgentCallResult<AgentBillingOutstandingDto>> OutstandingAsync(string? search, string? age, int? weeks, int page, int pageSize, string hubBase, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<AgentCallResult<AgentBillingForecastDto>> ForecastAsync(int? year, int? month, int? months, bool ignoreEndDate, int page, int pageSize, string hubBase, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 
     private sealed class FakeActivityApi : IAgentActivityApi
@@ -366,6 +384,7 @@ public class AgentMcpTests
             builder.Services.AddSingleton<IAgentCustomerApi>(fake);
             builder.Services.AddSingleton<IAgentActivityApi>(new FakeActivityApi());
             builder.Services.AddSingleton<IAgentVisitApi>(new FakeVisitApi());
+            builder.Services.AddSingleton<IAgentBillingApi>(new FakeBillingApi());
             builder.Services.AddSingleton<IMcpUserDirectory>(new DirectoryUser());
             builder.Services.Configure<WaveOptions>(_ => { });
             builder.Services.AddAdRackMcp(null);

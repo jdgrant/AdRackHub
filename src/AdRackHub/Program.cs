@@ -88,6 +88,8 @@ builder.Services.AddScoped<IAgentActivityApi>(sp => sp.GetRequiredService<AgentA
 builder.Services.AddScoped<VisitPhotoStore>();
 builder.Services.AddScoped<AgentVisitService>();
 builder.Services.AddScoped<IAgentVisitApi>(sp => sp.GetRequiredService<AgentVisitService>());
+builder.Services.AddScoped<AgentBillingService>();
+builder.Services.AddScoped<IAgentBillingApi>(sp => sp.GetRequiredService<AgentBillingService>());
 builder.Services.AddScoped<IMcpUserDirectory, IdentityMcpUserDirectory>();
 builder.Services.AddAdRackMcp(Path.Combine(builder.Environment.ContentRootPath, "App_Data", "mcp-oauth-store.json"));
 builder.Services.Configure<DataForSeoOptions>(builder.Configuration.GetSection(DataForSeoOptions.SectionName));
