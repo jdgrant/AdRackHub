@@ -168,6 +168,12 @@ else
                                 @(Model.WaveConnected ? null : "disabled")
                                 title="@(Model.WaveConnected ? "Mark paid in Wave to Money in Transit: Received Invoices." : Model.WaveActionBlockedReason)">Receive</button>
                     </form>
+                    <a class="btn btn-sm btn-outline-primary mt-1"
+                       asp-action="Remind"
+                       asp-route-invoiceId="@invoice.InvoiceId"
+                       asp-route-search="@Model.Search"
+                       asp-route-weeks="@Model.MinWeeksLate"
+                       asp-route-age="@Model.Age">Remind</a>
                 </td>
             </tr>
         }

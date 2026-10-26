@@ -10,5 +10,12 @@ public class AgentApiOptions
     /// </summary>
     public string? ApiKey { get; set; }
 
+    /// <summary>
+    /// When true, the agent API may replace the saved invoice reminder template.
+    /// Leave false so agents can only read and render it. Set this in
+    /// appsettings.Production.json on the server. A deploy does not upload that file.
+    /// </summary>
+    public bool CanManageInvoiceReminderTemplate { get; set; }
+
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ApiKey);
 }

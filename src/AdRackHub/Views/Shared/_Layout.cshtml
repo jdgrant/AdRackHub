@@ -60,11 +60,14 @@
                         @if (User.IsInRole(AppRoles.Admin))
                         {
                             var adminNav = string.Equals(ViewContext.RouteData.Values["controller"] as string, "Admin", StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(ViewContext.RouteData.Values["controller"] as string, "Communications", StringComparison.OrdinalIgnoreCase)
                                 || string.Equals(ViewContext.RouteData.Values["controller"] as string, "AgentDocs", StringComparison.OrdinalIgnoreCase);
                             <li class="nav-item dropdown">
                                 <a class="nav-link dropdown-toggle@(adminNav ? " active" : null)" href="#" data-bs-toggle="dropdown">Admin</a>
                                 <ul class="dropdown-menu">
                                     <li><a class="dropdown-item" asp-controller="Admin" asp-action="Index">Admin</a></li>
+                                    <li><h6 class="dropdown-header">Communications</h6></li>
+                                    <li><a class="dropdown-item" asp-controller="Communications" asp-action="InvoiceReminder">Invoice reminder template</a></li>
                                     <li><a class="dropdown-item" asp-controller="AgentDocs" asp-action="Index">Agent API</a></li>
                                 </ul>
                             </li>

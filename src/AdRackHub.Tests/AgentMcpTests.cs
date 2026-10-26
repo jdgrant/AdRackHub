@@ -186,8 +186,8 @@ public class AgentMcpTests
             new[]
             {
                 "add_contact", "billing_due", "billing_forecast", "billing_outstanding", "create_customer",
-                "get_customer", "list_activities", "list_visits", "log_stop_visit", "search_customers",
-                "search_stops", "update_contact", "update_customer"
+                "get_customer", "invoice_reminder_template", "list_activities", "list_visits", "log_stop_visit",
+                "search_customers", "search_stops", "update_contact", "update_customer"
             },
             tools.Select(tool => tool.Name).OrderBy(name => name).ToArray());
         Assert.True(tools.Single(tool => tool.Name == "search_customers").ProtocolTool.Annotations?.ReadOnlyHint);
@@ -195,6 +195,7 @@ public class AgentMcpTests
         Assert.True(tools.Single(tool => tool.Name == "billing_due").ProtocolTool.Annotations?.ReadOnlyHint);
         Assert.True(tools.Single(tool => tool.Name == "billing_outstanding").ProtocolTool.Annotations?.ReadOnlyHint);
         Assert.True(tools.Single(tool => tool.Name == "billing_forecast").ProtocolTool.Annotations?.ReadOnlyHint);
+        Assert.True(tools.Single(tool => tool.Name == "invoice_reminder_template").ProtocolTool.Annotations?.ReadOnlyHint);
         Assert.False(tools.Single(tool => tool.Name == "log_stop_visit").ProtocolTool.Annotations?.ReadOnlyHint);
         Assert.True(tools.Single(tool => tool.Name == "get_customer").ProtocolTool.Annotations?.ReadOnlyHint);
         Assert.False(tools.Single(tool => tool.Name == "create_customer").ProtocolTool.Annotations?.ReadOnlyHint);
@@ -295,6 +296,7 @@ public class AgentMcpTests
             new FakeActivityApi(),
             new FakeVisitApi(),
             new FakeBillingApi(),
+            new FakeReminderReader(),
             new HttpContextAccessor { HttpContext = context },
             Options.Create(new WaveOptions()),
             NullLogger<AgentMcpTools>.Instance);
@@ -328,6 +330,18 @@ public class AgentMcpTests
         }
 
         throw new InvalidOperationException("AdRackHub project was not found.");
+    }
+
+    private sealed class FakeReminderReader : IInvoiceReminderReader
+    {
+        public Task<AgentCallResult<AgentInvoiceReminderReadDto>> ReadAsync(int? invoiceId, bool canUpdate, string hubBase, CancellationToken cancellationToken) =>
+            Task.FromResult(AgentCallResult<AgentInvoiceReminderReadDto>.Ok(new AgentInvoiceReminderReadDto
+            {
+                Subject = InvoiceReminderMerge.DefaultSubject,
+                Body = InvoiceReminderMerge.DefaultBody,
+                CanUpdate = canUpdate,
+                HubUrl = hubBase
+            }));
     }
 
     private sealed class FakeBillingApi : IAgentBillingApi
@@ -385,6 +399,7 @@ public class AgentMcpTests
             builder.Services.AddSingleton<IAgentActivityApi>(new FakeActivityApi());
             builder.Services.AddSingleton<IAgentVisitApi>(new FakeVisitApi());
             builder.Services.AddSingleton<IAgentBillingApi>(new FakeBillingApi());
+            builder.Services.AddSingleton<IInvoiceReminderReader>(new FakeReminderReader());
             builder.Services.AddSingleton<IMcpUserDirectory>(new DirectoryUser());
             builder.Services.Configure<WaveOptions>(_ => { });
             builder.Services.AddAdRackMcp(null);

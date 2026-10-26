@@ -1,0 +1,56 @@
+@model InvoiceReminderComposeViewModel
+@{
+    ViewData["Title"] = "Invoice reminder";
+}
+
+<div class="page-header">
+    <div>
+        <h1 class="h2 mb-0">Invoice reminder</h1>
+        <div class="text-muted">@Model.CustomerName · @Model.PeriodLabel · @(Model.WaveInvoiceNumber ?? "No Wave number") · @Model.Amount.ToString("C")</div>
+    </div>
+    <a class="btn btn-outline-secondary" asp-action="Outstanding" asp-route-search="@Model.Search" asp-route-weeks="@Model.Weeks" asp-route-age="@Model.Age">Back</a>
+</div>
+
+<p>This email starts from the saved Admin template. Changes here apply only to this send.</p>
+@if (User.IsInRole(AppRoles.Admin))
+{
+    <p><a asp-controller="Communications" asp-action="InvoiceReminder">Edit the default template in Admin</a></p>
+}
+
+<form method="post">
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="InvoiceId" value="@Model.InvoiceId" />
+    <input type="hidden" name="Search" value="@Model.Search" />
+    <input type="hidden" name="Weeks" value="@Model.Weeks" />
+    <input type="hidden" name="Age" value="@Model.Age" />
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+    <div class="row g-4">
+        <div class="col-lg-7">
+            <div class="mb-3">
+                <label class="form-label" for="reminder-subject">Subject</label>
+                <input class="form-control" id="reminder-subject" name="Subject" maxlength="300" value="@Model.Subject" required />
+            </div>
+            <div class="mb-3">
+                <label class="form-label" for="reminder-body">Email body</label>
+                <textarea class="form-control" id="reminder-body" name="Body" rows="16" maxlength="8000" required>@Model.Body</textarea>
+            </div>
+            <p class="mb-2">To: @Model.Recipients</p>
+            <p class="text-muted small">@(Model.HasPdf ? "The invoice PDF will be attached." : "No invoice PDF is on file, so this email is the message only.")</p>
+            @if (!string.IsNullOrWhiteSpace(Model.SendBlockedReason))
+            {
+                <p class="text-danger">@Model.SendBlockedReason</p>
+            }
+            <div class="d-flex flex-wrap gap-2">
+                <button type="submit" class="btn btn-outline-secondary" formaction="@Url.Action("PreviewReminder")">Preview</button>
+                <button type="submit" class="btn btn-primary" formaction="@Url.Action("SendReminder")" @(Model.CanSend ? null : "disabled")>Send this email</button>
+                <a class="btn btn-link" asp-action="Remind" asp-route-invoiceId="@Model.InvoiceId" asp-route-search="@Model.Search" asp-route-weeks="@Model.Weeks" asp-route-age="@Model.Age">Use saved template</a>
+            </div>
+        </div>
+        @if (Model.HasPreview)
+        {
+            <div class="col-lg-5">
+                <partial name="_InvoiceReminderPreview" model="(Model.PreviewSubject, Model.PreviewBody, Model.LogoUrl, Model.CustomerName)" />
+            </div>
+        }
+    </div>
+</form>

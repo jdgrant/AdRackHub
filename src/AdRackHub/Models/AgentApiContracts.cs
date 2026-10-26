@@ -318,3 +318,49 @@ public class AgentBillingForecastLineDto
     public bool Sent { get; set; }
     public string HubUrl { get; set; } = string.Empty;
 }
+
+public class AgentInvoiceReminderMergeFieldDto
+{
+    public string Token { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+}
+
+public class AgentInvoiceReminderReadDto
+{
+    public string Subject { get; set; } = string.Empty;
+    public string Body { get; set; } = string.Empty;
+    public string? UpdatedAt { get; set; }
+    public string? UpdatedBy { get; set; }
+    public bool CanUpdate { get; set; }
+    public string RenderedSubject { get; set; } = string.Empty;
+    public string RenderedBody { get; set; } = string.Empty;
+    public string RenderSource { get; set; } = "sample";
+    public int? InvoiceId { get; set; }
+    public string? CustomerName { get; set; }
+    public List<AgentInvoiceReminderMergeFieldDto> MergeFields { get; set; } = new();
+    public string HubUrl { get; set; } = string.Empty;
+}
+
+public class AgentInvoiceReminderRenderDto
+{
+    public string Subject { get; set; } = string.Empty;
+    public string Body { get; set; } = string.Empty;
+    public string Source { get; set; } = "sample";
+    public int? InvoiceId { get; set; }
+    public string? CustomerName { get; set; }
+    public bool Saved { get; set; }
+    public string HubUrl { get; set; } = string.Empty;
+}
+
+public class AgentInvoiceReminderRenderRequest
+{
+    public int? InvoiceId { get; set; }
+    public string? Subject { get; set; }
+    public string? Body { get; set; }
+}
+
+public class AgentInvoiceReminderUpdateRequest
+{
+    public string? Subject { get; set; }
+    public string? Body { get; set; }
+}

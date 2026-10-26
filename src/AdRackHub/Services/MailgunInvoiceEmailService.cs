@@ -62,6 +62,47 @@ public class MailgunInvoiceEmailService
             : Path.GetFileName(pdfFileName);
 
         var logoBytes = await ReadLogoBytesAsync(cancellationToken);
+        return await DeliverAsync(emails, subject, message, pdfBytes, attachmentName, logoBytes, cancellationToken);
+    }
+
+    public async Task<WaveSendResult> SendReminderAsync(
+        IReadOnlyList<string> toEmails,
+        string subject,
+        string message,
+        byte[]? pdfBytes = null,
+        string? pdfFileName = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_options.IsConfigured)
+            return WaveSendResult.Failed("Mailgun is not configured.");
+
+        var emails = toEmails
+            .Where(email => !string.IsNullOrWhiteSpace(email))
+            .Select(email => email.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (emails.Count == 0)
+            return WaveSendResult.Failed("Enter at least one recipient.");
+        if (string.IsNullOrWhiteSpace(subject) || string.IsNullOrWhiteSpace(message))
+            return WaveSendResult.Failed("Enter a subject and message.");
+
+        var attachment = pdfBytes is { Length: > 0 } ? pdfBytes : null;
+        var attachmentName = string.IsNullOrWhiteSpace(pdfFileName)
+            ? "AdRack-invoice.pdf"
+            : Path.GetFileName(pdfFileName);
+        var logoBytes = await ReadLogoBytesAsync(cancellationToken);
+        return await DeliverAsync(emails, subject.Trim(), message, attachment, attachmentName, logoBytes, cancellationToken);
+    }
+
+    private async Task<WaveSendResult> DeliverAsync(
+        IReadOnlyList<string> emails,
+        string subject,
+        string message,
+        byte[]? pdfBytes,
+        string attachmentName,
+        byte[]? logoBytes,
+        CancellationToken cancellationToken)
+    {
         var smtp = await SendViaSmtpAsync(emails, subject, message, pdfBytes, attachmentName, logoBytes, cancellationToken);
         if (smtp.Success)
             return smtp;
@@ -122,7 +163,7 @@ public class MailgunInvoiceEmailService
         IReadOnlyList<string> emails,
         string subject,
         string message,
-        byte[] pdfBytes,
+        byte[]? pdfBytes,
         string attachmentName,
         byte[]? logoBytes,
         CancellationToken cancellationToken)
@@ -143,9 +184,10 @@ public class MailgunInvoiceEmailService
             foreach (var email in emails)
                 mail.To.Add(email);
 
-            await using var pdfStream = new MemoryStream(pdfBytes);
-            using var attachment = new Attachment(pdfStream, attachmentName, "application/pdf");
-            mail.Attachments.Add(attachment);
+            using var pdfStream = pdfBytes is { Length: > 0 } ? new MemoryStream(pdfBytes) : null;
+            using var attachment = pdfStream == null ? null : new Attachment(pdfStream, attachmentName, "application/pdf");
+            if (attachment != null)
+                mail.Attachments.Add(attachment);
 
             using var htmlView = AlternateView.CreateAlternateViewFromString(
                 HtmlBody(message, logoBytes is { Length: > 0 }),
@@ -177,10 +219,19 @@ public class MailgunInvoiceEmailService
             logo?.Dispose();
             if (logoStream != null)
                 await logoStream.DisposeAsync();
-            _logger.LogInformation(
-                "Mailed Ad-Rack invoice PDF {FileName} via Mailgun SMTP to {Recipients}.",
-                attachmentName,
-                string.Join(", ", emails));
+            if (pdfBytes is { Length: > 0 })
+            {
+                _logger.LogInformation(
+                    "Mailed Ad-Rack invoice PDF {FileName} via Mailgun SMTP to {Recipients}.",
+                    attachmentName,
+                    string.Join(", ", emails));
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Mailed Ad-Rack message via Mailgun SMTP to {Recipients}.",
+                    string.Join(", ", emails));
+            }
             return WaveSendResult.Succeeded(emails);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -196,7 +247,7 @@ public class MailgunInvoiceEmailService
         IReadOnlyList<string> emails,
         string subject,
         string message,
-        byte[] pdfBytes,
+        byte[]? pdfBytes,
         string attachmentName,
         byte[]? logoBytes,
         CancellationToken cancellationToken)
@@ -221,9 +272,12 @@ public class MailgunInvoiceEmailService
             content.Add(logo, "inline", LogoContentId);
         }
 
-        var file = new ByteArrayContent(pdfBytes);
-        file.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
-        content.Add(file, "attachment", attachmentName);
+        if (pdfBytes is { Length: > 0 })
+        {
+            var file = new ByteArrayContent(pdfBytes);
+            file.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
+            content.Add(file, "attachment", attachmentName);
+        }
         request.Content = content;
 
         try
@@ -240,10 +294,19 @@ public class MailgunInvoiceEmailService
                 return WaveSendResult.Failed(error);
             }
 
-            _logger.LogInformation(
-                "Mailed Ad-Rack invoice PDF {FileName} via Mailgun HTTP to {Recipients}.",
-                attachmentName,
-                string.Join(", ", emails));
+            if (pdfBytes is { Length: > 0 })
+            {
+                _logger.LogInformation(
+                    "Mailed Ad-Rack invoice PDF {FileName} via Mailgun HTTP to {Recipients}.",
+                    attachmentName,
+                    string.Join(", ", emails));
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Mailed Ad-Rack message via Mailgun HTTP to {Recipients}.",
+                    string.Join(", ", emails));
+            }
             return WaveSendResult.Succeeded(emails);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

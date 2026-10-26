@@ -1,0 +1,90 @@
+@model AdRackHub.Services.ContractsWithoutInventoryReport
+@{
+    ViewData["Title"] = "Active contracts with no inventory";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Active contracts with no inventory</h1>
+    <div class="d-flex flex-wrap gap-2">
+        <a asp-action="InventoryByRoute" class="btn btn-outline-secondary">Inventory by route</a>
+        <a asp-action="Index" class="btn btn-outline-secondary">All reports</a>
+    </div>
+</div>
+
+<p class="text-muted">
+    As of @Model.AsOf.ToString("MMM d, yyyy").
+    @Model.Rows.Count active @(Model.Rows.Count == 1 ? "contract" : "contracts")
+    whose customer has no brochure inventory records.
+</p>
+
+@if (Model.Rows.Count == 0)
+{
+    <p class="text-muted">Every active contract has at least one inventory record.</p>
+}
+else
+{
+    <div class="mb-3" style="max-width: 24rem;">
+        <label class="form-label" for="missing-inventory-search">Search</label>
+        <input type="search" id="missing-inventory-search" class="form-control" placeholder="Customer, contract, or route" autocomplete="off" />
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle" id="missing-inventory-table">
+            <thead>
+                <tr>
+                    <th>Customer</th>
+                    <th>Contract</th>
+                    <th>Routes</th>
+                    <th>Term</th>
+                    <th>Next bill</th>
+                    <th>Ends</th>
+                    <th>Warehouse</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var row in Model.Rows)
+            {
+                var search = $"{row.CustomerName} {row.BrochureCode} {row.ContractName} {row.Routes}".ToLowerInvariant();
+                <tr data-search="@search">
+                    <td>
+                        <a asp-controller="Customers" asp-action="Details" asp-route-id="@row.CustomerId" asp-route-tab="brochures">@row.CustomerName</a>
+                        @if (!string.IsNullOrWhiteSpace(row.BrochureCode))
+                        {
+                            <div class="small text-muted">@row.BrochureCode</div>
+                        }
+                    </td>
+                    <td>
+                        <a asp-controller="CustomerContracts" asp-action="Edit" asp-route-id="@row.ContractId">@row.ContractName</a>
+                    </td>
+                    <td>@row.Routes</td>
+                    <td>@row.TermLabel</td>
+                    <td>@(row.NextBillDate?.ToString("MMM d, yyyy") ?? "—")</td>
+                    <td>@(row.ContractEndDate?.ToString("MMM d, yyyy") ?? "Never")</td>
+                    <td>@(row.WarehouseLocation ?? "—")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    <p class="text-muted small" id="missing-inventory-empty" hidden>No contracts match that search.</p>
+}
+
+@section Scripts {
+    <script>
+        (function () {
+            var input = document.getElementById('missing-inventory-search');
+            var rows = Array.prototype.slice.call(document.querySelectorAll('#missing-inventory-table tbody tr'));
+            var empty = document.getElementById('missing-inventory-empty');
+            if (!input || rows.length === 0) return;
+            input.addEventListener('input', function () {
+                var query = (input.value || '').trim().toLowerCase();
+                var shown = 0;
+                rows.forEach(function (row) {
+                    var match = !query || (row.getAttribute('data-search') || '').indexOf(query) !== -1;
+                    row.hidden = !match;
+                    if (match) shown += 1;
+                });
+                if (empty) empty.hidden = shown !== 0;
+            });
+        })();
+    </script>
+}

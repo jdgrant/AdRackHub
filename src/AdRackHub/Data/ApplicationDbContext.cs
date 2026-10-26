@@ -30,6 +30,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<CustomerNote> CustomerNotes => Set<CustomerNote>();
     public DbSet<CustomerNoteSubNote> CustomerNoteSubNotes => Set<CustomerNoteSubNote>();
     public DbSet<CustomerTask> CustomerTasks => Set<CustomerTask>();
+    public DbSet<InvoiceReminderTemplate> InvoiceReminderTemplates => Set<InvoiceReminderTemplate>();
+    public DbSet<InvoiceReminderTemplateRevision> InvoiceReminderTemplateRevisions => Set<InvoiceReminderTemplateRevision>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -274,6 +276,22 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
                 .WithMany(i => i.Lines)
                 .HasForeignKey(l => l.BillingRunInvoiceId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<InvoiceReminderTemplate>(e =>
+        {
+            e.Property(template => template.Subject).HasMaxLength(300);
+            e.Property(template => template.Body).HasMaxLength(8000).HasColumnType("nvarchar(max)");
+            e.Property(template => template.UpdatedBy).HasMaxLength(200);
+        });
+
+        modelBuilder.Entity<InvoiceReminderTemplateRevision>(e =>
+        {
+            e.Property(revision => revision.Subject).HasMaxLength(300);
+            e.Property(revision => revision.Body).HasMaxLength(8000).HasColumnType("nvarchar(max)");
+            e.Property(revision => revision.ChangeKind).HasMaxLength(40);
+            e.Property(revision => revision.ChangedBy).HasMaxLength(200);
+            e.HasIndex(revision => revision.ChangedAt);
         });
     }
 }

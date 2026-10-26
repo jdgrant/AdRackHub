@@ -20,6 +20,8 @@ public class BillingController : Controller
     private readonly WavePocTokenStore _wavePocTokens;
     private readonly WaveOptions _waveOptions;
     private readonly MailgunOptions _mailgunOptions;
+    private readonly InvoiceReminderTemplateService _reminderTemplates;
+    private readonly MailgunInvoiceEmailService _mailgun;
 
     public BillingController(
         ApplicationDbContext context,
@@ -29,7 +31,9 @@ public class BillingController : Controller
         WaveApiService waveApi,
         WavePocTokenStore wavePocTokens,
         IOptions<WaveOptions> waveOptions,
-        IOptions<MailgunOptions> mailgunOptions)
+        IOptions<MailgunOptions> mailgunOptions,
+        InvoiceReminderTemplateService reminderTemplates,
+        MailgunInvoiceEmailService mailgun)
     {
         _context = context;
         _billingService = billingService;
@@ -39,6 +43,8 @@ public class BillingController : Controller
         _wavePocTokens = wavePocTokens;
         _waveOptions = waveOptions.Value;
         _mailgunOptions = mailgunOptions.Value;
+        _reminderTemplates = reminderTemplates;
+        _mailgun = mailgun;
     }
 
     public async Task<IActionResult> Index(int? year, int? month)
@@ -175,6 +181,137 @@ public class BillingController : Controller
 
         model.Invoices = rows;
         return View(model);
+    }
+
+    public async Task<IActionResult> Remind(int invoiceId, string? search, int? weeks, string? age, CancellationToken cancellationToken)
+    {
+        var invoice = await _reminderTemplates.FindOutstandingAsync(invoiceId, cancellationToken);
+        if (invoice == null)
+            return NotFound();
+
+        var current = await _reminderTemplates.GetCurrentAsync(cancellationToken);
+        var data = InvoiceReminderMerge.FromInvoice(invoice);
+        var model = await BuildReminderComposeAsync(invoice, search, weeks, age, cancellationToken);
+        model.Subject = InvoiceReminderMerge.Apply(current.Subject, data);
+        model.Body = InvoiceReminderMerge.Apply(current.Body, data);
+        return View(model);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> PreviewReminder(InvoiceReminderComposeViewModel model, CancellationToken cancellationToken)
+    {
+        var invoice = await _reminderTemplates.FindOutstandingAsync(model.InvoiceId, cancellationToken);
+        if (invoice == null)
+            return NotFound();
+
+        var compose = await BuildReminderComposeAsync(invoice, model.Search, model.Weeks, model.Age, cancellationToken);
+        compose.Subject = model.Subject;
+        compose.Body = model.Body;
+        var errors = InvoiceReminderMerge.Validate(model.Subject, model.Body);
+        foreach (var error in errors)
+            ModelState.AddModelError(string.Empty, error);
+        if (errors.Count == 0)
+        {
+            var data = InvoiceReminderMerge.FromInvoice(invoice);
+            compose.HasPreview = true;
+            compose.PreviewSubject = InvoiceReminderMerge.Apply(model.Subject, data);
+            compose.PreviewBody = InvoiceReminderMerge.Apply(model.Body, data);
+        }
+
+        return View("Remind", compose);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SendReminder(InvoiceReminderComposeViewModel model, CancellationToken cancellationToken)
+    {
+        var invoice = await _reminderTemplates.FindOutstandingAsync(model.InvoiceId, cancellationToken);
+        if (invoice == null)
+            return NotFound();
+
+        var errors = InvoiceReminderMerge.Validate(model.Subject, model.Body);
+        if (errors.Count > 0)
+        {
+            var compose = await BuildReminderComposeAsync(invoice, model.Search, model.Weeks, model.Age, cancellationToken);
+            compose.Subject = model.Subject;
+            compose.Body = model.Body;
+            foreach (var error in errors)
+                ModelState.AddModelError(string.Empty, error);
+            return View("Remind", compose);
+        }
+
+        var contacts = await _context.Contacts.AsNoTracking()
+            .Where(contact => contact.CustomerId == invoice.CustomerId)
+            .ToListAsync(cancellationToken);
+        var recipients = BillingContactHelper.InvoiceEmailRecipients(contacts)
+            .Select(contact => contact.Email!.Trim())
+            .ToList();
+        if (recipients.Count == 0 || !_mailgunOptions.IsConfigured)
+        {
+            TempData["Error"] = recipients.Count == 0
+                ? "No contact is marked to receive invoices."
+                : "Mailgun is not configured.";
+            return RedirectToAction(nameof(Remind), new { invoiceId = invoice.Id, search = model.Search, weeks = model.Weeks, age = model.Age });
+        }
+
+        var data = InvoiceReminderMerge.FromInvoice(invoice);
+        var pdf = await InvoiceReminderPdf.TryReadAsync(_context, _invoicePdfs, invoice.Id, cancellationToken);
+        var sent = await _mailgun.SendReminderAsync(
+            recipients,
+            InvoiceReminderMerge.Apply(model.Subject, data),
+            InvoiceReminderMerge.Apply(model.Body, data),
+            pdf.Bytes,
+            pdf.FileName,
+            cancellationToken);
+        if (!sent.Success)
+        {
+            TempData["Error"] = sent.ErrorMessage ?? "The reminder could not be sent.";
+            return RedirectToAction(nameof(Remind), new { invoiceId = invoice.Id, search = model.Search, weeks = model.Weeks, age = model.Age });
+        }
+
+        TempData["Message"] = $"Sent a reminder to {string.Join(", ", sent.Recipients)}. The Admin template was not changed.";
+        return RedirectToAction(nameof(Outstanding), new { search = model.Search, weeks = model.Weeks, age = model.Age });
+    }
+
+    private async Task<InvoiceReminderComposeViewModel> BuildReminderComposeAsync(
+        BillingRunInvoice invoice,
+        string? search,
+        int? weeks,
+        string? age,
+        CancellationToken cancellationToken)
+    {
+        var contacts = await _context.Contacts.AsNoTracking()
+            .Where(contact => contact.CustomerId == invoice.CustomerId)
+            .ToListAsync(cancellationToken);
+        var recipients = BillingContactHelper.InvoiceEmailRecipients(contacts)
+            .Select(contact => contact.Email!.Trim())
+            .ToList();
+        var pdf = await InvoiceReminderPdf.TryReadAsync(_context, _invoicePdfs, invoice.Id, cancellationToken);
+        var blocked = !_mailgunOptions.IsConfigured
+            ? "Mailgun is not configured."
+            : recipients.Count == 0
+                ? "No contact is marked to receive invoices."
+                : null;
+        return new InvoiceReminderComposeViewModel
+        {
+            InvoiceId = invoice.Id,
+            CustomerName = invoice.Customer.CustomerName,
+            PeriodLabel = BillingDueCalculator.PeriodLabel(invoice.BillingRun.Year, invoice.BillingRun.Month),
+            WaveInvoiceNumber = invoice.WaveInvoiceNumber,
+            Amount = invoice.TotalAmount,
+            Recipients = recipients.Count == 0 ? "None" : string.Join(", ", recipients),
+            CanSend = blocked == null,
+            SendBlockedReason = blocked,
+            HasPdf = pdf.Bytes is { Length: > 0 },
+            MailgunConfigured = _mailgunOptions.IsConfigured,
+            LogoUrl = string.IsNullOrWhiteSpace(_mailgunOptions.LogoUrl)
+                ? "https://ad-rack.com/wp-content/uploads/2020/10/Ad-Rack-logo-lg.png"
+                : _mailgunOptions.LogoUrl.Trim(),
+            Search = search,
+            Weeks = weeks,
+            Age = age
+        };
     }
 
     public async Task<IActionResult> ContractEndDates()

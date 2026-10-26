@@ -51,6 +51,18 @@ public class ReportsController : Controller
         return View(report);
     }
 
+    public async Task<IActionResult> InventoryByRoute(CancellationToken cancellationToken)
+    {
+        var report = await _inventoryReport.BuildByRouteAsync(cancellationToken);
+        return View(report);
+    }
+
+    public async Task<IActionResult> ContractsWithoutInventory(CancellationToken cancellationToken)
+    {
+        var report = await _inventoryReport.BuildContractsWithoutInventoryAsync(cancellationToken);
+        return View(report);
+    }
+
     public async Task<IActionResult> HotelCustomersPdf(CancellationToken cancellationToken)
     {
         var pdf = await _routeCustomerReportPdf.BuildHotelAsync(cancellationToken);
@@ -192,5 +204,21 @@ public class ReportsController : Controller
                     ? "unassigned"
                     : "kentucky";
         return File(pdf, "application/pdf", $"warehouse-inventory-count-sheet-{suffix}-{report.AsOf:yyyyMMdd}.pdf");
+    }
+
+    public async Task<IActionResult> RouteInventoryPdf(int? routeId, CancellationToken cancellationToken)
+    {
+        var report = await _inventoryReport.BuildByRouteAsync(cancellationToken);
+        var pdf = _inventoryReport.GenerateRoutePdf(report, routeId);
+        var slug = routeId switch
+        {
+            null or < 0 => "all",
+            0 => "no-route",
+            _ => report.Routes.FirstOrDefault(group => group.RouteId == routeId)?.Title ?? $"route-{routeId}"
+        };
+        foreach (var character in Path.GetInvalidFileNameChars())
+            slug = slug.Replace(character, '-');
+        slug = slug.Replace(' ', '-').ToLowerInvariant();
+        return File(pdf, "application/pdf", $"route-inventory-count-sheet-{slug}-{report.AsOf:yyyyMMdd}.pdf");
     }
 }

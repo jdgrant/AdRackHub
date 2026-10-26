@@ -81,6 +81,14 @@ builder.Services.PostConfigure<AgentApiOptions>(options =>
         Environment.GetEnvironmentVariable("ADRACKHUB_AGENT_API_KEY")
     }.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 });
+builder.Services.PostConfigure<AgentApiOptions>(options =>
+{
+    if (options.CanManageInvoiceReminderTemplate)
+        return;
+    var flag = Environment.GetEnvironmentVariable("ADRACKHUB_AGENT_CAN_MANAGE_INVOICE_REMINDER_TEMPLATE");
+    if (string.Equals(flag, "true", StringComparison.OrdinalIgnoreCase))
+        options.CanManageInvoiceReminderTemplate = true;
+});
 builder.Services.AddScoped<AgentCustomerApiService>();
 builder.Services.AddScoped<IAgentCustomerApi>(sp => sp.GetRequiredService<AgentCustomerApiService>());
 builder.Services.AddScoped<AgentActivityService>();
@@ -90,6 +98,8 @@ builder.Services.AddScoped<AgentVisitService>();
 builder.Services.AddScoped<IAgentVisitApi>(sp => sp.GetRequiredService<AgentVisitService>());
 builder.Services.AddScoped<AgentBillingService>();
 builder.Services.AddScoped<IAgentBillingApi>(sp => sp.GetRequiredService<AgentBillingService>());
+builder.Services.AddScoped<InvoiceReminderTemplateService>();
+builder.Services.AddScoped<IInvoiceReminderReader>(sp => sp.GetRequiredService<InvoiceReminderTemplateService>());
 builder.Services.AddScoped<IMcpUserDirectory, IdentityMcpUserDirectory>();
 builder.Services.AddAdRackMcp(Path.Combine(builder.Environment.ContentRootPath, "App_Data", "mcp-oauth-store.json"));
 builder.Services.Configure<DataForSeoOptions>(builder.Configuration.GetSection(DataForSeoOptions.SectionName));

@@ -18,6 +18,7 @@ public class AgentApiController : ControllerBase
     private readonly IAgentActivityApi _activities;
     private readonly IAgentVisitApi _visits;
     private readonly IAgentBillingApi _billing;
+    private readonly InvoiceReminderTemplateService _reminders;
     private readonly AgentApiOptions _options;
     private static readonly JsonSerializerOptions VisitJson = new()
     {
@@ -31,6 +32,7 @@ public class AgentApiController : ControllerBase
         IAgentActivityApi activities,
         IAgentVisitApi visits,
         IAgentBillingApi billing,
+        InvoiceReminderTemplateService reminders,
         IOptions<AgentApiOptions> options,
         ILogger<AgentApiController> logger)
     {
@@ -38,6 +40,7 @@ public class AgentApiController : ControllerBase
         _activities = activities;
         _visits = visits;
         _billing = billing;
+        _reminders = reminders;
         _options = options.Value;
         _logger = logger;
     }
@@ -174,6 +177,40 @@ public class AgentApiController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         return Execute(() => _billing.ForecastAsync(year, month, months, ignoreEndDate, page, pageSize, AgentApiGuide.BaseUrl(Request), cancellationToken));
+    }
+
+    [HttpGet("communications/invoice-reminder")]
+    public Task<IActionResult> InvoiceReminder(CancellationToken cancellationToken)
+    {
+        return Execute(() => _reminders.ReadAsync(
+            null,
+            _options.CanManageInvoiceReminderTemplate,
+            AgentApiGuide.BaseUrl(Request),
+            cancellationToken));
+    }
+
+    [HttpPost("communications/invoice-reminder/render")]
+    public Task<IActionResult> RenderInvoiceReminder([FromBody] AgentInvoiceReminderRenderRequest? request, CancellationToken cancellationToken)
+    {
+        request ??= new AgentInvoiceReminderRenderRequest();
+        return Execute(() => _reminders.RenderForAgentAsync(
+            request.InvoiceId,
+            request.Subject,
+            request.Body,
+            AgentApiGuide.BaseUrl(Request),
+            cancellationToken));
+    }
+
+    [HttpPut("communications/invoice-reminder")]
+    public Task<IActionResult> UpdateInvoiceReminder([FromBody] AgentInvoiceReminderUpdateRequest? request, CancellationToken cancellationToken)
+    {
+        request ??= new AgentInvoiceReminderUpdateRequest();
+        return Execute(() => _reminders.UpdateForAgentAsync(
+            request.Subject,
+            request.Body,
+            _options.CanManageInvoiceReminderTemplate,
+            AgentApiGuide.BaseUrl(Request),
+            cancellationToken));
     }
 
     [HttpPost("visits")]

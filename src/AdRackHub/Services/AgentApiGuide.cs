@@ -40,9 +40,9 @@ public static class AgentApiGuide
             7. Select Create as a plugin, then install it.
             8. When ChatGPT asks to connect, sign in to AdRackHub as an admin and choose Allow.
 
-            The plugin tools are `search_customers`, `get_customer`, `create_customer`, `update_customer`, `add_contact`, `update_contact`, `list_activities`, `billing_due`, `billing_outstanding`, `billing_forecast`, `search_stops`, `list_visits`, and `log_stop_visit`. New records default to Prospect. Creating a Customer, or changing a Prospect to Customer, assigns a brochure id and sends the customer to Wave. There is no delete tool.
+            The plugin tools are `search_customers`, `get_customer`, `create_customer`, `update_customer`, `add_contact`, `update_contact`, `list_activities`, `billing_due`, `billing_outstanding`, `billing_forecast`, `invoice_reminder_template`, `search_stops`, `list_visits`, and `log_stop_visit`. New records default to Prospect. Creating a Customer, or changing a Prospect to Customer, assigns a brochure id and sends the customer to Wave. There is no delete tool.
 
-            `list_activities` reads open Hub tasks and email follow-ups. `billing_due`, `billing_outstanding`, and `billing_forecast` read bills due, unpaid invoices, and the billing forecast. They do not send invoices or mark them received. `log_stop_visit` records the driver and the before and after photos. Pass each email image attachment as base64.
+            `list_activities` reads open Hub tasks and email follow-ups. `billing_due`, `billing_outstanding`, and `billing_forecast` read bills due, unpaid invoices, and the billing forecast. They do not send invoices or mark them received. `invoice_reminder_template` reads and renders the Admin invoice reminder. It does not save or send it. `log_stop_visit` records the driver and the before and after photos. Pass each email image attachment as base64.
 
             Search before creating. If create returns possible duplicates, do not create another record until the user picks one, or call create again with `acknowledgeDuplicateIds` set to every returned id.
 
@@ -84,11 +84,11 @@ public static class AgentApiGuide
             - List activities. Open tasks and email follow-ups are included by default.
             - Search stops and list visits.
             - Log a stop visit with the driver and before and after photos.
-            - Read bills due, outstanding invoices, and the billing forecast.
+            - Read bills due, outstanding invoices, the billing forecast, and the invoice reminder template.
 
             Do not send DELETE. Delete requests return HTTP 405. This API cannot delete records.
 
-            Billing can be read. This API cannot send invoices, mark them received, or change contracts. Warehouse bins are outside this API. Activities are read-only. A stop visit can be logged with photos.
+            Billing can be read. This API cannot send invoices, mark them received, or change contracts. The invoice reminder template can be read and rendered. Saving it returns HTTP 403 unless `AgentApi:CanManageInvoiceReminderTemplate` is true. Warehouse bins are outside this API. Activities are read-only. A stop visit can be logged with photos.
 
             ## Records
 
@@ -301,6 +301,20 @@ public static class AgentApiGuide
 
             `months` defaults to 12 and cannot exceed 24. The forecast starts at the current month. `year` and `month` choose which month's contract lines are returned. `months` in the response is every month total. `lines` are the selected month. `sent` is true when that invoice was already submitted. `ignoreEndDate=true` keeps contracts after their end date.
 
+            ## Invoice reminder template
+
+            `GET /api/agent/communications/invoice-reminder`
+
+            Returns the subject and body saved in Hub Admin, the merge fields, and a sample rendering. `canUpdate` is false unless the server has explicitly set `AgentApi:CanManageInvoiceReminderTemplate` to true.
+
+            `POST /api/agent/communications/invoice-reminder/render`
+
+            Fills the saved template, or the subject and body in the request, with sample data or one invoice. Send `invoiceId` to use that invoice. Omit `subject` and `body` to use the saved template. This call does not save anything and does not send email.
+
+            `PUT /api/agent/communications/invoice-reminder`
+
+            Replaces the saved Admin template. This returns HTTP 403 unless `AgentApi:CanManageInvoiceReminderTemplate` is true in `appsettings.Production.json` on the server. The plugin tool cannot save the template. Change the default in Hub under Admin, Communications, Invoice reminder template.
+
             ## Fields
 
             Customer or prospect:
@@ -339,7 +353,8 @@ public static class AgentApiGuide
             - `400` — the body lists `error` and `errors`
             - `401` — the API key is missing or wrong
             - `404` — no record with that id
-            - `405` — delete, or PUT, is not available
+            - `403` — the API key is valid, but changing the saved invoice reminder template is not allowed
+            - `405` — delete, or PUT on a customer, is not available
             - `503` — the server has no API key configured
 
             Example:
@@ -494,6 +509,9 @@ public static class AgentApiGuide
         var billingDueRef = "#/components/schemas/BillingDue";
         var billingOutstandingRef = "#/components/schemas/BillingOutstanding";
         var billingForecastRef = "#/components/schemas/BillingForecast";
+        var reminderRef = "#/components/schemas/InvoiceReminderTemplate";
+        var reminderRenderRef = "#/components/schemas/InvoiceReminderRender";
+        var reminderWriteRef = "#/components/schemas/InvoiceReminderWrite";
         JsonObject ErrorResponse() => Response("Invalid request.", errorRef);
         JsonObject Unauthorized() => Response("Missing or wrong API key.", errorRef);
         JsonObject NotFound() => Response("No record with that id.", errorRef);
@@ -505,7 +523,7 @@ public static class AgentApiGuide
             {
                 ["title"] = "AdRackHub Agent API",
                 ["version"] = "1.0.0",
-                ["description"] = "List, create, and update customers and prospects, including contacts. Read activities, bills due, outstanding invoices, and the billing forecast. Log a stop visit with before and after photos. Delete is not available. Read /docs/agent.html for the full guide."
+                ["description"] = "List, create, and update customers and prospects, including contacts. Read activities, bills due, outstanding invoices, the billing forecast, and the invoice reminder template. Rendering a reminder does not save it. Updating the saved reminder requires AgentApi:CanManageInvoiceReminderTemplate. Log a stop visit with before and after photos. Delete is not available. Read /docs/agent.html for the full guide."
             },
             ["servers"] = new JsonArray { new JsonObject { ["url"] = baseUrl.TrimEnd('/') } },
             ["security"] = new JsonArray
@@ -683,6 +701,31 @@ public static class AgentApiGuide
                         ["200"] = Response("The billing forecast.", billingForecastRef),
                         ["400"] = ErrorResponse(),
                         ["401"] = Unauthorized()
+                    })
+                },
+                ["/api/agent/communications/invoice-reminder"] = new JsonObject
+                {
+                    ["get"] = Operation("invoiceReminder", "Read the Admin invoice reminder template, its merge fields, and a sample rendering. Does not send email.", new JsonArray(), new JsonObject
+                    {
+                        ["200"] = Response("The saved template and a sample rendering.", reminderRef),
+                        ["401"] = Unauthorized()
+                    }),
+                    ["put"] = Operation("updateInvoiceReminder", "Replace the saved Admin template. Returns 403 unless AgentApi:CanManageInvoiceReminderTemplate is true.", null, reminderWriteRef, new JsonObject
+                    {
+                        ["200"] = Response("The saved template after the change.", reminderRef),
+                        ["400"] = ErrorResponse(),
+                        ["401"] = Unauthorized(),
+                        ["403"] = Response("The API key cannot change the saved template.", errorRef)
+                    })
+                },
+                ["/api/agent/communications/invoice-reminder/render"] = new JsonObject
+                {
+                    ["post"] = Operation("renderInvoiceReminder", "Fill the saved template, or the subject and body in the request, using sample data or one invoice. Does not save or send.", null, reminderRenderRef, new JsonObject
+                    {
+                        ["200"] = Response("The rendered subject and body. saved is false.", "#/components/schemas/InvoiceReminderRendered"),
+                        ["400"] = ErrorResponse(),
+                        ["401"] = Unauthorized(),
+                        ["404"] = NotFound()
                     })
                 }
             },
@@ -968,6 +1011,68 @@ public static class AgentApiGuide
                             ["amount"] = NumberProp("Forecast amount."),
                             ["sent"] = new JsonObject { ["type"] = "boolean", ["description"] = "True when the invoice was already submitted." },
                             ["hubUrl"] = StringProp("Customer page.")
+                        }
+                    },
+                    ["InvoiceReminderTemplate"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["subject"] = StringProp("Saved subject, including merge fields."),
+                            ["body"] = StringProp("Saved body, including merge fields."),
+                            ["updatedAt"] = StringProp("UTC timestamp of the last save, or null for the system default."),
+                            ["updatedBy"] = StringProp("Who last saved it, or null for the system default."),
+                            ["canUpdate"] = new JsonObject { ["type"] = "boolean", ["description"] = "True only when AgentApi:CanManageInvoiceReminderTemplate is set." },
+                            ["renderedSubject"] = StringProp("Sample or invoice rendering of the subject."),
+                            ["renderedBody"] = StringProp("Sample or invoice rendering of the body."),
+                            ["renderSource"] = StringProp("sample or invoice."),
+                            ["invoiceId"] = IntProp(),
+                            ["customerName"] = StringProp("Customer used for the rendering."),
+                            ["mergeFields"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["$ref"] = "#/components/schemas/InvoiceReminderMergeField" } },
+                            ["hubUrl"] = StringProp("Admin page for the template.")
+                        }
+                    },
+                    ["InvoiceReminderMergeField"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["token"] = StringProp("Merge field, such as {{Invoice number}}."),
+                            ["description"] = StringProp("What the field becomes.")
+                        }
+                    },
+                    ["InvoiceReminderRender"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["invoiceId"] = IntProp(),
+                            ["subject"] = StringProp("Optional subject. Omit to use the saved template."),
+                            ["body"] = StringProp("Optional body. Omit to use the saved template.")
+                        }
+                    },
+                    ["InvoiceReminderRendered"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["subject"] = StringProp("Rendered subject."),
+                            ["body"] = StringProp("Rendered body."),
+                            ["source"] = StringProp("sample or invoice."),
+                            ["invoiceId"] = IntProp(),
+                            ["customerName"] = StringProp("Customer used for the rendering."),
+                            ["saved"] = new JsonObject { ["type"] = "boolean", ["description"] = "Always false. Rendering does not save." },
+                            ["hubUrl"] = StringProp("Admin page for the template.")
+                        }
+                    },
+                    ["InvoiceReminderWrite"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["required"] = new JsonArray { "subject", "body" },
+                        ["properties"] = new JsonObject
+                        {
+                            ["subject"] = StringProp("New saved subject."),
+                            ["body"] = StringProp("New saved body.")
                         }
                     },
                     ["Error"] = new JsonObject

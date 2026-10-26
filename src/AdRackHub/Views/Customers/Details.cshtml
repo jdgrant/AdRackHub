@@ -667,8 +667,6 @@
                             </form>
                         </div>
 
-                        <partial name="_CaseWeightCalculator" model="@("customer")" />
-
                         <form asp-action="AddBrochureInventory" method="post" class="crm-composer mb-4" id="inventory-log-form" data-inventory-entry>
                             <input type="hidden" name="customerId" value="@Model.Id" />
                             <div class="row g-2 align-items-end">

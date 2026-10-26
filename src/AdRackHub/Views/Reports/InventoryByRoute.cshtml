@@ -1,0 +1,76 @@
+@model AdRackHub.Services.BrochureInventoryRouteReport
+@{
+    ViewData["Title"] = "Inventory by route";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Inventory by route</h1>
+    <div class="d-flex flex-wrap gap-2">
+        <a asp-action="RouteInventoryPdf" class="btn btn-outline-primary">Count sheet PDF</a>
+        <a asp-action="Inventory" class="btn btn-outline-secondary">By warehouse</a>
+        <a asp-action="Index" class="btn btn-outline-secondary">All reports</a>
+    </div>
+</div>
+
+<p class="text-muted">As of @Model.AsOf.ToString("MMM d, yyyy"). Each customer is listed on every active route. Last is last inventory count / last received.</p>
+
+@if (Model.Routes.Count == 0)
+{
+    <p class="text-muted">No customers to list.</p>
+}
+else
+{
+    <ul class="nav nav-pills gap-2 mb-4">
+        @foreach (var group in Model.Routes)
+        {
+            var anchor = group.RouteId?.ToString() ?? "none";
+            <li class="nav-item">
+                <a class="nav-link" href="#route-@anchor">
+                    @group.Title
+                    <span class="badge text-bg-light text-muted">@group.Rows.Count</span>
+                </a>
+            </li>
+        }
+    </ul>
+
+    @foreach (var group in Model.Routes)
+    {
+        var anchor = group.RouteId?.ToString() ?? "none";
+        var routeId = group.RouteId ?? 0;
+        <h2 class="h5 mt-4 d-flex flex-wrap align-items-center gap-2" id="route-@anchor">
+            <span>@group.Title</span>
+            <a asp-action="RouteInventoryPdf" asp-route-routeId="@routeId" class="btn btn-sm btn-outline-secondary">Print sheet</a>
+        </h2>
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Brochure</th>
+                        <th>ID</th>
+                        <th>Location</th>
+                        <th>Contract</th>
+                        <th class="text-end">Last</th>
+                        <th class="text-end">Case count</th>
+                        <th>Counted</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var row in group.Rows)
+                {
+                    <tr>
+                        <td>
+                            <a asp-controller="Customers" asp-action="Details" asp-route-id="@row.CustomerId" asp-route-tab="brochures">@row.BrochureName</a>
+                        </td>
+                        <td>@(row.BrochureCode ?? "—")</td>
+                        <td>@(row.LocationWithWarehouse ?? "—")</td>
+                        <td class="small text-nowrap">@(string.IsNullOrWhiteSpace(row.ContractLabel) ? "—" : row.ContractLabel)</td>
+                        <td class="text-end text-nowrap">@(string.IsNullOrEmpty(row.LastLabel) ? "—" : row.LastLabel)</td>
+                        <td class="text-end">@(row.CaseCount?.ToString("N0") ?? "—")</td>
+                        <td>@(row.InventoryDate?.ToString("MMM d, yyyy") ?? "—")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+}

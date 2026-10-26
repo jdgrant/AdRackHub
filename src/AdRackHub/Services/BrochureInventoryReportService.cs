@@ -14,6 +14,41 @@ public sealed class BrochureInventoryReport
         Array.Empty<BrochureInventoryWarehouseGroup>();
 }
 
+public sealed class BrochureInventoryRouteReport
+{
+    public DateOnly AsOf { get; init; }
+    public IReadOnlyList<BrochureInventoryRouteGroup> Routes { get; init; } =
+        Array.Empty<BrochureInventoryRouteGroup>();
+}
+
+public sealed class BrochureInventoryRouteGroup
+{
+    public int? RouteId { get; init; }
+    public string Title { get; init; } = string.Empty;
+    public IReadOnlyList<BrochureInventoryRow> Rows { get; init; } = Array.Empty<BrochureInventoryRow>();
+}
+
+public sealed class ContractsWithoutInventoryReport
+{
+    public DateOnly AsOf { get; init; }
+    public IReadOnlyList<ContractWithoutInventoryRow> Rows { get; init; } =
+        Array.Empty<ContractWithoutInventoryRow>();
+}
+
+public sealed class ContractWithoutInventoryRow
+{
+    public int CustomerId { get; init; }
+    public string CustomerName { get; init; } = string.Empty;
+    public string? BrochureCode { get; init; }
+    public int ContractId { get; init; }
+    public string ContractName { get; init; } = string.Empty;
+    public string TermLabel { get; init; } = string.Empty;
+    public DateOnly? NextBillDate { get; init; }
+    public DateOnly? ContractEndDate { get; init; }
+    public string Routes { get; init; } = string.Empty;
+    public string? WarehouseLocation { get; init; }
+}
+
 public sealed class BrochureInventoryWarehouseGroup
 {
     public BrochureWarehouse? Warehouse { get; init; }
@@ -39,6 +74,8 @@ public sealed class BrochureInventoryRow
 
     public string LastLabel => FormatLast(Quantity, ReceivedQuantity);
 
+    public string? LocationWithWarehouse => WarehouseLocation.Format(Warehouse, Rack, Bin, Shelf);
+
     public static string FormatLast(int? lastCount, int? lastReceived)
     {
         if (!lastCount.HasValue && !lastReceived.HasValue)
@@ -63,6 +100,135 @@ public class BrochureInventoryReportService
 
     public async Task<BrochureInventoryReport> BuildAsync(CancellationToken cancellationToken = default)
     {
+        var built = await BuildRowsAsync(cancellationToken);
+        var warehouses = built.Rows
+            .GroupBy(row => row.Warehouse)
+            .OrderBy(group => group.Key.HasValue ? 0 : 1)
+            .ThenBy(group => group.Key)
+            .Select(group => new BrochureInventoryWarehouseGroup
+            {
+                Warehouse = group.Key,
+                Title = WarehouseTitle(group.Key),
+                Rows = group.ToList()
+            })
+            .ToList();
+
+        return new BrochureInventoryReport
+        {
+            AsOf = built.AsOf,
+            Warehouses = warehouses
+        };
+    }
+
+    public async Task<BrochureInventoryRouteReport> BuildByRouteAsync(CancellationToken cancellationToken = default)
+    {
+        var built = await BuildRowsAsync(cancellationToken);
+        var customerIds = built.Rows.Select(row => row.CustomerId).Distinct().ToList();
+        var assignments = customerIds.Count == 0
+            ? new List<(int CustomerId, int RouteId, string RouteName)>()
+            : (await _context.CustomerRoutes
+                .AsNoTracking()
+                .Where(cr => customerIds.Contains(cr.CustomerId) && cr.Status == CustomerRouteStatus.Active)
+                .Select(cr => new { cr.CustomerId, cr.RouteId, cr.Route.RouteName })
+                .ToListAsync(cancellationToken))
+                .Select(cr => (cr.CustomerId, cr.RouteId, RouteName: cr.RouteName ?? ""))
+                .ToList();
+
+        var routesByCustomer = assignments
+            .GroupBy(item => item.CustomerId)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .GroupBy(item => item.RouteId)
+                    .Select(route => (route.Key, Name: route.Select(item => item.RouteName).FirstOrDefault(name => name.Length > 0) ?? $"Route {route.Key}"))
+                    .ToList());
+
+        var placed = new List<(int? RouteId, string Title, BrochureInventoryRow Row)>();
+        foreach (var row in built.Rows)
+        {
+            if (!routesByCustomer.TryGetValue(row.CustomerId, out var routes) || routes.Count == 0)
+            {
+                placed.Add((null, "No route", row));
+                continue;
+            }
+
+            foreach (var route in routes)
+                placed.Add((route.Key, route.Name, row));
+        }
+
+        var groups = placed
+            .GroupBy(item => item.RouteId)
+            .OrderBy(group => group.Key.HasValue ? 0 : 1)
+            .ThenBy(group => group.First().Title, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new BrochureInventoryRouteGroup
+            {
+                RouteId = group.Key,
+                Title = group.First().Title,
+                Rows = group
+                    .Select(item => item.Row)
+                    .Order(Comparer<BrochureInventoryRow>.Create(CompareInventoryRows))
+                    .ToList()
+            })
+            .ToList();
+
+        return new BrochureInventoryRouteReport
+        {
+            AsOf = built.AsOf,
+            Routes = groups
+        };
+    }
+
+    public async Task<ContractsWithoutInventoryReport> BuildContractsWithoutInventoryAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var asOf = DateOnly.FromDateTime(DateTime.Today);
+        var contracts = await _context.CustomerContracts
+            .AsNoTracking()
+            .Include(c => c.Customer)
+                .ThenInclude(customer => customer.WarehouseLocations)
+            .Include(c => c.ContractRoutes)
+                .ThenInclude(cr => cr.Route)
+            .Where(c => !c.IsProposal)
+            .Where(c => c.ContractEndDate == null || c.ContractEndDate >= asOf)
+            .Where(c => !c.Customer.BrochureInventories.Any())
+            .OrderBy(c => c.Customer.CustomerName)
+            .ThenBy(c => c.ContractName)
+            .ToListAsync(cancellationToken);
+
+        var rows = contracts.Select(contract =>
+        {
+            var routes = contract.ContractRoutes
+                .Select(cr => cr.Route?.RouteName)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(name => name!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            return new ContractWithoutInventoryRow
+            {
+                CustomerId = contract.CustomerId,
+                CustomerName = contract.Customer.CustomerName,
+                BrochureCode = WarehouseLocation.NullIfEmpty(contract.Customer.BrochureCode),
+                ContractId = contract.Id,
+                ContractName = contract.ContractName,
+                TermLabel = BillingTermDisplay.Label(contract),
+                NextBillDate = contract.NextBillDate,
+                ContractEndDate = contract.ContractEndDate,
+                Routes = routes.Count == 0 ? "—" : string.Join(", ", routes),
+                WarehouseLocation = contract.Customer.WarehouseLocationLabel
+            };
+        }).ToList();
+
+        return new ContractsWithoutInventoryReport
+        {
+            AsOf = asOf,
+            Rows = rows
+        };
+    }
+
+    private async Task<(DateOnly AsOf, List<BrochureInventoryRow> Rows)> BuildRowsAsync(
+        CancellationToken cancellationToken)
+    {
         var customers = await _context.Customers
             .AsNoTracking()
             .Where(c => c.Type == CustomerType.Customer)
@@ -77,41 +243,26 @@ public class BrochureInventoryReportService
             asOf,
             cancellationToken);
 
-        var warehouses = customers
-            .SelectMany(customer => SlotsFor(customer).Select(slot => (
-                slot.Warehouse,
-                Row: new BrochureInventoryRow
-                {
-                    CustomerId = customer.Id,
-                    BrochureName = customer.CustomerName,
-                    BrochureCode = WarehouseLocation.NullIfEmpty(customer.BrochureCode),
-                    Warehouse = slot.Warehouse,
-                    Rack = slot.Rack,
-                    Bin = slot.Bin,
-                    Shelf = slot.Shelf,
-                    Location = slot.Location,
-                    Quantity = LatestCountQuantity(customer, slot.Warehouse, slot.Rack, slot.Bin, slot.Shelf, slot.IsFirst),
-                    ReceivedQuantity = LatestReceivedQuantity(customer, slot.Warehouse, slot.Rack, slot.Bin, slot.Shelf, slot.IsFirst),
-                    InventoryDate = LatestInventoryDate(customer, slot.Warehouse, slot.Rack, slot.Bin, slot.Shelf, slot.IsFirst),
-                    CaseCount = LatestCaseCount(customer, slot.Warehouse, slot.Rack, slot.Bin, slot.Shelf, slot.IsFirst),
-                    ContractLabel = contractLabels.GetValueOrDefault(customer.Id)
-                })))
-            .GroupBy(item => item.Warehouse)
-            .OrderBy(group => group.Key.HasValue ? 0 : 1)
-            .ThenBy(group => group.Key)
-            .Select(group => new BrochureInventoryWarehouseGroup
+        var rows = customers
+            .SelectMany(customer => SlotsFor(customer).Select(slot => new BrochureInventoryRow
             {
-                Warehouse = group.Key,
-                Title = WarehouseTitle(group.Key),
-                Rows = group.Select(item => item.Row).ToList()
-            })
+                CustomerId = customer.Id,
+                BrochureName = customer.CustomerName,
+                BrochureCode = WarehouseLocation.NullIfEmpty(customer.BrochureCode),
+                Warehouse = slot.Warehouse,
+                Rack = slot.Rack,
+                Bin = slot.Bin,
+                Shelf = slot.Shelf,
+                Location = slot.Location,
+                Quantity = LatestCountQuantity(customer, slot.Warehouse, slot.Rack, slot.Bin, slot.Shelf, slot.IsFirst),
+                ReceivedQuantity = LatestReceivedQuantity(customer, slot.Warehouse, slot.Rack, slot.Bin, slot.Shelf, slot.IsFirst),
+                InventoryDate = LatestInventoryDate(customer, slot.Warehouse, slot.Rack, slot.Bin, slot.Shelf, slot.IsFirst),
+                CaseCount = LatestCaseCount(customer, slot.Warehouse, slot.Rack, slot.Bin, slot.Shelf, slot.IsFirst),
+                ContractLabel = contractLabels.GetValueOrDefault(customer.Id)
+            }))
             .ToList();
 
-        return new BrochureInventoryReport
-        {
-            AsOf = asOf,
-            Warehouses = warehouses
-        };
+        return (asOf, rows);
     }
 
     public static bool IsUnassignedCode(string? warehouse) =>
@@ -179,7 +330,7 @@ public class BrochureInventoryReportService
                         .FontSize(9)
                         .FontColor(Colors.Grey.Darken4));
 
-                    page.Header().Element(header => DrawHeader(header, sheet.Title, report.AsOf));
+                    page.Header().Element(header => DrawHeader(header, "WAREHOUSE INVENTORY COUNT SHEET", sheet.Title, report.AsOf));
                     page.Footer().AlignCenter().DefaultTextStyle(text => text.FontSize(8)).Text(text =>
                     {
                         text.Span("Fill cases, case count, and total. Case count is printed when known.  Page ");
@@ -193,12 +344,59 @@ public class BrochureInventoryReportService
         }).GeneratePdf();
     }
 
-    private static void DrawHeader(IContainer container, string warehouseTitle, DateOnly asOf)
+    public byte[] GenerateRoutePdf(BrochureInventoryRouteReport report, int? routeId = null)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+        var groups = SelectRouteGroups(report, routeId);
+        if (groups.Count == 0)
+            groups.Add(new BrochureInventoryRouteGroup { Title = "No route" });
+
+        return Document.Create(container =>
+        {
+            foreach (var group in groups)
+            {
+                container.Page(page =>
+                {
+                    page.Size(PageSizes.Letter.Landscape());
+                    page.MarginLeft(32);
+                    page.MarginRight(32);
+                    page.MarginTop(28);
+                    page.MarginBottom(24);
+                    page.DefaultTextStyle(text => text
+                        .FontSize(9)
+                        .FontColor(Colors.Grey.Darken4));
+
+                    page.Header().Element(header => DrawHeader(header, "ROUTE INVENTORY COUNT SHEET", group.Title, report.AsOf));
+                    page.Footer().AlignCenter().DefaultTextStyle(text => text.FontSize(8)).Text(text =>
+                    {
+                        text.Span("Fill cases, case count, and total. Case count is printed when known.  Page ");
+                        text.CurrentPageNumber();
+                        text.Span(" of ");
+                        text.TotalPages();
+                    });
+                    page.Content().PaddingTop(8).Element(content => DrawSheet(content, group.Rows, includeWarehouse: true));
+                });
+            }
+        }).GeneratePdf();
+    }
+
+    public static List<BrochureInventoryRouteGroup> SelectRouteGroups(
+        BrochureInventoryRouteReport report,
+        int? routeId)
+    {
+        if (routeId == 0)
+            return report.Routes.Where(group => group.RouteId == null).ToList();
+        if (routeId is > 0)
+            return report.Routes.Where(group => group.RouteId == routeId).ToList();
+        return report.Routes.ToList();
+    }
+
+    private static void DrawHeader(IContainer container, string sheetTitle, string subtitle, DateOnly asOf)
     {
         container.Column(col =>
         {
-            col.Item().AlignCenter().Text("WAREHOUSE INVENTORY COUNT SHEET").FontSize(13).Bold();
-            col.Item().PaddingTop(2).AlignCenter().Text(warehouseTitle.ToUpperInvariant()).FontSize(11).Bold();
+            col.Item().AlignCenter().Text(sheetTitle).FontSize(13).Bold();
+            col.Item().PaddingTop(2).AlignCenter().Text(subtitle.ToUpperInvariant()).FontSize(11).Bold();
             col.Item().PaddingTop(2).AlignCenter().Text($"Last counts as of {asOf:MMM d, yyyy}").FontSize(8);
             col.Item().PaddingTop(8).Row(row =>
             {
@@ -217,7 +415,7 @@ public class BrochureInventoryReportService
         });
     }
 
-    private static void DrawSheet(IContainer container, IReadOnlyList<BrochureInventoryRow> rows)
+    private static void DrawSheet(IContainer container, IReadOnlyList<BrochureInventoryRow> rows, bool includeWarehouse = false)
     {
         container.Table(table =>
         {
@@ -255,7 +453,7 @@ public class BrochureInventoryReportService
                 DrawDataRow(
                     table,
                     CustomerLabel(row),
-                    row.Location,
+                    includeWarehouse ? row.LocationWithWarehouse : row.Location,
                     row.ContractLabel,
                     row.LastLabel,
                     row.CaseCount,

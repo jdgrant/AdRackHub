@@ -14,12 +14,13 @@ namespace AdRackHub.Services;
 public sealed class AgentMcpTools
 {
     public const string Instructions =
-        "Use search_customers before create_customer. New records default to Prospect. Creating a Customer, or changing a Prospect to Customer, assigns a brochure ID and sends it to Wave. Omit unchanged fields; null or \"\" clears a field. No delete. list_activities reads open tasks and email follow-ups. billing_due, billing_outstanding, and billing_forecast are read-only. log_stop_visit saves the driver and before and after photos from an email.";
+        "Use search_customers before create_customer. New records default to Prospect. Creating a Customer, or changing a Prospect to Customer, assigns a brochure ID and sends it to Wave. Omit unchanged fields; null or \"\" clears a field. No delete. list_activities reads open tasks and email follow-ups. billing_due, billing_outstanding, billing_forecast, and invoice_reminder_template are read-only. log_stop_visit saves the driver and before and after photos from an email.";
 
     private readonly IAgentCustomerApi _api;
     private readonly IAgentActivityApi _activities;
     private readonly IAgentVisitApi _visits;
     private readonly IAgentBillingApi _billing;
+    private readonly IInvoiceReminderReader _reminders;
     private readonly IHttpContextAccessor _http;
     private readonly IOptions<WaveOptions> _wave;
     private readonly ILogger<AgentMcpTools> _logger;
@@ -29,6 +30,7 @@ public sealed class AgentMcpTools
         IAgentActivityApi activities,
         IAgentVisitApi visits,
         IAgentBillingApi billing,
+        IInvoiceReminderReader reminders,
         IHttpContextAccessor http,
         IOptions<WaveOptions> wave,
         ILogger<AgentMcpTools> logger)
@@ -37,6 +39,7 @@ public sealed class AgentMcpTools
         _activities = activities;
         _visits = visits;
         _billing = billing;
+        _reminders = reminders;
         _http = http;
         _wave = wave;
         _logger = logger;
@@ -214,6 +217,17 @@ public sealed class AgentMcpTools
     {
         RequireScope(McpPolicies.ReadScope);
         return Complete(_billing.ForecastAsync(year, month, months, ignoreEndDate, page, pageSize, HubBase(), cancellationToken), "billing_forecast");
+    }
+
+    [Authorize(Policy = McpPolicies.Read)]
+    [McpServerTool(Name = "invoice_reminder_template", Title = "Invoice reminder template", ReadOnly = true, OpenWorld = false, Destructive = false, Idempotent = true, UseStructuredContent = true)]
+    [Description("Read the Admin invoice reminder template and render it with sample data, or for one invoice when invoiceId is set. This does not change the saved template and does not send email.")]
+    public Task<AgentInvoiceReminderReadDto> InvoiceReminderTemplate(
+        [Description("Invoice id to render. Omit for the saved template plus a sample rendering.")] int? invoiceId = null,
+        CancellationToken cancellationToken = default)
+    {
+        RequireScope(McpPolicies.ReadScope);
+        return Complete(_reminders.ReadAsync(invoiceId, false, HubBase(), cancellationToken), "invoice_reminder_template");
     }
 
     [Authorize(Policy = McpPolicies.Read)]
