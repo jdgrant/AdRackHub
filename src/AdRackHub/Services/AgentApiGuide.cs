@@ -305,7 +305,7 @@ public static class AgentApiGuide
 
             `GET /api/agent/billing/contract-end-dates`
 
-            Contracts that have an end date, earliest first. Contracts with no end date are left out. Expired contracts stay on the list. `when` is `all` (default), `ending` (today through the next 30 days), `expired`, or `later`. `endingSoonCount` is always the next 30 days, even when `when` filters the list. `search` matches the customer or contract name. This call does not change a contract.
+            Contracts that have an end date, earliest first. Contracts with no end date are left out. Expired contracts stay on the list. `when` is `all` (default), `ending` (today through the next 30 days), `expired`, or `later`. `endingSoonCount` is always the next 30 days, even when `when` filters the list. `search` matches the customer or contract name. `activeMonths` is the service months as a start-end range, such as `4-9` or `1-12`. A split season is more than one range, such as `1-3, 6-9`. This call does not change a contract.
 
             ## Invoice reminder template
 
@@ -1066,6 +1066,7 @@ public static class AgentApiGuide
                             ["contractId"] = IntProp(),
                             ["contractName"] = StringProp("Contract name."),
                             ["term"] = StringProp("Billing term."),
+                            ["activeMonths"] = StringProp("Service months as a start-end range, such as 4-9 or 1-12."),
                             ["endDate"] = StringProp("yyyy-MM-dd."),
                             ["daysUntilEnd"] = IntProp(),
                             ["status"] = StringProp("Expired, Ends today, Ending soon, or Later."),

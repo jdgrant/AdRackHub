@@ -221,7 +221,7 @@ public sealed class AgentMcpTools
 
     [Authorize(Policy = McpPolicies.Read)]
     [McpServerTool(Name = "contract_end_dates", Title = "Contract end dates", ReadOnly = true, OpenWorld = false, Destructive = false, Idempotent = true, UseStructuredContent = true)]
-    [Description("Read contracts that have an end date, earliest first. when can be all, ending, expired, or later. ending is the next 30 days, including today. This does not change contracts.")]
+    [Description("Read contracts that have an end date, earliest first. activeMonths is the service months as a start-end range, such as 4-9 or 1-12. when can be all, ending, expired, or later. ending is the next 30 days, including today. This does not change contracts.")]
     public Task<AgentContractEndDatesDto> ContractEndDates(
         [Description("Matches customer or contract name.")] string? search,
         [Description("all, ending, expired, or later. Omit for all.")] string? when,

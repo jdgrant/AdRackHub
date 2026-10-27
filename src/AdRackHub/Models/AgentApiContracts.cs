@@ -344,6 +344,7 @@ public class AgentContractEndDateItemDto
     public int ContractId { get; set; }
     public string ContractName { get; set; } = string.Empty;
     public string Term { get; set; } = string.Empty;
+    public string ActiveMonths { get; set; } = string.Empty;
     public string EndDate { get; set; } = string.Empty;
     public int DaysUntilEnd { get; set; }
     public string Status { get; set; } = string.Empty;

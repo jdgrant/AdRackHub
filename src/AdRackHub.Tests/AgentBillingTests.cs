@@ -117,6 +117,7 @@ public class AgentBillingTests
                 ContractName = "Welcome center",
                 Term = BillingFrequency.Quarterly,
                 BillingMonthCount = 3,
+                ServiceMonthMask = SubscribedMonths.BuildMask([4, 5, 6, 7, 8, 9]),
                 ContractEndDate = today.AddDays(10)
             },
             new CustomerContract
@@ -148,6 +149,7 @@ public class AgentBillingTests
         var item = Assert.Single(result.Body.Items);
         Assert.Equal("Welcome center", item.ContractName);
         Assert.Equal("Ending soon", item.Status);
+        Assert.Equal("4-9", item.ActiveMonths);
         Assert.Equal(10, item.DaysUntilEnd);
         Assert.Contains("/Billing/ContractEndDates", result.Body.HubUrl);
         Assert.Contains("/CustomerContracts/Edit/", item.ContractUrl);

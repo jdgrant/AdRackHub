@@ -330,6 +330,7 @@ public class AgentBillingService : IAgentBillingApi
                 ContractId = source.ContractId,
                 ContractName = source.ContractName,
                 Term = source.TermLabel,
+                ActiveMonths = SubscribedMonths.FormatDistributionPeriod(contract.ServiceMonthMask),
                 EndDate = source.EndDate.ToString("yyyy-MM-dd"),
                 DaysUntilEnd = source.DaysUntilEnd,
                 Status = source.IsExpired ? "Expired"
