@@ -4,6 +4,7 @@ public class ContractEndDatesPageViewModel
 {
     public DateOnly AsOf { get; set; }
     public List<ContractEndDateRow> Rows { get; set; } = new();
+    public List<ContractProposalRow> Proposals { get; set; } = new();
 
     public int ContractCount => Rows.Count;
     public int ClientCount => Rows.Select(r => r.CustomerId).Distinct().Count();
@@ -20,6 +21,7 @@ public class ContractEndDateRow
     public string CustomerName { get; init; } = string.Empty;
     public int ContractId { get; init; }
     public string ContractName { get; init; } = string.Empty;
+    public bool IsProposal { get; init; }
     public string TermLabel { get; init; } = string.Empty;
     public DateOnly EndDate { get; init; }
     public int DaysUntilEnd { get; init; }
@@ -33,4 +35,12 @@ public class ContractEndDateRow
             : DaysUntilEnd == 0
                 ? "Ends today"
                 : $"Ends in {DaysUntilEnd} day{(DaysUntilEnd == 1 ? "" : "s")}";
+}
+
+public class ContractProposalRow
+{
+    public int CustomerId { get; init; }
+    public string CustomerName { get; init; } = string.Empty;
+    public int ContractId { get; init; }
+    public string ContractName { get; init; } = string.Empty;
 }

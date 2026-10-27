@@ -325,10 +325,23 @@ public class BillingController : Controller
             .ThenBy(c => c.Customer.CustomerName)
             .ThenBy(c => c.ContractName)
             .ToListAsync();
+        var proposals = await _context.CustomerContracts
+            .AsNoTracking()
+            .Include(c => c.Customer)
+            .Where(c => c.IsProposal)
+            .OrderByDescending(c => c.Id)
+            .ToListAsync();
 
         var model = new ContractEndDatesPageViewModel
         {
             AsOf = asOf,
+            Proposals = proposals.Select(contract => new ContractProposalRow
+            {
+                CustomerId = contract.CustomerId,
+                CustomerName = contract.Customer.CustomerName,
+                ContractId = contract.Id,
+                ContractName = contract.ContractName
+            }).ToList(),
             Rows = contracts
                 .Select(contract =>
                 {
@@ -339,6 +352,7 @@ public class BillingController : Controller
                         CustomerName = contract.Customer.CustomerName,
                         ContractId = contract.Id,
                         ContractName = contract.ContractName,
+                        IsProposal = contract.IsProposal,
                         TermLabel = BillingTermDisplay.Label(contract),
                         EndDate = endDate,
                         DaysUntilEnd = endDate.DayNumber - asOf.DayNumber

@@ -11,6 +11,38 @@
 
 <p class="text-muted">Clients with a contract end date, earliest first. Expired contracts stay on this list until the date is cleared or updated.</p>
 
+@if (Model.Proposals.Count > 0)
+{
+    <h2 class="h5">Proposals</h2>
+    <div class="table-responsive mb-4">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>Client</th>
+                    <th>Proposal</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var proposal in Model.Proposals)
+            {
+                <tr>
+                    <td>
+                        <a asp-controller="Customers" asp-action="Details" asp-route-id="@proposal.CustomerId" asp-route-tab="contracts">@proposal.CustomerName</a>
+                    </td>
+                    <td>
+                        <a asp-controller="CustomerContracts" asp-action="Edit" asp-route-id="@proposal.ContractId">@proposal.ContractName</a>
+                    </td>
+                    <td class="text-end">
+                        <a asp-controller="CustomerContracts" asp-action="AgreementPdf" asp-route-id="@proposal.ContractId" class="btn btn-sm btn-outline-primary" target="_blank">Proposal PDF</a>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+}
+
 <div class="row g-3 mb-4">
     <div class="col-md-3">
         <div class="card stat-card h-100">
@@ -56,13 +88,14 @@
                 <th>Term</th>
                 <th>Ends</th>
                 <th>Status</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
         @if (Model.Rows.Count == 0)
         {
             <tr>
-                <td colspan="5" class="text-muted">No contracts have an end date set.</td>
+                <td colspan="6" class="text-muted">No contracts have an end date set.</td>
             </tr>
         }
         else
@@ -75,6 +108,10 @@
                     </td>
                     <td>
                         <a asp-controller="CustomerContracts" asp-action="Edit" asp-route-id="@row.ContractId">@row.ContractName</a>
+                        @if (row.IsProposal)
+                        {
+                            <span class="badge text-bg-warning text-dark ms-1">Proposal</span>
+                        }
                     </td>
                     <td>@row.TermLabel</td>
                     <td class="text-nowrap">@row.EndDate.ToString("MMM d, yyyy")</td>
@@ -92,6 +129,9 @@
                             <span class="badge bg-warning text-dark">Ending soon</span>
                         }
                         <span class="small ms-1">@row.StatusLabel</span>
+                    </td>
+                    <td class="text-end">
+                        <a asp-controller="CustomerContracts" asp-action="AgreementPdf" asp-route-id="@row.ContractId" class="btn btn-sm btn-outline-secondary" target="_blank">@(row.IsProposal ? "Proposal PDF" : "Contract PDF")</a>
                     </td>
                 </tr>
             }

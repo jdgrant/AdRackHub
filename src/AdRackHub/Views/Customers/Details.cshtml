@@ -1153,7 +1153,7 @@
                                                 <td class="text-end">@total.ToString("C")</td>
                                                 <td class="text-end text-nowrap">
                                                     <a asp-controller="CustomerContracts" asp-action="AgreementPdf" asp-route-id="@contract.Id" class="btn btn-sm btn-outline-secondary" target="_blank">@(contract.IsProposal ? "Proposal PDF" : "Contract PDF")</a>
-                                                    <a asp-controller="CustomerContracts" asp-action="Duplicate" asp-route-id="@contract.Id" class="btn btn-sm btn-outline-secondary">Duplicate</a>
+                                                    <button type="button" class="btn btn-sm btn-outline-secondary" data-duplicate-contract data-contract-id="@contract.Id">Duplicate</button>
                                                     <a asp-controller="CustomerContracts" asp-action="Edit" asp-route-id="@contract.Id" class="btn btn-sm btn-outline-primary">Edit</a>
                                                     <a asp-controller="CustomerContracts" asp-action="Delete" asp-route-id="@contract.Id" class="btn btn-sm btn-outline-danger">Delete</a>
                                                 </td>
@@ -1451,6 +1451,7 @@
 </div>
 
 <partial name="~/Views/Contacts/_CreateContactModal.cshtml" model="draftContact" />
+<partial name="~/Views/CustomerContracts/_DuplicateModal.cshtml" />
 
 <div class="modal fade" id="brochurePreviewModal" tabindex="-1" aria-labelledby="brochurePreviewTitle" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">

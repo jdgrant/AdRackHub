@@ -148,6 +148,32 @@ public static class BillingDueCalculator
     public static string FormatContractEndDate(DateOnly? endDate) =>
         endDate?.ToString("MMM d, yyyy") ?? "Never";
 
+    /// <summary>
+    /// Renewal term for a duplicated contract. Same months one year later.
+    /// An expired contract starts on the first of the current month and ends
+    /// in its old end month next calendar year.
+    /// </summary>
+    public static (DateOnly? Start, DateOnly? End) NextDuplicateTerm(DateOnly? start, DateOnly? end, DateOnly today)
+    {
+        var expired = end.HasValue && end.Value < today;
+        if (expired)
+        {
+            return (
+                new DateOnly(today.Year, today.Month, 1),
+                SameDayInYear(end!.Value, today.Year + 1));
+        }
+
+        return (
+            start.HasValue ? SameDayInYear(start.Value, start.Value.Year + 1) : null,
+            end.HasValue ? SameDayInYear(end.Value, end.Value.Year + 1) : null);
+    }
+
+    private static DateOnly SameDayInYear(DateOnly date, int year)
+    {
+        var day = Math.Min(date.Day, DateTime.DaysInMonth(year, date.Month));
+        return new DateOnly(year, date.Month, day);
+    }
+
     public static string PeriodLabel(int year, int month) =>
         new DateOnly(year, month, 1).ToString("MMMM yyyy");
 }

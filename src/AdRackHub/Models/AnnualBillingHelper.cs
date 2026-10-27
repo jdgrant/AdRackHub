@@ -108,6 +108,18 @@ public static class AnnualBillingHelper
     public static decimal MonthlyRateToBillingPeriodAmount(decimal monthlyRate, CustomerContract contract) =>
         MonthlyRateToBillingPeriodAmount(monthlyRate, BillingMonths(contract));
 
+    /// <summary>
+    /// Applies an increase percent to a monthly rate and rounds to the nearest dollar.
+    /// Zero leaves the rate unchanged.
+    /// </summary>
+    public static decimal IncreasedMonthlyRate(decimal monthlyRate, decimal increasePercent)
+    {
+        if (increasePercent == 0)
+            return monthlyRate;
+
+        return Math.Round(monthlyRate * (1m + increasePercent / 100m), 0, MidpointRounding.AwayFromZero);
+    }
+
     public static decimal GetBillingAmount(CustomerContractRoute contractRoute) =>
         contractRoute.BillingAmount > 0 ? contractRoute.BillingAmount : contractRoute.Route.Price;
 }

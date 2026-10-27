@@ -120,21 +120,25 @@ public class CustomerContractsController : Controller
         if (source == null)
             return NotFound();
 
+        var duplicateTerm = BillingDueCalculator.NextDuplicateTerm(
+            source.ContractStartDate ?? source.NextBillDate,
+            source.ContractEndDate,
+            DateOnly.FromDateTime(DateTime.Today));
         var copy = new CustomerContract
         {
             CustomerId = source.CustomerId,
             ContractName = await SuggestUniqueCopiedNameAsync(source.CustomerId, source.ContractName),
             Term = source.Term,
             BillingMonthCount = source.BillingMonthCount,
-            BillingAnchorMonth = source.BillingAnchorMonth,
             ServiceMonthMask = source.ServiceMonthMask,
             AdvertisingSpaces = source.AdvertisingSpaces > 0 ? source.AdvertisingSpaces : 1,
             IsProposal = source.IsProposal,
             Notes = source.Notes,
             InvoiceNotes = source.InvoiceNotes,
             DriversNotes = source.DriversNotes,
-            ContractStartDate = null,
-            ContractEndDate = null,
+            ContractStartDate = duplicateTerm.Start,
+            ContractEndDate = duplicateTerm.End,
+            BillingAnchorMonth = duplicateTerm.Start?.Month ?? source.BillingAnchorMonth,
             NextBillDate = null,
             ContractRoutes = source.ContractRoutes.Select(cr => new CustomerContractRoute
             {
@@ -148,6 +152,117 @@ public class CustomerContractsController : Controller
         ViewBag.CustomerName = source.Customer.CustomerName;
         ViewBag.DuplicatedFrom = source.ContractName;
         return View("Create", vm);
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> DuplicatePreview(int id)
+    {
+        var draft = await LoadDuplicateDraftAsync(id);
+        if (draft == null)
+            return NotFound();
+
+        var names = await ContractNamesAsync(draft.Source.CustomerId);
+        var sourceName = draft.Source.ContractName.Trim();
+        return Json(new
+        {
+            contractName = sourceName,
+            proposalName = UniqueSuffixedName(names, sourceName, "proposal"),
+            copyName = UniqueSuffixedName(names, sourceName, "copy"),
+            nameTaken = names.Any(name => string.Equals(name.Trim(), sourceName, StringComparison.OrdinalIgnoreCase)),
+            startDate = draft.TermStart?.ToString("yyyy-MM-dd"),
+            endDate = draft.TermEnd?.ToString("yyyy-MM-dd"),
+            startLabel = draft.TermStart?.ToString("MMMM d, yyyy"),
+            endLabel = draft.TermEnd?.ToString("MMMM d, yyyy"),
+            routes = draft.Routes.Select(route => new
+            {
+                routeName = route.RouteName,
+                monthly = route.Monthly,
+                locations = route.Locations
+            })
+        });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateDuplicate(int id, string? contractName, bool isProposal, decimal increasePercent)
+    {
+        var draft = await LoadDuplicateDraftAsync(id);
+        if (draft == null)
+            return NotFound();
+
+        var source = draft.Source;
+        var names = await ContractNamesAsync(source.CustomerId);
+        var sourceName = source.ContractName.Trim();
+        var requested = string.IsNullOrWhiteSpace(contractName) ? sourceName : contractName.Trim();
+        if (requested.Length > 200)
+            requested = requested[..200];
+
+        var taken = names.Any(name => string.Equals(name.Trim(), requested, StringComparison.OrdinalIgnoreCase));
+        if (taken)
+        {
+            if (string.Equals(requested, sourceName, StringComparison.OrdinalIgnoreCase))
+                requested = UniqueSuffixedName(names, sourceName, isProposal ? "proposal" : "copy");
+            else
+            {
+                TempData["Error"] = DuplicateContractNameMessage(requested);
+                return RedirectToAction("Details", "Customers", new { id = source.CustomerId, tab = "contracts" });
+            }
+        }
+
+        var copy = new CustomerContract
+        {
+            CustomerId = source.CustomerId,
+            ContractName = requested,
+            Term = source.Term,
+            BillingMonthCount = source.BillingMonthCount,
+            ServiceMonthMask = source.ServiceMonthMask,
+            AdvertisingSpaces = source.AdvertisingSpaces > 0 ? source.AdvertisingSpaces : 1,
+            IsProposal = isProposal,
+            Notes = source.Notes,
+            InvoiceNotes = source.InvoiceNotes,
+            DriversNotes = source.DriversNotes,
+            ContractStartDate = draft.TermStart,
+            ContractEndDate = draft.TermEnd,
+            BillingAnchorMonth = draft.TermStart?.Month ?? source.BillingAnchorMonth,
+            NextBillDate = null
+        };
+        _context.CustomerContracts.Add(copy);
+        await _context.SaveChangesAsync();
+
+        var months = AnnualBillingHelper.BillingMonths(source);
+        foreach (var route in draft.Routes)
+        {
+            var monthly = AnnualBillingHelper.IncreasedMonthlyRate(route.Monthly, increasePercent);
+            var billingAmount = increasePercent == 0
+                ? route.StoredAmount
+                : AnnualBillingHelper.MonthlyRateToBillingPeriodAmount(monthly, months);
+            _context.CustomerContractRoutes.Add(new CustomerContractRoute
+            {
+                CustomerContractId = copy.Id,
+                RouteId = route.RouteId,
+                BillingAmount = billingAmount
+            });
+        }
+
+        await _context.SaveChangesAsync();
+
+        if (!isProposal)
+        {
+            await SyncCustomerRoutesFromContractsAsync(
+                source.CustomerId,
+                draft.Routes.ToDictionary(
+                    route => route.RouteId,
+                    route => new RouteStopSelection
+                    {
+                        AllStops = route.AllStops,
+                        StopIds = route.StopIds
+                    }));
+        }
+
+        TempData["Message"] = isProposal
+            ? $"Proposal \"{requested}\" created."
+            : $"Contract \"{requested}\" created.";
+        return RedirectToAction("Details", "Customers", new { id = source.CustomerId, tab = "contracts" });
     }
 
     public async Task<IActionResult> Edit(int? id)
@@ -543,28 +658,109 @@ public class CustomerContractsController : Controller
 
     private async Task<string> SuggestUniqueCopiedNameAsync(int customerId, string sourceName)
     {
-        var trimmed = (sourceName ?? string.Empty).Trim();
-        var baseName = string.IsNullOrWhiteSpace(trimmed) ? "Contract" : trimmed;
-        var existing = await _context.CustomerContracts.AsNoTracking()
+        var names = await ContractNamesAsync(customerId);
+        return UniqueSuffixedName(names, sourceName, "copy");
+    }
+
+    private async Task<List<string>> ContractNamesAsync(int customerId) =>
+        await _context.CustomerContracts.AsNoTracking()
             .Where(c => c.CustomerId == customerId)
             .Select(c => c.ContractName)
             .ToListAsync();
 
+    private static string UniqueSuffixedName(IReadOnlyCollection<string> existing, string sourceName, string label)
+    {
+        var trimmed = (sourceName ?? string.Empty).Trim();
+        var baseName = string.IsNullOrWhiteSpace(trimmed) ? "Contract" : trimmed;
         bool taken(string name) =>
             existing.Any(n => string.Equals(n.Trim(), name, StringComparison.OrdinalIgnoreCase));
 
-        var copyName = $"{baseName} (copy)";
-        if (!taken(copyName))
-            return copyName;
+        string candidateFor(int suffix) => label == "copy"
+            ? suffix <= 1 ? $"{baseName} (copy)" : $"{baseName} (copy {suffix})"
+            : suffix <= 1 ? $"{baseName} {label}" : $"{baseName} {label} {suffix}";
 
-        for (var suffix = 2; suffix < 100; suffix++)
+        for (var suffix = 1; suffix < 100; suffix++)
         {
-            var candidate = $"{baseName} (copy {suffix})";
+            var candidate = candidateFor(suffix);
             if (!taken(candidate))
                 return candidate;
         }
 
-        return $"{baseName} (copy {DateTime.UtcNow:HHmmss})";
+        return $"{baseName} {label} {DateTime.UtcNow:HHmmss}";
+    }
+
+    private async Task<DuplicateDraft?> LoadDuplicateDraftAsync(int id)
+    {
+        var source = await _context.CustomerContracts
+            .AsNoTracking()
+            .Include(c => c.ContractRoutes)
+                .ThenInclude(cr => cr.Route)
+                    .ThenInclude(r => r.Stops)
+            .Include(c => c.Customer)
+                .ThenInclude(c => c.CustomerRoutes)
+                    .ThenInclude(cr => cr.CustomerRouteStops)
+            .FirstOrDefaultAsync(c => c.Id == id);
+        if (source == null)
+            return null;
+
+        var months = AnnualBillingHelper.BillingMonths(source);
+        var assignments = source.Customer.CustomerRoutes.ToDictionary(cr => cr.RouteId);
+        var routes = source.ContractRoutes
+            .Where(cr => cr.Route != null)
+            .OrderBy(cr => cr.Route.RouteName)
+            .Select(cr =>
+            {
+                var stored = cr.BillingAmount > 0
+                    ? cr.BillingAmount
+                    : AnnualBillingHelper.ToBillingPeriodAmount(cr.Route.Price, months);
+                assignments.TryGetValue(cr.RouteId, out var assignment);
+                var activeStops = cr.Route.Stops
+                    .Where(stop => stop.Status == StopStatus.Active)
+                    .OrderBy(stop => stop.StepNumber)
+                    .ThenBy(stop => stop.StopName)
+                    .ToList();
+                var selectedIds = assignment == null || assignment.AllStops
+                    ? activeStops.Select(stop => stop.Id).ToHashSet()
+                    : assignment.CustomerRouteStops.Select(stop => stop.StopId).ToHashSet();
+                var chosen = activeStops.Where(stop => selectedIds.Contains(stop.Id)).ToList();
+                if (chosen.Count == 0)
+                    chosen = activeStops;
+
+                return new DuplicateRouteDraft
+                {
+                    RouteId = cr.RouteId,
+                    RouteName = cr.Route.RouteName,
+                    StoredAmount = stored,
+                    Monthly = AnnualBillingHelper.BillingPeriodAmountToMonthlyRate(stored, months),
+                    AllStops = assignment == null || assignment.AllStops || chosen.Count == activeStops.Count,
+                    StopIds = chosen.Select(stop => stop.Id).ToList(),
+                    Locations = chosen.Select(stop => stop.StopName).ToList()
+                };
+            })
+            .ToList();
+
+        var term = BillingDueCalculator.NextDuplicateTerm(
+            source.ContractStartDate ?? source.NextBillDate,
+            source.ContractEndDate,
+            DateOnly.FromDateTime(DateTime.Today));
+        return new DuplicateDraft(source, routes, term.Start, term.End);
+    }
+
+    private sealed record DuplicateDraft(
+        CustomerContract Source,
+        List<DuplicateRouteDraft> Routes,
+        DateOnly? TermStart,
+        DateOnly? TermEnd);
+
+    private sealed class DuplicateRouteDraft
+    {
+        public int RouteId { get; init; }
+        public string RouteName { get; init; } = string.Empty;
+        public decimal StoredAmount { get; init; }
+        public decimal Monthly { get; init; }
+        public bool AllStops { get; init; }
+        public List<int> StopIds { get; init; } = new();
+        public List<string> Locations { get; init; } = new();
     }
 
     private async Task<List<RouteSelectionItem>> GetAvailableRoutesAsync(
