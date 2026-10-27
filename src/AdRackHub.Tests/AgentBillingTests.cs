@@ -76,7 +76,7 @@ public class AgentBillingTests
             db,
             null!,
             null!,
-            NullLogger<MonthlyBillingService>.Instance));
+            NullLogger<MonthlyBillingService>.Instance), db);
 
         var due = await api.DueAsync(today.Year, today.Month, null, 1, 50, "https://hub.ad-rack.net", CancellationToken.None);
         Assert.Equal(250, due.Body!.DueTotal);
@@ -95,6 +95,62 @@ public class AgentBillingTests
         var current = Assert.Single(forecast.Body!.Months, month => month.Year == today.Year && month.Month == today.Month);
         Assert.Equal(250, current.Amount);
         Assert.Contains(forecast.Body.Lines, line => line.ContractName == "Welcome center" && line.Amount == 250);
+    }
+
+    [Fact]
+    public async Task ContractEndDatesMatchTheBillingPage()
+    {
+        await using var db = NewDb();
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        db.Customers.Add(new Customer
+        {
+            CustomerName = "Riverside Museum",
+            Type = CustomerType.Customer,
+            Status = CustomerStatus.Active
+        });
+        await db.SaveChangesAsync();
+        var customerId = db.Customers.Single().Id;
+        db.CustomerContracts.AddRange(
+            new CustomerContract
+            {
+                CustomerId = customerId,
+                ContractName = "Welcome center",
+                Term = BillingFrequency.Quarterly,
+                BillingMonthCount = 3,
+                ContractEndDate = today.AddDays(10)
+            },
+            new CustomerContract
+            {
+                CustomerId = customerId,
+                ContractName = "Old kiosk",
+                Term = BillingFrequency.Annual,
+                BillingMonthCount = 12,
+                ContractEndDate = today.AddDays(-5)
+            },
+            new CustomerContract
+            {
+                CustomerId = customerId,
+                ContractName = "Open ended",
+                Term = BillingFrequency.Monthly,
+                BillingMonthCount = 1,
+                ContractEndDate = null
+            });
+        await db.SaveChangesAsync();
+
+        var api = new AgentBillingService(new MonthlyBillingService(
+            db, null!, null!, NullLogger<MonthlyBillingService>.Instance), db);
+        var result = await api.ContractEndsAsync(null, "ending", 1, 50, "https://hub.ad-rack.net", CancellationToken.None);
+
+        Assert.Equal(2, result.Body!.ContractCount);
+        Assert.Equal(1, result.Body.EndingSoonCount);
+        Assert.Equal(1, result.Body.ExpiredCount);
+        Assert.Equal(0, result.Body.LaterCount);
+        var item = Assert.Single(result.Body.Items);
+        Assert.Equal("Welcome center", item.ContractName);
+        Assert.Equal("Ending soon", item.Status);
+        Assert.Equal(10, item.DaysUntilEnd);
+        Assert.Contains("/Billing/ContractEndDates", result.Body.HubUrl);
+        Assert.Contains("/CustomerContracts/Edit/", item.ContractUrl);
     }
 
     private static ApplicationDbContext NewDb()

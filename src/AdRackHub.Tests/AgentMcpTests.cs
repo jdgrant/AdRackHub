@@ -35,6 +35,7 @@ public class AgentMcpTests
         Assert.Contains("Wave", AgentMcpTools.Instructions);
         Assert.Contains("list_activities", AgentMcpTools.Instructions);
         Assert.Contains("billing_outstanding", AgentMcpTools.Instructions);
+        Assert.Contains("contract_end_dates", AgentMcpTools.Instructions);
         Assert.Contains("log_stop_visit", AgentMcpTools.Instructions);
     }
 
@@ -185,7 +186,8 @@ public class AgentMcpTests
         Assert.Equal(
             new[]
             {
-                "add_contact", "billing_due", "billing_forecast", "billing_outstanding", "create_customer",
+                "add_contact", "billing_due", "billing_forecast", "billing_outstanding", "contract_end_dates",
+                "create_customer",
                 "get_customer", "invoice_reminder_template", "list_activities", "list_visits", "log_stop_visit",
                 "search_customers", "search_stops", "update_contact", "update_customer"
             },
@@ -195,6 +197,7 @@ public class AgentMcpTests
         Assert.True(tools.Single(tool => tool.Name == "billing_due").ProtocolTool.Annotations?.ReadOnlyHint);
         Assert.True(tools.Single(tool => tool.Name == "billing_outstanding").ProtocolTool.Annotations?.ReadOnlyHint);
         Assert.True(tools.Single(tool => tool.Name == "billing_forecast").ProtocolTool.Annotations?.ReadOnlyHint);
+        Assert.True(tools.Single(tool => tool.Name == "contract_end_dates").ProtocolTool.Annotations?.ReadOnlyHint);
         Assert.True(tools.Single(tool => tool.Name == "invoice_reminder_template").ProtocolTool.Annotations?.ReadOnlyHint);
         Assert.False(tools.Single(tool => tool.Name == "log_stop_visit").ProtocolTool.Annotations?.ReadOnlyHint);
         Assert.True(tools.Single(tool => tool.Name == "get_customer").ProtocolTool.Annotations?.ReadOnlyHint);
@@ -353,6 +356,9 @@ public class AgentMcpTests
             throw new NotSupportedException();
 
         public Task<AgentCallResult<AgentBillingForecastDto>> ForecastAsync(int? year, int? month, int? months, bool ignoreEndDate, int page, int pageSize, string hubBase, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<AgentCallResult<AgentContractEndDatesDto>> ContractEndsAsync(string? search, string? when, int page, int pageSize, string hubBase, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
     }
 

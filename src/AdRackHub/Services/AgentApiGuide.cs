@@ -40,9 +40,9 @@ public static class AgentApiGuide
             7. Select Create as a plugin, then install it.
             8. When ChatGPT asks to connect, sign in to AdRackHub as an admin and choose Allow.
 
-            The plugin tools are `search_customers`, `get_customer`, `create_customer`, `update_customer`, `add_contact`, `update_contact`, `list_activities`, `billing_due`, `billing_outstanding`, `billing_forecast`, `invoice_reminder_template`, `search_stops`, `list_visits`, and `log_stop_visit`. New records default to Prospect. Creating a Customer, or changing a Prospect to Customer, assigns a brochure id and sends the customer to Wave. There is no delete tool.
+            The plugin tools are `search_customers`, `get_customer`, `create_customer`, `update_customer`, `add_contact`, `update_contact`, `list_activities`, `billing_due`, `billing_outstanding`, `billing_forecast`, `contract_end_dates`, `invoice_reminder_template`, `search_stops`, `list_visits`, and `log_stop_visit`. New records default to Prospect. Creating a Customer, or changing a Prospect to Customer, assigns a brochure id and sends the customer to Wave. There is no delete tool.
 
-            `list_activities` reads open Hub tasks and email follow-ups. `billing_due`, `billing_outstanding`, and `billing_forecast` read bills due, unpaid invoices, and the billing forecast. They do not send invoices or mark them received. `invoice_reminder_template` reads and renders the Admin invoice reminder. It does not save or send it. `log_stop_visit` records the driver and the before and after photos. Pass each email image attachment as base64.
+            `list_activities` reads open Hub tasks and email follow-ups. `billing_due`, `billing_outstanding`, `billing_forecast`, and `contract_end_dates` read bills due, unpaid invoices, the billing forecast, and contract end dates. They do not send invoices or mark them received. `invoice_reminder_template` reads and renders the Admin invoice reminder. It does not save or send it. `log_stop_visit` records the driver and the before and after photos. Pass each email image attachment as base64.
 
             Search before creating. If create returns possible duplicates, do not create another record until the user picks one, or call create again with `acknowledgeDuplicateIds` set to every returned id.
 
@@ -84,7 +84,7 @@ public static class AgentApiGuide
             - List activities. Open tasks and email follow-ups are included by default.
             - Search stops and list visits.
             - Log a stop visit with the driver and before and after photos.
-            - Read bills due, outstanding invoices, the billing forecast, and the invoice reminder template.
+            - Read bills due, outstanding invoices, the billing forecast, contract end dates, and the invoice reminder template.
 
             Do not send DELETE. Delete requests return HTTP 405. This API cannot delete records.
 
@@ -299,7 +299,13 @@ public static class AgentApiGuide
 
             `GET /api/agent/billing/forecast`
 
-            `months` defaults to 12 and cannot exceed 24. The forecast starts at the current month. `year` and `month` choose which month's contract lines are returned. `months` in the response is every month total. `lines` are the selected month. `sent` is true when that invoice was already submitted. `ignoreEndDate=true` keeps contracts after their end date.
+            `months` defaults to 12 and cannot exceed 24. The forecast starts at the current month. `year` and `month` choose which month's contract lines are returned. `months` in the response is every month total. `lines` are the selected month. `sent` is true when that invoice was already submitted.             `ignoreEndDate=true` keeps contracts after their end date.
+
+            ## Contract end dates
+
+            `GET /api/agent/billing/contract-end-dates`
+
+            Contracts that have an end date, earliest first. Contracts with no end date are left out. Expired contracts stay on the list. `when` is `all` (default), `ending` (today through the next 30 days), `expired`, or `later`. `endingSoonCount` is always the next 30 days, even when `when` filters the list. `search` matches the customer or contract name. This call does not change a contract.
 
             ## Invoice reminder template
 
@@ -509,6 +515,7 @@ public static class AgentApiGuide
         var billingDueRef = "#/components/schemas/BillingDue";
         var billingOutstandingRef = "#/components/schemas/BillingOutstanding";
         var billingForecastRef = "#/components/schemas/BillingForecast";
+        var contractEndDatesRef = "#/components/schemas/ContractEndDates";
         var reminderRef = "#/components/schemas/InvoiceReminderTemplate";
         var reminderRenderRef = "#/components/schemas/InvoiceReminderRender";
         var reminderWriteRef = "#/components/schemas/InvoiceReminderWrite";
@@ -523,7 +530,7 @@ public static class AgentApiGuide
             {
                 ["title"] = "AdRackHub Agent API",
                 ["version"] = "1.0.0",
-                ["description"] = "List, create, and update customers and prospects, including contacts. Read activities, bills due, outstanding invoices, the billing forecast, and the invoice reminder template. Rendering a reminder does not save it. Updating the saved reminder requires AgentApi:CanManageInvoiceReminderTemplate. Log a stop visit with before and after photos. Delete is not available. Read /docs/agent.html for the full guide."
+                ["description"] = "List, create, and update customers and prospects, including contacts. Read activities, bills due, outstanding invoices, the billing forecast, contract end dates, and the invoice reminder template. Rendering a reminder does not save it. Updating the saved reminder requires AgentApi:CanManageInvoiceReminderTemplate. Log a stop visit with before and after photos. Delete is not available. Read /docs/agent.html for the full guide."
             },
             ["servers"] = new JsonArray { new JsonObject { ["url"] = baseUrl.TrimEnd('/') } },
             ["security"] = new JsonArray
@@ -699,6 +706,21 @@ public static class AgentApiGuide
                     }, new JsonObject
                     {
                         ["200"] = Response("The billing forecast.", billingForecastRef),
+                        ["400"] = ErrorResponse(),
+                        ["401"] = Unauthorized()
+                    })
+                },
+                ["/api/agent/billing/contract-end-dates"] = new JsonObject
+                {
+                    ["get"] = Operation("contractEndDates", "Contracts with an end date, earliest first. Does not change contracts.", new JsonArray
+                    {
+                        QueryParam("search", "Customer or contract name."),
+                        QueryParam("when", "all, ending, expired, or later. ending is today through the next 30 days."),
+                        QueryParam("page", "Page number, starting at 1.", "integer"),
+                        QueryParam("pageSize", "Default 50. Maximum 100.", "integer")
+                    }, new JsonObject
+                    {
+                        ["200"] = Response("Contract end dates.", contractEndDatesRef),
                         ["400"] = ErrorResponse(),
                         ["401"] = Unauthorized()
                     })
@@ -1011,6 +1033,45 @@ public static class AgentApiGuide
                             ["amount"] = NumberProp("Forecast amount."),
                             ["sent"] = new JsonObject { ["type"] = "boolean", ["description"] = "True when the invoice was already submitted." },
                             ["hubUrl"] = StringProp("Customer page.")
+                        }
+                    },
+                    ["ContractEndDates"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["asOf"] = StringProp("Today, yyyy-MM-dd."),
+                            ["endingSoonDays"] = IntProp(),
+                            ["contractCount"] = IntProp(),
+                            ["clientCount"] = IntProp(),
+                            ["expiredCount"] = IntProp(),
+                            ["endingSoonCount"] = IntProp(),
+                            ["laterCount"] = IntProp(),
+                            ["page"] = IntProp(),
+                            ["pageSize"] = IntProp(),
+                            ["total"] = IntProp(),
+                            ["totalPages"] = IntProp(),
+                            ["hasMore"] = new JsonObject { ["type"] = "boolean" },
+                            ["hubUrl"] = StringProp("Contract end dates page."),
+                            ["items"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["$ref"] = "#/components/schemas/ContractEndDateItem" } }
+                        }
+                    },
+                    ["ContractEndDateItem"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["customerId"] = IntProp(),
+                            ["customerName"] = StringProp("Customer name."),
+                            ["contractId"] = IntProp(),
+                            ["contractName"] = StringProp("Contract name."),
+                            ["term"] = StringProp("Billing term."),
+                            ["endDate"] = StringProp("yyyy-MM-dd."),
+                            ["daysUntilEnd"] = IntProp(),
+                            ["status"] = StringProp("Expired, Ends today, Ending soon, or Later."),
+                            ["statusLabel"] = StringProp("How many days until the end date, or how many days ago it expired."),
+                            ["hubUrl"] = StringProp("Customer page."),
+                            ["contractUrl"] = StringProp("Contract edit page.")
                         }
                     },
                     ["InvoiceReminderTemplate"] = new JsonObject

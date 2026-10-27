@@ -14,7 +14,7 @@ namespace AdRackHub.Services;
 public sealed class AgentMcpTools
 {
     public const string Instructions =
-        "Use search_customers before create_customer. New records default to Prospect. Creating a Customer, or changing a Prospect to Customer, assigns a brochure ID and sends it to Wave. Omit unchanged fields; null or \"\" clears a field. No delete. list_activities reads open tasks and email follow-ups. billing_due, billing_outstanding, billing_forecast, and invoice_reminder_template are read-only. log_stop_visit saves the driver and before and after photos from an email.";
+        "Use search_customers before create_customer. New records default to Prospect. Creating a Customer, or changing a Prospect to Customer, assigns a brochure ID and sends it to Wave. Omit unchanged fields; null or \"\" clears a field. No delete. list_activities reads open tasks and email follow-ups. billing_due, billing_outstanding, billing_forecast, contract_end_dates, and invoice_reminder_template are read-only. log_stop_visit saves the driver and before and after photos from an email.";
 
     private readonly IAgentCustomerApi _api;
     private readonly IAgentActivityApi _activities;
@@ -217,6 +217,20 @@ public sealed class AgentMcpTools
     {
         RequireScope(McpPolicies.ReadScope);
         return Complete(_billing.ForecastAsync(year, month, months, ignoreEndDate, page, pageSize, HubBase(), cancellationToken), "billing_forecast");
+    }
+
+    [Authorize(Policy = McpPolicies.Read)]
+    [McpServerTool(Name = "contract_end_dates", Title = "Contract end dates", ReadOnly = true, OpenWorld = false, Destructive = false, Idempotent = true, UseStructuredContent = true)]
+    [Description("Read contracts that have an end date, earliest first. when can be all, ending, expired, or later. ending is the next 30 days, including today. This does not change contracts.")]
+    public Task<AgentContractEndDatesDto> ContractEndDates(
+        [Description("Matches customer or contract name.")] string? search,
+        [Description("all, ending, expired, or later. Omit for all.")] string? when,
+        [Description("Page number, starting at 1.")] int page = 1,
+        [Description("Page size. Default 50. Maximum 100.")] int pageSize = 50,
+        CancellationToken cancellationToken = default)
+    {
+        RequireScope(McpPolicies.ReadScope);
+        return Complete(_billing.ContractEndsAsync(search, when, page, pageSize, HubBase(), cancellationToken), "contract_end_dates");
     }
 
     [Authorize(Policy = McpPolicies.Read)]

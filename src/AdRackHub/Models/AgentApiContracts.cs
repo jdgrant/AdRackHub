@@ -319,6 +319,39 @@ public class AgentBillingForecastLineDto
     public string HubUrl { get; set; } = string.Empty;
 }
 
+public class AgentContractEndDatesDto
+{
+    public string AsOf { get; set; } = string.Empty;
+    public int EndingSoonDays { get; set; }
+    public int ContractCount { get; set; }
+    public int ClientCount { get; set; }
+    public int ExpiredCount { get; set; }
+    public int EndingSoonCount { get; set; }
+    public int LaterCount { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public int Total { get; set; }
+    public int TotalPages { get; set; }
+    public bool HasMore { get; set; }
+    public string HubUrl { get; set; } = string.Empty;
+    public List<AgentContractEndDateItemDto> Items { get; set; } = new();
+}
+
+public class AgentContractEndDateItemDto
+{
+    public int CustomerId { get; set; }
+    public string CustomerName { get; set; } = string.Empty;
+    public int ContractId { get; set; }
+    public string ContractName { get; set; } = string.Empty;
+    public string Term { get; set; } = string.Empty;
+    public string EndDate { get; set; } = string.Empty;
+    public int DaysUntilEnd { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string StatusLabel { get; set; } = string.Empty;
+    public string HubUrl { get; set; } = string.Empty;
+    public string ContractUrl { get; set; } = string.Empty;
+}
+
 public class AgentInvoiceReminderMergeFieldDto
 {
     public string Token { get; set; } = string.Empty;

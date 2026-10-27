@@ -179,6 +179,17 @@ public class AgentApiController : ControllerBase
         return Execute(() => _billing.ForecastAsync(year, month, months, ignoreEndDate, page, pageSize, AgentApiGuide.BaseUrl(Request), cancellationToken));
     }
 
+    [HttpGet("billing/contract-end-dates")]
+    public Task<IActionResult> ContractEndDates(
+        [FromQuery] string? search,
+        [FromQuery] string? when,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = AgentCustomerApiService.DefaultPageSize,
+        CancellationToken cancellationToken = default)
+    {
+        return Execute(() => _billing.ContractEndsAsync(search, when, page, pageSize, AgentApiGuide.BaseUrl(Request), cancellationToken));
+    }
+
     [HttpGet("communications/invoice-reminder")]
     public Task<IActionResult> InvoiceReminder(CancellationToken cancellationToken)
     {

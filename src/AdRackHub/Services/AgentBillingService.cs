@@ -1,4 +1,7 @@
+using AdRackHub.Data;
 using AdRackHub.Models;
+using AdRackHub.ViewModels;
+using Microsoft.EntityFrameworkCore;
 
 namespace AdRackHub.Services;
 
@@ -31,15 +34,25 @@ public interface IAgentBillingApi
         int pageSize,
         string hubBase,
         CancellationToken cancellationToken);
+
+    Task<AgentCallResult<AgentContractEndDatesDto>> ContractEndsAsync(
+        string? search,
+        string? when,
+        int page,
+        int pageSize,
+        string hubBase,
+        CancellationToken cancellationToken);
 }
 
 public class AgentBillingService : IAgentBillingApi
 {
     private readonly MonthlyBillingService _billing;
+    private readonly ApplicationDbContext _context;
 
-    public AgentBillingService(MonthlyBillingService billing)
+    public AgentBillingService(MonthlyBillingService billing, ApplicationDbContext context)
     {
         _billing = billing;
+        _context = context;
     }
 
     public async Task<AgentCallResult<AgentBillingDueDto>> DueAsync(
@@ -267,6 +280,105 @@ public class AgentBillingService : IAgentBillingApi
             TotalPages = Pages(lines.Count, pageSize),
             HasMore = page < Pages(lines.Count, pageSize),
             Lines = Slice(lines, page, pageSize)
+        });
+    }
+
+    public async Task<AgentCallResult<AgentContractEndDatesDto>> ContractEndsAsync(
+        string? search,
+        string? when,
+        int page,
+        int pageSize,
+        string hubBase,
+        CancellationToken cancellationToken)
+    {
+        var selected = when?.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(selected))
+            selected = "all";
+        if (selected is not ("all" or "ending" or "expired" or "later"))
+            return AgentCallResult<AgentContractEndDatesDto>.Invalid(["when must be all, ending, expired, or later."]);
+
+        (page, pageSize) = Page(page, pageSize);
+        var hub = hubBase.TrimEnd('/');
+        var asOf = DateOnly.FromDateTime(DateTime.Today);
+        var soonDays = ContractEndDateRow.EndingSoonDays;
+        var contracts = await _context.CustomerContracts
+            .AsNoTracking()
+            .Include(c => c.Customer)
+            .Where(c => c.ContractEndDate != null)
+            .OrderBy(c => c.ContractEndDate)
+            .ThenBy(c => c.Customer.CustomerName)
+            .ThenBy(c => c.ContractName)
+            .ToListAsync(cancellationToken);
+
+        var rows = contracts.Select(contract =>
+        {
+            var endDate = contract.ContractEndDate!.Value;
+            var source = new ContractEndDateRow
+            {
+                CustomerId = contract.CustomerId,
+                CustomerName = contract.Customer.CustomerName,
+                ContractId = contract.Id,
+                ContractName = contract.ContractName,
+                TermLabel = BillingTermDisplay.Label(contract),
+                EndDate = endDate,
+                DaysUntilEnd = endDate.DayNumber - asOf.DayNumber
+            };
+            return new AgentContractEndDateItemDto
+            {
+                CustomerId = source.CustomerId,
+                CustomerName = source.CustomerName,
+                ContractId = source.ContractId,
+                ContractName = source.ContractName,
+                Term = source.TermLabel,
+                EndDate = source.EndDate.ToString("yyyy-MM-dd"),
+                DaysUntilEnd = source.DaysUntilEnd,
+                Status = source.IsExpired ? "Expired"
+                    : source.DaysUntilEnd == 0 ? "Ends today"
+                    : source.IsEndingSoon ? "Ending soon"
+                    : "Later",
+                StatusLabel = source.StatusLabel,
+                HubUrl = $"{hub}/Customers/Details/{source.CustomerId}",
+                ContractUrl = $"{hub}/CustomerContracts/Edit/{source.ContractId}"
+            };
+        }).ToList();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            rows = rows.Where(row =>
+                row.CustomerName.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || row.ContractName.Contains(term, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
+        var contractCount = rows.Count;
+        var clientCount = rows.Select(row => row.CustomerId).Distinct().Count();
+        var expiredCount = rows.Count(row => row.DaysUntilEnd < 0);
+        var endingSoonCount = rows.Count(row => row.DaysUntilEnd >= 0 && row.DaysUntilEnd <= soonDays);
+        var laterCount = rows.Count - expiredCount - endingSoonCount;
+        rows = selected switch
+        {
+            "ending" => rows.Where(row => row.DaysUntilEnd >= 0 && row.DaysUntilEnd <= soonDays).ToList(),
+            "expired" => rows.Where(row => row.DaysUntilEnd < 0).ToList(),
+            "later" => rows.Where(row => row.DaysUntilEnd > soonDays).ToList(),
+            _ => rows
+        };
+
+        return AgentCallResult<AgentContractEndDatesDto>.Ok(new AgentContractEndDatesDto
+        {
+            AsOf = asOf.ToString("yyyy-MM-dd"),
+            EndingSoonDays = soonDays,
+            ContractCount = contractCount,
+            ClientCount = clientCount,
+            ExpiredCount = expiredCount,
+            EndingSoonCount = endingSoonCount,
+            LaterCount = laterCount,
+            Page = page,
+            PageSize = pageSize,
+            Total = rows.Count,
+            TotalPages = Pages(rows.Count, pageSize),
+            HasMore = page < Pages(rows.Count, pageSize),
+            HubUrl = $"{hub}/Billing/ContractEndDates",
+            Items = Slice(rows, page, pageSize)
         });
     }
 
