@@ -26,6 +26,7 @@ public class CustomersController : Controller
     private readonly WaveSessionService _waveSession;
     private readonly InvoicePdfStorageService _invoicePdfs;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly MailgunInvoiceEmailService _mailgun;
 
     public CustomersController(
         ApplicationDbContext context,
@@ -40,7 +41,8 @@ public class CustomersController : Controller
         BrochureWarehouseSheetService warehouseSheet,
         WaveSessionService waveSession,
         InvoicePdfStorageService invoicePdfs,
-        UserManager<ApplicationUser> userManager)
+        UserManager<ApplicationUser> userManager,
+        MailgunInvoiceEmailService mailgun)
     {
         _context = context;
         _matrixService = matrixService;
@@ -55,6 +57,7 @@ public class CustomersController : Controller
         _waveSession = waveSession;
         _invoicePdfs = invoicePdfs;
         _userManager = userManager;
+        _mailgun = mailgun;
     }
 
     public async Task<IActionResult> Index(string? search, CustomerStatus? status, bool atRisk = false)
@@ -485,7 +488,10 @@ public class CustomersController : Controller
         string? rack,
         string? bin,
         string? shelf,
-        string? notes)
+        string? notes,
+        bool sendReceipt = false,
+        int[]? receiptContactIds = null,
+        bool receiptCopyToMe = false)
     {
         var customer = await _context.Customers
             .Include(c => c.WarehouseLocations)
@@ -534,10 +540,98 @@ public class CustomersController : Controller
         });
 
         await _context.SaveChangesAsync();
-        TempData["Message"] = kind == BrochureInventoryKind.Received
+        var message = kind == BrochureInventoryKind.Received
             ? "Received shipment recorded."
             : "Inventory count recorded.";
+        if (kind == BrochureInventoryKind.Received && sendReceipt)
+            message = await AppendReceiptResultAsync(customer, message, total.Value, cases, caseCount, inventoryDate ?? DateOnly.FromDateTime(DateTime.Today), notes, receiptContactIds, receiptCopyToMe);
+        TempData["Message"] = message;
         return RedirectToAction(nameof(Details), new { id = customerId, tab = "brochures" });
+    }
+
+    private async Task<string> AppendReceiptResultAsync(
+        Customer customer,
+        string savedMessage,
+        int quantity,
+        decimal? cases,
+        int? caseCount,
+        DateOnly inventoryDate,
+        string? notes,
+        int[]? receiptContactIds,
+        bool receiptCopyToMe)
+    {
+        var selectedIds = (receiptContactIds ?? Array.Empty<int>()).Distinct().ToArray();
+        var contacts = selectedIds.Length == 0
+            ? new List<Contact>()
+            : await _context.Contacts.AsNoTracking()
+                .Where(contact => contact.CustomerId == customer.Id && selectedIds.Contains(contact.Id))
+                .ToListAsync();
+        var recipients = contacts
+            .Select(contact => contact.Email?.Trim())
+            .Where(email => !string.IsNullOrWhiteSpace(email))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Cast<string>()
+            .ToList();
+        if (receiptCopyToMe)
+        {
+            recipients.RemoveAll(email => string.Equals(email, BrochureReceiptEmail.CopyRecipientEmail, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (recipients.Count == 0 && !receiptCopyToMe)
+        {
+            TempData["Error"] = $"{savedMessage} Select at least one person to receive the receipt.";
+            return savedMessage;
+        }
+
+        var sentTo = new List<string>();
+        if (recipients.Count > 0)
+        {
+            var (subject, body) = BrochureReceiptEmail.Compose(
+                customer.CustomerName,
+                customer.BrochureCode,
+                inventoryDate,
+                quantity,
+                cases,
+                caseCount,
+                notes);
+            var sent = await _mailgun.SendReminderAsync(recipients, subject, body);
+            if (!sent.Success)
+            {
+                TempData["Error"] = $"{savedMessage} The receipt was not sent: {sent.ErrorMessage}";
+                return savedMessage;
+            }
+
+            sentTo.AddRange(sent.Recipients);
+        }
+
+        if (receiptCopyToMe)
+        {
+            var sampleNote = recipients.Count == 0
+                ? "This is a sample of the receive receipt. It was not sent to the customer."
+                : $"This is a sample of the receive receipt sent to {string.Join(", ", sentTo)}.";
+            var (subject, body) = BrochureReceiptEmail.Compose(
+                customer.CustomerName,
+                customer.BrochureCode,
+                inventoryDate,
+                quantity,
+                cases,
+                caseCount,
+                notes,
+                sampleNote);
+            var sent = await _mailgun.SendReminderAsync(new[] { BrochureReceiptEmail.CopyRecipientEmail }, subject, body);
+            if (!sent.Success)
+            {
+                TempData["Error"] = sentTo.Count == 0
+                    ? $"{savedMessage} The sample receipt was not sent: {sent.ErrorMessage}"
+                    : $"{savedMessage} Receipt sent to {string.Join(", ", sentTo)}. The sample copy was not sent: {sent.ErrorMessage}";
+                return savedMessage;
+            }
+
+            sentTo.AddRange(sent.Recipients);
+        }
+
+        var customerNote = recipients.Count == 0 ? "Sample receipt" : "Receipt";
+        return $"{savedMessage} {customerNote} sent to {string.Join(", ", sentTo)}.";
     }
 
     [HttpPost]

@@ -79,6 +79,21 @@
         }
         casesInput.addEventListener('input', recalc);
         caseCountInput.addEventListener('input', recalc);
+
+        const kind = form.querySelector('[name="kind"]');
+        const receipt = form.querySelector('[data-receipt-option]');
+        if (kind && receipt)
+        {
+            const syncReceipt = function () {
+                const received = kind.value === 'Received';
+                receipt.classList.toggle('d-none', !received);
+                const box = receipt.querySelector('[name="sendReceipt"]');
+                if (box && !received)
+                    box.checked = false;
+            };
+            kind.addEventListener('change', syncReceipt);
+            syncReceipt();
+        }
     }
 
     document.addEventListener('DOMContentLoaded', function () {

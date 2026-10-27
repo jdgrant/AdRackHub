@@ -677,8 +677,8 @@
                                 <div class="col-sm-6 col-md-2">
                                     <label class="form-label small mb-1" for="inventoryKind">Record</label>
                                     <select class="form-select" id="inventoryKind" name="kind">
-                                        <option value="Count" selected>Inventory count</option>
-                                        <option value="Received">Received</option>
+                                        <option value="Count">Inventory count</option>
+                                        <option value="Received" selected>Received</option>
                                     </select>
                                 </div>
                                 <div class="col-4 col-md-2">
@@ -720,11 +720,49 @@
                                     <label class="form-label small mb-1" for="inventoryNotes">Notes</label>
                                     <input type="text" class="form-control" id="inventoryNotes" name="notes" maxlength="1000" placeholder="Optional" />
                                 </div>
-                                <div class="col-sm-auto">
+                                <div class="col-12 d-flex flex-wrap align-items-center gap-3">
                                     <button type="submit" class="btn btn-primary btn-sm">Log inventory</button>
+                                    <div class="w-100" data-receipt-option>
+                                        <div class="form-check mb-2">
+                                            <input class="form-check-input" type="checkbox" name="sendReceipt" value="true" id="sendReceipt" />
+                                            <label class="form-check-label" for="sendReceipt">Email a receive receipt</label>
+                                        </div>
+                                        @{
+                                            var receiptContacts = Model.Contacts
+                                                .Where(contact => !string.IsNullOrWhiteSpace(contact.Email))
+                                                .OrderBy(contact => string.IsNullOrWhiteSpace(contact.PersonName) ? contact.Name : contact.PersonName)
+                                                .ThenBy(contact => contact.Title)
+                                                .ToList();
+                                        }
+                                        <div class="d-flex flex-column gap-1">
+                                            <div class="form-check mb-0">
+                                                <input class="form-check-input" type="checkbox" name="receiptCopyToMe" value="true" id="receiptCopyToMe" checked />
+                                                <label class="form-check-label" for="receiptCopyToMe">
+                                                    @BrochureReceiptEmail.CopyRecipientName
+                                                    <span class="text-muted small d-block">@BrochureReceiptEmail.CopyRecipientEmail</span>
+                                                </label>
+                                            </div>
+                                            @if (receiptContacts.Count == 0)
+                                            {
+                                                <div class="text-muted small">No customer contacts have an email address.</div>
+                                            }
+                                            @foreach (var contact in receiptContacts)
+                                            {
+                                                var receiptName = string.IsNullOrWhiteSpace(contact.PersonName) ? contact.Name : contact.PersonName;
+                                                var receiptLabel = string.IsNullOrWhiteSpace(contact.Title) ? receiptName : $"{receiptName}, {contact.Title}";
+                                                <div class="form-check mb-0">
+                                                    <input class="form-check-input" type="checkbox" name="receiptContactIds" value="@contact.Id" id="receiptContact-@contact.Id" checked />
+                                                    <label class="form-check-label" for="receiptContact-@contact.Id">
+                                                        @receiptLabel
+                                                        <span class="text-muted small d-block">@contact.Email</span>
+                                                    </label>
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="form-text mt-2">Total fills in from cases × case count. Change the total when some brochures are loose.</div>
+                            <div class="form-text mt-2">Total fills in from cases × case count. Change the total when some brochures are loose. Choose Received, pick who should get the receipt, and check Email a receive receipt. Your copy is marked as a sample.</div>
                         </form>
 
                         @if (Model.BrochureInventories.Any())
