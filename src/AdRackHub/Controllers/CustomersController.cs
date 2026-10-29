@@ -270,6 +270,32 @@ public class CustomersController : Controller
         return View(customer);
     }
 
+    public async Task<IActionResult> ExportRouteLocations(int id)
+    {
+        var customer = await _context.Customers
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(c => c.CustomerRoutes)
+                .ThenInclude(cr => cr.CustomerRouteStops)
+                    .ThenInclude(crs => crs.Stop)
+            .Include(c => c.Contracts)
+                .ThenInclude(contract => contract.ContractRoutes)
+                    .ThenInclude(contractRoute => contractRoute.Route)
+                        .ThenInclude(route => route.Stops)
+            .FirstOrDefaultAsync(c => c.Id == id);
+
+        if (customer == null || CustomerTypeLabels.IsProspectLike(customer.Type))
+            return NotFound();
+
+        var stream = new MemoryStream();
+        CustomerRouteLocationsExportService.Write(stream, CustomerRouteLocations.Build(customer));
+        stream.Position = 0;
+        return File(
+            stream,
+            CustomerRouteLocationsExportService.ContentType,
+            CustomerRouteLocationsExportService.FileName(customer));
+    }
+
     private async Task PopulateListNavigationAsync(Customer customer, string? search, CustomerStatus? status, bool highValue, bool needsMoreInfo, bool atRisk)
     {
         var saved = CustomerListNavigation.Load(HttpContext.Session);

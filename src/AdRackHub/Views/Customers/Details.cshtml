@@ -51,47 +51,7 @@
         .OrderBy(x => x.ContractRoute.Route.RouteName)
         .ThenBy(x => x.Contract.ContractName)
         .ToList();
-    var customerRoutesByRouteId = Model.CustomerRoutes
-        .Where(cr => cr.Status == CustomerRouteStatus.Active)
-        .GroupBy(cr => cr.RouteId)
-        .ToDictionary(g => g.Key, g => g.First());
-    var contractedRouteOutlines = activeContractRoutes
-        .GroupBy(x => x.ContractRoute.RouteId)
-        .Select(g =>
-        {
-            var route = g.First().ContractRoute.Route;
-            customerRoutesByRouteId.TryGetValue(g.Key, out var customerRoute);
-            var allStops = customerRoute?.AllStops ?? true;
-            IEnumerable<Stop> stops;
-            if (customerRoute == null || customerRoute.AllStops)
-            {
-                stops = route.Stops
-                    .Where(s => s.Status == StopStatus.Active)
-                    .OrderBy(s => s.StepNumber.HasValue ? 0 : 1)
-                    .ThenBy(s => s.StepNumber)
-                    .ThenBy(s => s.StopName);
-            }
-            else
-            {
-                stops = customerRoute.CustomerRouteStops
-                    .Select(crs => crs.Stop)
-                    .Where(s => s != null && s.Status == StopStatus.Active)
-                    .OrderBy(s => s.StepNumber.HasValue ? 0 : 1)
-                    .ThenBy(s => s.StepNumber)
-                    .ThenBy(s => s.StopName)!;
-            }
-
-            return new
-            {
-                Route = route,
-                CustomerRoute = customerRoute,
-                AllStops = allStops,
-                Stops = stops.ToList(),
-                Contracts = g.Select(x => x.Contract).GroupBy(c => c.Id).Select(cg => cg.First()).OrderBy(c => c.ContractName).ToList()
-            };
-        })
-        .OrderBy(x => x.Route.RouteName)
-        .ToList();
+    var contractedRouteOutlines = CustomerRouteLocations.Build(Model);
     var latestBrochure = Model.BrochureScans
         .OrderByDescending(s => s.UploadedAt)
         .FirstOrDefault();
@@ -947,7 +907,13 @@
                 {
                     <div class="tab-pane fade @(activeTab == "routes" ? "show active" : "")" id="tab-routes" role="tabpanel">
                         <div class="crm-panel">
-                            <div class="fw-semibold mb-3">Contracted routes &amp; stops</div>
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <div class="fw-semibold">Contracted routes &amp; stops</div>
+                                @if (contractedRouteOutlines.Any())
+                                {
+                                    <a asp-action="ExportRouteLocations" asp-route-id="@Model.Id" class="btn btn-sm btn-outline-primary">Export spreadsheet</a>
+                                }
+                            </div>
                             @if (contractedRouteOutlines.Any())
                             {
                                 @foreach (var outline in contractedRouteOutlines)
@@ -1002,9 +968,7 @@
                                                                     <a asp-controller="Stops" asp-action="Details" asp-route-id="@stop.Id">@stop.StopName</a>
                                                                 </td>
                                                                 <td>@stop.StopType</td>
-                                                                <td class="small text-muted">
-                                                                    @string.Join(", ", new[] { stop.Address, stop.City, stop.State, stop.Zip }.Where(s => !string.IsNullOrWhiteSpace(s)).DefaultIfEmpty("—"))
-                                                                </td>
+                                                                <td class="small text-muted">@CustomerRouteLocations.FormatLocation(stop)</td>
                                                                 <td class="small">@(stop.HighwayExit ?? "—")</td>
                                                             </tr>
                                                         }
