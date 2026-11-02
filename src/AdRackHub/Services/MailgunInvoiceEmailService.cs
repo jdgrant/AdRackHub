@@ -155,8 +155,7 @@ public class MailgunInvoiceEmailService
                 return http;
         }
 
-        return WaveSendResult.Failed(
-            FirstNonEmpty(smtp.ErrorMessage, http.ErrorMessage) ?? "Mailgun invoice email failed.");
+        return WaveSendResult.Failed(CombineFailures(smtp.ErrorMessage, http.ErrorMessage));
     }
 
     private async Task<WaveSendResult> SendViaSmtpAsync(
@@ -169,9 +168,43 @@ public class MailgunInvoiceEmailService
         CancellationToken cancellationToken)
     {
         var host = string.IsNullOrWhiteSpace(_options.SmtpHost) ? "smtp.mailgun.org" : _options.SmtpHost.Trim();
-        var port = _options.SmtpPort > 0 ? _options.SmtpPort : 587;
         var user = string.IsNullOrWhiteSpace(_options.SmtpUser) ? FromAddress() : _options.SmtpUser.Trim();
+        WaveSendResult? last = null;
+        foreach (var port in SmtpPortsToTry())
+        {
+            last = await SendViaSmtpPortAsync(
+                host, port, user, emails, subject, message, pdfBytes, attachmentName, logoBytes, cancellationToken);
+            if (last.Success || !IsSmtpConnectionFailure(last.ErrorMessage))
+                return last;
+            _logger.LogWarning("Mailgun SMTP port {Port} was closed. Trying another port.", port);
+        }
 
+        return last ?? WaveSendResult.Failed("Mailgun SMTP failed.");
+    }
+
+    private IEnumerable<int> SmtpPortsToTry()
+    {
+        var configured = _options.SmtpPort > 0 ? _options.SmtpPort : 587;
+        yield return configured;
+        // Shared hosts often block 587. Mailgun also accepts STARTTLS on 2525.
+        if (configured != 2525)
+            yield return 2525;
+        if (configured != 587)
+            yield return 587;
+    }
+
+    private async Task<WaveSendResult> SendViaSmtpPortAsync(
+        string host,
+        int port,
+        string user,
+        IReadOnlyList<string> emails,
+        string subject,
+        string message,
+        byte[]? pdfBytes,
+        string attachmentName,
+        byte[]? logoBytes,
+        CancellationToken cancellationToken)
+    {
         try
         {
             using var mail = new MailMessage
@@ -179,7 +212,9 @@ public class MailgunInvoiceEmailService
                 From = new MailAddress(FromAddress(), FromName()),
                 Subject = subject,
                 Body = message,
-                IsBodyHtml = false
+                IsBodyHtml = false,
+                BodyEncoding = Encoding.UTF8,
+                SubjectEncoding = Encoding.UTF8
             };
             foreach (var email in emails)
                 mail.To.Add(email);
@@ -212,7 +247,8 @@ public class MailgunInvoiceEmailService
             {
                 EnableSsl = true,
                 Credentials = new NetworkCredential(user, _options.ApiKey!.Trim()),
-                DeliveryMethod = SmtpDeliveryMethod.Network
+                DeliveryMethod = SmtpDeliveryMethod.Network,
+                Timeout = 20000
             };
 
             await client.SendMailAsync(mail, cancellationToken);
@@ -222,22 +258,24 @@ public class MailgunInvoiceEmailService
             if (pdfBytes is { Length: > 0 })
             {
                 _logger.LogInformation(
-                    "Mailed Ad-Rack invoice PDF {FileName} via Mailgun SMTP to {Recipients}.",
+                    "Mailed Ad-Rack invoice PDF {FileName} via Mailgun SMTP port {Port} to {Recipients}.",
                     attachmentName,
+                    port,
                     string.Join(", ", emails));
             }
             else
             {
                 _logger.LogInformation(
-                    "Mailed Ad-Rack message via Mailgun SMTP to {Recipients}.",
+                    "Mailed Ad-Rack message via Mailgun SMTP port {Port} to {Recipients}.",
+                    port,
                     string.Join(", ", emails));
             }
             return WaveSendResult.Succeeded(emails);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogWarning(ex, "Mailgun SMTP invoice email failed.");
-            return WaveSendResult.Failed(ex.Message);
+            _logger.LogWarning(ex, "Mailgun SMTP invoice email failed on port {Port}.", port);
+            return WaveSendResult.Failed(DescribeSendFailure(ex));
         }
     }
 
@@ -440,6 +478,40 @@ public class MailgunInvoiceEmailService
         return body.Trim();
     }
 
-    private static string? FirstNonEmpty(params string?[] values) =>
-        values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+    private static string CombineFailures(string? smtp, string? http)
+    {
+        var smtpText = smtp?.Trim();
+        var httpText = http?.Trim();
+        if (string.IsNullOrWhiteSpace(httpText))
+            return string.IsNullOrWhiteSpace(smtpText) ? "Mailgun invoice email failed." : smtpText;
+        if (string.IsNullOrWhiteSpace(smtpText) || string.Equals(smtpText, httpText, StringComparison.Ordinal))
+            return httpText;
+        return $"{smtpText} Mailgun API: {httpText}";
+    }
+
+    private static string DescribeSendFailure(Exception ex)
+    {
+        var messages = new List<string>();
+        for (var current = ex; current != null; current = current.InnerException)
+        {
+            var text = current.Message?.Trim();
+            if (!string.IsNullOrWhiteSpace(text) && !messages.Contains(text))
+                messages.Add(text);
+        }
+
+        return messages.Count == 0 ? "Mailgun SMTP failed." : string.Join(" ", messages);
+    }
+
+    private static bool IsSmtpConnectionFailure(string? error)
+    {
+        if (string.IsNullOrWhiteSpace(error))
+            return false;
+
+        return error.Contains("connection was closed", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("forcibly closed", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("actively refused", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("timed out", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("unable to connect", StringComparison.OrdinalIgnoreCase)
+            || error.Contains("no such host", StringComparison.OrdinalIgnoreCase);
+    }
 }
