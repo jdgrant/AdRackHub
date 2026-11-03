@@ -26,14 +26,16 @@ public static class InvoiceLineFormatter
         int monthCount,
         decimal periodAmount,
         Customer customer,
-        Route route) =>
+        Route route,
+        DateOnly? serviceEnd = null) =>
         Build(
             routeName,
             serviceStart,
             monthCount,
             periodAmount,
             customer.CustomerRoutes?.FirstOrDefault(cr => cr.RouteId == route.Id),
-            route);
+            route,
+            serviceEnd);
 
     public static InvoiceLineContent Build(
         string routeName,
@@ -41,11 +43,12 @@ public static class InvoiceLineFormatter
         int monthCount,
         decimal periodAmount,
         CustomerRoute? assignment,
-        Route? route)
+        Route? route,
+        DateOnly? serviceEnd = null)
     {
         var names = AssignedLocationNames(assignment, route);
         var allLocations = assignment == null || assignment.AllStops;
-        return Build(routeName, serviceStart, monthCount, periodAmount, names, allLocations);
+        return Build(routeName, serviceStart, monthCount, periodAmount, names, allLocations, serviceEnd);
     }
 
     public static InvoiceLineContent Build(
@@ -54,10 +57,11 @@ public static class InvoiceLineFormatter
         int monthCount,
         decimal periodAmount,
         IReadOnlyList<string>? locationNames = null,
-        bool allLocations = true)
+        bool allLocations = true,
+        DateOnly? serviceEnd = null)
     {
         monthCount = Math.Max(monthCount, 1);
-        var end = ServicePeriodEnd(serviceStart, monthCount);
+        var end = serviceEnd ?? ServicePeriodEnd(serviceStart, monthCount);
         var names = (locationNames ?? Array.Empty<string>())
             .Where(n => !string.IsNullOrWhiteSpace(n))
             .Select(n => n.Trim())

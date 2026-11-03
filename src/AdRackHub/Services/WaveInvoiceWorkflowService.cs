@@ -62,13 +62,16 @@ public class WaveInvoiceWorkflowService
         }
 
         var customer = contract.Customer;
-        var months = AnnualBillingHelper.BillingMonths(contract);
+        var span = BillingDueCalculator.BillableSpanFor(contract, invoiceDate);
+        var months = span.MonthCount > 0 ? span.MonthCount : AnnualBillingHelper.BillingMonths(contract);
+        var serviceStart = span.MonthCount > 0 ? span.Start : invoiceDate;
         var lineItems = contract.ContractRoutes
             .OrderBy(cr => cr.Route.RouteName)
             .Select(cr =>
             {
-                var amount = AnnualBillingHelper.GetBillingAmount(cr);
-                var content = InvoiceLineFormatter.Build(cr.Route.RouteName, invoiceDate, months, amount, customer, cr.Route);
+                var amount = BillingDueCalculator.RouteAmount(contract, AnnualBillingHelper.GetBillingAmount(cr), invoiceDate);
+                var content = InvoiceLineFormatter.Build(
+                    cr.Route.RouteName, serviceStart, months, amount, customer, cr.Route, span.MonthCount > 0 ? span.End : null);
                 return new WaveInvoiceLineItem
                 {
                     ProductId = cr.Route.WaveProductId,
@@ -235,19 +238,22 @@ public class WaveInvoiceWorkflowService
         if (contract.NextBillDate is not { } invoiceDate)
             return Fail("This contract is not submitted to billing.");
 
-        var months = AnnualBillingHelper.BillingMonths(contract);
+        var span = BillingDueCalculator.BillableSpanFor(contract, invoiceDate);
+        var months = span.MonthCount > 0 ? span.MonthCount : AnnualBillingHelper.BillingMonths(contract);
+        var serviceStart = span.MonthCount > 0 ? span.Start : invoiceDate;
         var lineItems = contract.ContractRoutes
             .OrderBy(cr => cr.Route.RouteName)
             .Select(cr =>
             {
-                var amount = AnnualBillingHelper.GetBillingAmount(cr);
+                var amount = BillingDueCalculator.RouteAmount(contract, AnnualBillingHelper.GetBillingAmount(cr), invoiceDate);
                 var content = InvoiceLineFormatter.Build(
                     cr.Route.RouteName,
-                    invoiceDate,
+                    serviceStart,
                     months,
                     amount,
                     contract.Customer,
-                    cr.Route);
+                    cr.Route,
+                    span.MonthCount > 0 ? span.End : null);
                 return new WaveInvoiceLineItem
                 {
                     ProductId = cr.Route.WaveProductId,

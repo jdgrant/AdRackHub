@@ -551,13 +551,15 @@ public class AdminController : Controller
             : new List<string>();
         model.InvoiceDate = contract.NextBillDate;
         model.DueDate = contract.NextBillDate?.AddDays(WaveApiService.InvoiceDueDays);
-        var months = AnnualBillingHelper.BillingMonths(contract);
+        var anchor = contract.NextBillDate ?? DateOnly.FromDateTime(DateTime.Today);
+        var span = BillingDueCalculator.BillableSpanFor(contract, anchor);
+        var months = span.MonthCount > 0 ? span.MonthCount : AnnualBillingHelper.BillingMonths(contract);
         var missingRoutes = new List<string>();
         model.LineSummaries = contract.ContractRoutes
             .OrderBy(cr => cr.Route.RouteName)
             .Select(cr =>
             {
-                var amount = AnnualBillingHelper.GetBillingAmount(cr);
+                var amount = BillingDueCalculator.RouteAmount(contract, AnnualBillingHelper.GetBillingAmount(cr), anchor);
                 var productId = cr.Route.WaveProductId;
                 if (string.IsNullOrWhiteSpace(productId))
                     missingRoutes.Add(cr.Route.RouteName);

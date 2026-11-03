@@ -145,6 +145,58 @@ public static class BillingDueCalculator
         return !contract.ContractEndDate.HasValue || contract.ContractEndDate.Value >= asOf.Value;
     }
 
+    /// <summary>
+    /// Months in the billing window that are both in service and inside the contract dates.
+    /// Inactive months are omitted, so a bill dated in November covers the same active
+    /// months as one dated in February.
+    /// </summary>
+    public readonly record struct BillableSpan(DateOnly Start, DateOnly End, int MonthCount);
+
+    public static BillableSpan BillableSpanFor(CustomerContract contract, DateOnly anchor)
+    {
+        var billingMonths = Math.Max(AnnualBillingHelper.BillingMonths(contract), 1);
+        var origin = new DateOnly(anchor.Year, anchor.Month, 1);
+        var months = new List<DateOnly>(billingMonths);
+        for (var i = 0; i < billingMonths; i++)
+        {
+            var monthStart = origin.AddMonths(i);
+            if (IsBillableMonth(contract, monthStart))
+                months.Add(monthStart);
+        }
+
+        if (months.Count == 0)
+            return new BillableSpan(origin, origin, 0);
+
+        var start = months[0];
+        var last = months[^1];
+        var end = new DateOnly(last.Year, last.Month, DateTime.DaysInMonth(last.Year, last.Month));
+        return new BillableSpan(start, end, months.Count);
+    }
+
+    public static decimal RouteAmount(CustomerContract contract, decimal storedPeriodAmount, DateOnly anchor)
+    {
+        var billingMonths = Math.Max(AnnualBillingHelper.BillingMonths(contract), 1);
+        var span = BillableSpanFor(contract, anchor);
+        if (span.MonthCount == billingMonths)
+            return storedPeriodAmount;
+
+        var monthly = AnnualBillingHelper.BillingPeriodAmountToMonthlyRate(storedPeriodAmount, billingMonths);
+        return AnnualBillingHelper.MonthlyRateToBillingPeriodAmount(monthly, span.MonthCount);
+    }
+
+    static bool IsBillableMonth(CustomerContract contract, DateOnly monthStart)
+    {
+        if (!IsMonthInService(contract.ServiceMonthMask, monthStart.Month))
+            return false;
+
+        var monthEnd = new DateOnly(monthStart.Year, monthStart.Month, DateTime.DaysInMonth(monthStart.Year, monthStart.Month));
+        if (contract.ContractStartDate is { } start && monthEnd < start)
+            return false;
+        if (contract.ContractEndDate is { } end && monthStart > end)
+            return false;
+        return true;
+    }
+
     public static string FormatContractEndDate(DateOnly? endDate) =>
         endDate?.ToString("MMM d, yyyy") ?? "Never";
 

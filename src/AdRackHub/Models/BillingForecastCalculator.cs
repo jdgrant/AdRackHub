@@ -102,12 +102,11 @@ public static class BillingForecastCalculator
             if (contract.Customer is { Type: not CustomerType.Customer })
                 continue;
 
-            var amount = contract.ContractRoutes.Sum(AnnualBillingHelper.GetBillingAmount);
-            if (amount <= 0m)
+            if (!contract.ContractRoutes.Any(cr => AnnualBillingHelper.GetBillingAmount(cr) > 0m))
                 continue;
 
             var customerName = contract.Customer?.CustomerName ?? "";
-            AddScheduledDates(contract, amount, customerName, start, horizon, index, ignoreEndDate);
+            AddScheduledDates(contract, customerName, start, horizon, index, ignoreEndDate);
         }
 
         foreach (var bucket in buckets)
@@ -125,7 +124,6 @@ public static class BillingForecastCalculator
 
     static void AddScheduledDates(
         CustomerContract contract,
-        decimal amount,
         string customerName,
         DateOnly start,
         DateOnly horizon,
@@ -141,6 +139,9 @@ public static class BillingForecastCalculator
             if (!index.TryGetValue((date.Year, date.Month), out var bucket))
                 return;
 
+            var span = BillingDueCalculator.BillableSpanFor(contract, date);
+            var amount = contract.ContractRoutes.Sum(cr =>
+                BillingDueCalculator.RouteAmount(contract, AnnualBillingHelper.GetBillingAmount(cr), date));
             AddLine(bucket, new BillingForecastLine
             {
                 CustomerId = contract.CustomerId,
@@ -148,7 +149,7 @@ public static class BillingForecastCalculator
                 ContractId = contract.Id,
                 ContractName = contract.ContractName,
                 Term = contract.Term,
-                BillingMonthCount = AnnualBillingHelper.BillingMonths(contract),
+                BillingMonthCount = span.MonthCount > 0 ? span.MonthCount : AnnualBillingHelper.BillingMonths(contract),
                 ContractEndDate = contract.ContractEndDate,
                 Amount = amount,
                 Sent = false

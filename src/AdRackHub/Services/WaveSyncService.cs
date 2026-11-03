@@ -282,9 +282,14 @@ public class WaveSyncService
 
     private static WaveOutboundBillingPayload BuildContractPayload(CustomerContract contract)
     {
+        var anchor = contract.NextBillDate ?? DateOnly.FromDateTime(DateTime.Today);
         var lines = contract.ContractRoutes
             .OrderBy(cr => cr.Route.RouteName)
-            .Select(cr => BuildInvoiceLine(contract, cr.Route, AnnualBillingHelper.GetBillingAmount(cr), contract.Customer))
+            .Select(cr => BuildInvoiceLine(
+                contract,
+                cr.Route,
+                BillingDueCalculator.RouteAmount(contract, AnnualBillingHelper.GetBillingAmount(cr), anchor),
+                contract.Customer))
             .ToList();
 
         return new WaveOutboundBillingPayload
@@ -397,7 +402,7 @@ public class WaveSyncService
                 Contract = c,
                 Customer = c.Customer,
                 Route = cr.Route,
-                Amount = AnnualBillingHelper.GetBillingAmount(cr)
+                Amount = BillingDueCalculator.RouteAmount(c, AnnualBillingHelper.GetBillingAmount(cr), c.NextBillDate ?? new DateOnly(year, month, 1))
             }))
             .ToList();
 
@@ -593,13 +598,17 @@ public class WaveSyncService
         decimal amount,
         Customer customer)
     {
+        var anchor = contract.NextBillDate ?? DateOnly.FromDateTime(DateTime.Today);
+        var span = BillingDueCalculator.BillableSpanFor(contract, anchor);
+        var months = span.MonthCount > 0 ? span.MonthCount : AnnualBillingHelper.BillingMonths(contract);
         var content = InvoiceLineFormatter.Build(
             route.RouteName,
-            contract.NextBillDate!.Value,
-            AnnualBillingHelper.BillingMonths(contract),
+            span.MonthCount > 0 ? span.Start : anchor,
+            months,
             amount,
             customer,
-            route);
+            route,
+            span.MonthCount > 0 ? span.End : null);
 
         return new WaveOutboundBillingLinePayload
         {

@@ -61,15 +61,17 @@ public class ContractAgreementPdfGenerator
         var billingMonths = AnnualBillingHelper.BillingMonths(contract);
         var beginning = contract.ContractStartDate ?? contract.NextBillDate;
         var ending = contract.ContractEndDate;
-        var periodMonths = BillingDueCalculator.ContractPeriodMonths(contract);
-        var dueMonths = Math.Min(Math.Max(billingMonths, 1), periodMonths);
+        var anchor = beginning ?? DateOnly.FromDateTime(DateTime.Today);
+        var span = BillingDueCalculator.BillableSpanFor(contract, anchor);
+        var periodMonths = span.MonthCount > 0 ? span.MonthCount : BillingDueCalculator.ContractPeriodMonths(contract);
         var lines = BuildRouteLines(contract);
         var monthlyTotal = lines.Where(l => l.Selected).Sum(l => l.MonthlyAmount);
         return new ContractAgreementPdfModel
         {
             CustomerName = (contract.Customer?.CustomerName ?? contract.ContractName).Trim(),
             MonthlyTotal = monthlyTotal,
-            AmountDue = AmountDue(contract, monthlyTotal, billingMonths, dueMonths),
+            AmountDue = contract.ContractRoutes.Sum(cr =>
+                BillingDueCalculator.RouteAmount(contract, AnnualBillingHelper.GetBillingAmount(cr), anchor)),
             AdvertisingSpaces = contract.AdvertisingSpaces > 0 ? contract.AdvertisingSpaces : 1,
             PeriodLabel = $"{periodMonths} month{(periodMonths == 1 ? "" : "s")}",
             BeginningLabel = beginning?.ToString("MMMM d, yyyy", Us),
@@ -381,24 +383,6 @@ public class ContractAgreementPdfGenerator
     {
         var chars = value.Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '-' : ch).ToArray();
         return new string(chars).Trim();
-    }
-
-    /// <summary>
-    /// A full billing cycle keeps the stored route total when monthly rounding is only a penny off,
-    /// so a $1,000 quarter stays $1,000.00 instead of $999.99.
-    /// </summary>
-    private static decimal AmountDue(CustomerContract contract, decimal monthlyTotal, int billingMonths, int dueMonths)
-    {
-        var rounded = AnnualBillingHelper.MonthlyRateToBillingPeriodAmount(monthlyTotal, dueMonths);
-        if (dueMonths != billingMonths)
-            return rounded;
-
-        var stored = contract.ContractRoutes.Sum(cr => AnnualBillingHelper.GetBillingAmount(cr));
-        if (stored <= 0)
-            return rounded;
-
-        var storedMonthly = AnnualBillingHelper.BillingPeriodAmountToMonthlyRate(stored, billingMonths);
-        return storedMonthly == monthlyTotal ? stored : rounded;
     }
 
     private static List<ContractAgreementRouteLine> BuildRouteLines(CustomerContract contract)

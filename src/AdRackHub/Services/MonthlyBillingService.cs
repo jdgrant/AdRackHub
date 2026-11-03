@@ -110,22 +110,27 @@ public class MonthlyBillingService
         return contracts
             .Where(c => BillingDueCalculator.IsContractDue(c, year, month))
             .Where(c => !billedContractIds.Contains(c.Id))
-            .SelectMany(c => c.ContractRoutes.Select(cr => new DueContractItem
+            .SelectMany(c =>
             {
-                CustomerId = c.CustomerId,
-                CustomerName = c.Customer.CustomerName,
-                WaveCustomerId = c.Customer.WaveCustomerId,
-                InvoiceReceiptMethod = c.Customer.InvoiceReceiptMethod,
-                CustomerContractId = c.Id,
-                ContractName = c.ContractName,
-                Term = c.Term,
-                BillingMonthCount = AnnualBillingHelper.BillingMonths(c),
-                NextBillDate = c.NextBillDate!.Value,
-                ServiceMonthMask = c.ServiceMonthMask,
-                RouteId = cr.RouteId,
-                RouteName = cr.Route.RouteName,
-                Amount = AnnualBillingHelper.GetBillingAmount(cr)
-            }))
+                var span = BillingDueCalculator.BillableSpanFor(c, c.NextBillDate!.Value);
+                var billedMonths = span.MonthCount > 0 ? span.MonthCount : AnnualBillingHelper.BillingMonths(c);
+                return c.ContractRoutes.Select(cr => new DueContractItem
+                {
+                    CustomerId = c.CustomerId,
+                    CustomerName = c.Customer.CustomerName,
+                    WaveCustomerId = c.Customer.WaveCustomerId,
+                    InvoiceReceiptMethod = c.Customer.InvoiceReceiptMethod,
+                    CustomerContractId = c.Id,
+                    ContractName = c.ContractName,
+                    Term = c.Term,
+                    BillingMonthCount = billedMonths,
+                    NextBillDate = c.NextBillDate!.Value,
+                    ServiceMonthMask = c.ServiceMonthMask,
+                    RouteId = cr.RouteId,
+                    RouteName = cr.Route.RouteName,
+                    Amount = BillingDueCalculator.RouteAmount(c, AnnualBillingHelper.GetBillingAmount(cr), c.NextBillDate!.Value)
+                });
+            })
             .OrderBy(i => i.CustomerName)
             .ThenBy(i => i.ContractName)
             .ThenBy(i => i.RouteName)
@@ -294,8 +299,15 @@ public class MonthlyBillingService
 
             var lineItems = invoice.Lines.Select(line =>
             {
-                var months = line.BillingMonthCount > 0 ? line.BillingMonthCount : AnnualBillingHelper.MonthsInTerm(line.Term);
                 contractsById.TryGetValue(line.CustomerContractId, out var billedContract);
+                var span = billedContract == null
+                    ? (BillingDueCalculator.BillableSpan?)null
+                    : BillingDueCalculator.BillableSpanFor(billedContract, invoiceDate);
+                var months = span is { MonthCount: > 0 }
+                    ? span.Value.MonthCount
+                    : line.BillingMonthCount > 0 ? line.BillingMonthCount : AnnualBillingHelper.MonthsInTerm(line.Term);
+                var serviceStart = span is { MonthCount: > 0 } ? span.Value.Start : invoiceDate;
+                var serviceEnd = span is { MonthCount: > 0 } ? span.Value.End : (DateOnly?)null;
                 var contractRoute = billedContract?.ContractRoutes
                     .FirstOrDefault(cr => cr.Route != null
                         && RouteNaming.NamesMatch(cr.Route.RouteName, line.RouteName));
@@ -304,11 +316,12 @@ public class MonthlyBillingService
                         && RouteNaming.NamesMatch(cr.Route.RouteName, line.RouteName));
                 var content = InvoiceLineFormatter.Build(
                     line.RouteName,
-                    invoiceDate,
+                    serviceStart,
                     months,
                     line.Amount,
                     assignment,
-                    contractRoute?.Route ?? assignment?.Route);
+                    contractRoute?.Route ?? assignment?.Route,
+                    serviceEnd);
                 return new WaveInvoiceLineItem
                 {
                     ProductId = contractRoute?.Route?.WaveProductId ?? assignment?.Route?.WaveProductId,
