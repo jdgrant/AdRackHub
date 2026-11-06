@@ -716,6 +716,12 @@ namespace AdRackHub.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<bool>("EmbedContract")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("EmbeddedContract")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("InvoiceNotes")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");

@@ -17,17 +17,20 @@ public class CustomerContractsController : Controller
     private readonly WaveSyncService _waveSyncService;
     private readonly InvoicePdfStorageService _invoicePdfs;
     private readonly ContractAgreementPdfGenerator _agreementPdfs;
+    private readonly ContractTermsSource _terms;
 
     public CustomerContractsController(
         ApplicationDbContext context,
         WaveSyncService waveSyncService,
         InvoicePdfStorageService invoicePdfs,
-        ContractAgreementPdfGenerator agreementPdfs)
+        ContractAgreementPdfGenerator agreementPdfs,
+        ContractTermsSource terms)
     {
         _context = context;
         _waveSyncService = waveSyncService;
         _invoicePdfs = invoicePdfs;
         _agreementPdfs = agreementPdfs;
+        _terms = terms;
     }
 
     public async Task<IActionResult> Create(int customerId)
@@ -49,6 +52,7 @@ public class CustomerContractsController : Controller
             AdvertisingSpaces = 1,
             BillingAnchorMonth = today.Month
         }, selectedMonthNumbers: Enumerable.Range(1, 12).ToList());
+        await PrefillEmbeddedContractAsync(vm.Contract);
 
         ViewBag.CustomerId = customerId;
         ViewBag.CustomerName = customer.CustomerName;
@@ -136,6 +140,8 @@ public class CustomerContractsController : Controller
             Notes = source.Notes,
             InvoiceNotes = source.InvoiceNotes,
             DriversNotes = source.DriversNotes,
+            EmbedContract = source.EmbedContract,
+            EmbeddedContract = source.EmbeddedContract,
             ContractStartDate = duplicateTerm.Start,
             ContractEndDate = duplicateTerm.End,
             BillingAnchorMonth = duplicateTerm.Start?.Month ?? source.BillingAnchorMonth,
@@ -147,6 +153,7 @@ public class CustomerContractsController : Controller
             }).ToList()
         };
 
+        await PrefillEmbeddedContractAsync(copy);
         var vm = await BuildEditViewModelAsync(copy);
         ViewBag.CustomerId = source.CustomerId;
         ViewBag.CustomerName = source.Customer.CustomerName;
@@ -221,6 +228,8 @@ public class CustomerContractsController : Controller
             Notes = source.Notes,
             InvoiceNotes = source.InvoiceNotes,
             DriversNotes = source.DriversNotes,
+            EmbedContract = source.EmbedContract,
+            EmbeddedContract = source.EmbeddedContract,
             ContractStartDate = draft.TermStart,
             ContractEndDate = draft.TermEnd,
             BillingAnchorMonth = draft.TermStart?.Month ?? source.BillingAnchorMonth,
@@ -277,6 +286,7 @@ public class CustomerContractsController : Controller
         if (contract == null) return NotFound();
 
         var selectedIds = contract.ContractRoutes.Select(cr => cr.RouteId).ToList();
+        await PrefillEmbeddedContractAsync(contract);
         var vm = await BuildEditViewModelAsync(contract, selectedIds);
         ViewBag.CustomerId = contract.CustomerId;
         ViewBag.CustomerName = contract.Customer.CustomerName;
@@ -481,6 +491,12 @@ public class CustomerContractsController : Controller
         contract.WaveInvoicePdfPath = existing.WaveInvoicePdfPath;
     }
 
+    private async Task PrefillEmbeddedContractAsync(CustomerContract contract)
+    {
+        if (string.IsNullOrWhiteSpace(contract.EmbeddedContract))
+            contract.EmbeddedContract = await _terms.GetAsync();
+    }
+
     public async Task<IActionResult> InvoicePdf(int id, bool download = false)
     {
         var contract = await _context.CustomerContracts.AsNoTracking()
@@ -528,6 +544,7 @@ public class CustomerContractsController : Controller
         vm.Contract.ContractName = (vm.Contract.ContractName ?? string.Empty).Trim();
         vm.Contract.InvoiceNotes = WarehouseLocation.NullIfEmpty(vm.Contract.InvoiceNotes);
         vm.Contract.DriversNotes = WarehouseLocation.NullIfEmpty(vm.Contract.DriversNotes);
+        vm.Contract.EmbeddedContract = WarehouseLocation.NullIfEmpty(vm.Contract.EmbeddedContract);
         vm.Contract.ServiceMonthMask = SubscribedMonths.BuildMask(vm.SelectedMonthNumbers ?? new List<int>());
         if (vm.Contract.AdvertisingSpaces is < 1 or > 20)
         {

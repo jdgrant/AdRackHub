@@ -64,6 +64,12 @@ public class CustomerContract
     [Display(Name = "Drivers Notes")]
     public string? DriversNotes { get; set; }
 
+    [Display(Name = "Embed contract")]
+    public bool EmbedContract { get; set; }
+
+    [Display(Name = "Embedded contract")]
+    public string? EmbeddedContract { get; set; }
+
     [Display(Name = "Wave Recurring Invoice ID")]
     [StringLength(100)]
     [BindNever]

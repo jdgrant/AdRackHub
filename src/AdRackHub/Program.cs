@@ -120,6 +120,7 @@ builder.Services.AddScoped<BrochureScanService>();
 builder.Services.AddSingleton<InvoicePdfStorageService>();
 builder.Services.AddSingleton<InvoicePdfGenerator>();
 builder.Services.AddSingleton<ContractAgreementPdfGenerator>();
+builder.Services.AddSingleton<ContractTermsSource>();
 builder.Services.AddScoped<RouteCustomerReportPdfGenerator>();
 builder.Services.AddScoped<BrochureLabelIdService>();
 builder.Services.AddScoped<BrochureLabelPdfGenerator>();

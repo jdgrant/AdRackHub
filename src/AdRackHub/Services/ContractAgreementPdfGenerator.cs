@@ -81,6 +81,8 @@ public class ContractAgreementPdfGenerator
             DocumentNoun = contract.IsProposal ? "proposal" : "contract",
             IsProposal = contract.IsProposal,
             TermsText = contract.IsProposal ? WaveOptions.DefaultProposalTerms : WaveOptions.DefaultContractTerms,
+            EmbedContract = contract.EmbedContract,
+            EmbeddedContract = contract.EmbeddedContract,
             RestAreaLines = lines.Where(l => l.Product == RouteProduct.RestArea).ToList(),
             ExitLines = lines.Where(l => l.Product == RouteProduct.Exits).ToList()
         };
@@ -120,7 +122,16 @@ public class ContractAgreementPdfGenerator
                     due.ConstantItem(78).Text(model.AmountDue.ToString("C", Us)).Bold().AlignRight();
                 });
             });
-            col.Item().Extend().AlignBottom().Element(sig => DrawSignatures(sig, model));
+            if (model.UseEmbeddedTerms)
+            {
+                col.Item().PaddingTop(28).Element(sig => DrawSignatures(sig, model));
+                col.Item().PageBreak();
+                col.Item().Element(body => DrawEmbeddedContract(body, model.EmbeddedContract!));
+            }
+            else
+            {
+                col.Item().Extend().AlignBottom().Element(sig => DrawSignatures(sig, model));
+            }
         });
         page.Footer().Element(ComposeFooter);
     }
@@ -243,12 +254,27 @@ public class ContractAgreementPdfGenerator
                 }
                 text.Span(".");
             });
-            col.Item().Hyperlink(WaveOptions.DefaultTermsUrl).Text(text =>
+            if (model.UseEmbeddedTerms)
             {
-                text.Span(model.TermsText + " ");
-                text.Span(DisplayTermsUrl(WaveOptions.DefaultTermsUrl)).FontColor(LinkBlue);
-            });
+                col.Item().Text(TermsOnNextPage(model.TermsText));
+            }
+            else
+            {
+                col.Item().Hyperlink(WaveOptions.DefaultTermsUrl).Text(text =>
+                {
+                    text.Span(model.TermsText + " ");
+                    text.Span(DisplayTermsUrl(WaveOptions.DefaultTermsUrl)).FontColor(LinkBlue);
+                });
+            }
         });
+    }
+
+    private static string TermsOnNextPage(string terms)
+    {
+        const string phrase = "Terms and Conditions.";
+        if (terms.EndsWith(phrase, StringComparison.Ordinal))
+            return string.Concat(terms.AsSpan(0, terms.Length - phrase.Length), "Terms and Conditions on the next page.");
+        return terms.TrimEnd() + " Terms and Conditions on the next page.";
     }
 
     private static void DrawRestAreaRoutes(IContainer container, IReadOnlyList<ContractAgreementRouteLine> lines)
@@ -318,6 +344,26 @@ public class ContractAgreementPdfGenerator
             .Text(value);
         if (alignCenter) text.AlignCenter();
         if (alignRight) text.AlignRight();
+    }
+
+    private static void DrawEmbeddedContract(IContainer container, string text)
+    {
+        var lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
+        container.Column(col =>
+        {
+            col.Spacing(2);
+            col.Item().PaddingBottom(8).LineHorizontal(1).LineColor(Rule);
+            foreach (var line in lines)
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    col.Item().PaddingTop(6);
+                    continue;
+                }
+
+                col.Item().Text(line.Trim()).FontSize(8);
+            }
+        });
     }
 
     private static void DrawSignatures(IContainer container, ContractAgreementPdfModel model)
@@ -507,6 +553,9 @@ public sealed class ContractAgreementPdfModel
     public string DocumentNoun { get; init; } = "contract";
     public bool IsProposal { get; init; }
     public string TermsText { get; init; } = WaveOptions.DefaultContractTerms;
+    public bool EmbedContract { get; init; }
+    public string? EmbeddedContract { get; init; }
+    public bool UseEmbeddedTerms => EmbedContract && !string.IsNullOrWhiteSpace(EmbeddedContract);
     public IReadOnlyList<ContractAgreementRouteLine> RestAreaLines { get; init; } =
         Array.Empty<ContractAgreementRouteLine>();
     public IReadOnlyList<ContractAgreementRouteLine> ExitLines { get; init; } =

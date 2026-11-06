@@ -1,4 +1,5 @@
 @model CustomerContractEditViewModel
+@using AdRackHub.Services
 
 <div asp-validation-summary="All" class="text-danger"></div>
 <input type="hidden" asp-for="Contract.Id" />
@@ -177,6 +178,17 @@
     </div>
 </div>
 
+<div class="mb-3 form-check">
+    <input asp-for="Contract.EmbedContract" class="form-check-input" id="embedContract" />
+    <label asp-for="Contract.EmbedContract" class="form-check-label"></label>
+    <div class="form-text">Off keeps the link to @ContractTermsSource.SourceUrl on the PDF. On prints the terms on the next page instead.</div>
+</div>
+<div class="mb-3 @(Model.Contract.EmbedContract ? "" : "d-none")" id="embeddedContractText">
+    <label asp-for="Contract.EmbeddedContract" class="form-label"></label>
+    <textarea asp-for="Contract.EmbeddedContract" class="form-control" rows="12"></textarea>
+    <div class="form-text">Prefilled from @ContractTermsSource.SourceUrl.</div>
+</div>
+
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         function syncAllStops(routeIndex) {
@@ -288,6 +300,14 @@
                     submitToBilling.checked = false;
                     syncBillingFields();
                 }
+            });
+        }
+
+        const embedContract = document.getElementById('embedContract');
+        const embeddedContractText = document.getElementById('embeddedContractText');
+        if (embedContract && embeddedContractText) {
+            embedContract.addEventListener('change', function () {
+                embeddedContractText.classList.toggle('d-none', !embedContract.checked);
             });
         }
 
