@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "agent-queue": {
+      "command": "node",
+      "args": ["mcp/agent-queue/dist/stdio.js"],
+      "env": {
+        "AGENT_QUEUE_DB": "mcp/agent-queue/data/queue.sqlite"
+      }
+    }
+  }
+}

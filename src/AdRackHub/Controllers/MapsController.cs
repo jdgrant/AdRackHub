@@ -1,5 +1,6 @@
 using AdRackHub.Data;
 using AdRackHub.Models;
+using AdRackHub.Services;
 using AdRackHub.ViewModels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,16 +11,6 @@ namespace AdRackHub.Controllers;
 [Authorize(Policy = AppRoles.RoutesStops)]
 public class MapsController : Controller
 {
-    private static readonly string[] RouteColors =
-    {
-        "#e6194b", "#3cb44b", "#4363d8", "#f58231", "#911eb4",
-        "#42d4f4", "#f032e6", "#bfef45", "#469990", "#dcbeff",
-        "#9A6324", "#800000", "#aaffc3", "#808000", "#000075",
-        "#ffe119", "#ffd8b1", "#e6beff", "#008080", "#aa6e28"
-    };
-
-    private const string ProspectHotelColor = "#6c757d";
-
     private readonly ApplicationDbContext _context;
 
     public MapsController(ApplicationDbContext context)
@@ -34,9 +25,7 @@ public class MapsController : Controller
             .Select(r => new OverviewMapRouteOption { Id = r.Id, Name = r.RouteName })
             .ToListAsync();
 
-        var colorByRouteId = routes
-            .Select((route, index) => (route.Id, Color: RouteColors[index % RouteColors.Length]))
-            .ToDictionary(x => x.Id, x => x.Color);
+        var colorByRouteId = RouteMapPalette.Assign(routes.Select(r => r.Id).ToList());
 
         var selected = routeId is int id ? routes.FirstOrDefault(r => r.Id == id) : null;
         if (routeId.HasValue && selected == null)
@@ -60,7 +49,7 @@ public class MapsController : Controller
 
         var markers = routeStops.Select(s => ToMarker(
             s,
-            colorByRouteId.GetValueOrDefault(s.RouteId, RouteColors[0]),
+            colorByRouteId.GetValueOrDefault(s.RouteId, RouteMapPalette.Colors[0]),
             "stop",
             fitBounds: true)).ToList();
 
@@ -90,14 +79,14 @@ public class MapsController : Controller
         {
             markers.AddRange(prospectHotels.Select(s => ToMarker(
                 s,
-                ProspectHotelColor,
+                RouteMapPalette.ProspectColor,
                 "prospect",
                 fitBounds: false)));
 
             legend.Add(new OverviewMapLegendItem
             {
                 Label = "Prospect hotels",
-                Color = ProspectHotelColor
+                Color = RouteMapPalette.ProspectColor
             });
         }
 

@@ -16,10 +16,15 @@ public sealed class ContractedRouteOutline
 /// </summary>
 public static class CustomerRouteLocations
 {
-    public static IReadOnlyList<ContractedRouteOutline> Build(Customer customer)
+    public static IReadOnlyList<ContractedRouteOutline> Build(Customer customer) =>
+        Build(customer, customer.Contracts.Where(contract => BillingDueCalculator.IsActiveContract(contract)));
+
+    public static IReadOnlyList<ContractedRouteOutline> Build(Customer customer, CustomerContract contract) =>
+        Build(customer, new[] { contract });
+
+    private static IReadOnlyList<ContractedRouteOutline> Build(Customer customer, IEnumerable<CustomerContract> contracts)
     {
-        var activeContractRoutes = customer.Contracts
-            .Where(contract => BillingDueCalculator.IsActiveContract(contract))
+        var contractRoutes = contracts
             .SelectMany(contract => contract.ContractRoutes.Select(contractRoute => new
             {
                 Contract = contract,
@@ -30,30 +35,19 @@ public static class CustomerRouteLocations
             .ThenBy(item => item.Contract.ContractName)
             .ToList();
 
-        var customerRoutesByRouteId = customer.CustomerRoutes
-            .Where(customerRoute => customerRoute.Status == CustomerRouteStatus.Active)
-            .GroupBy(customerRoute => customerRoute.RouteId)
-            .ToDictionary(group => group.Key, group => group.First());
+        var customerRoutesByRouteId = ActiveCustomerRoutes(customer);
 
-        return activeContractRoutes
+        return contractRoutes
             .GroupBy(item => item.ContractRoute.RouteId)
             .Select(group =>
             {
                 var route = group.First().ContractRoute.Route;
-                customerRoutesByRouteId.TryGetValue(group.Key, out var customerRoute);
-                var allStops = customerRoute?.AllStops ?? true;
-
-                IEnumerable<Stop> stops = customerRoute == null || customerRoute.AllStops
-                    ? OrderStops(route.Stops.Where(stop => stop.Status == StopStatus.Active))
-                    : OrderStops(customerRoute.CustomerRouteStops
-                        .Where(assignment => assignment.Stop is { Status: StopStatus.Active })
-                        .Select(assignment => assignment.Stop));
-
+                var (allStops, stops) = ResolveStops(route, customerRoutesByRouteId);
                 return new ContractedRouteOutline
                 {
                     Route = route,
                     AllStops = allStops,
-                    Stops = stops.ToList(),
+                    Stops = stops,
                     Contracts = group
                         .Select(item => item.Contract)
                         .GroupBy(contract => contract.Id)
@@ -64,6 +58,49 @@ public static class CustomerRouteLocations
             })
             .OrderBy(outline => outline.Route.RouteName)
             .ToList();
+    }
+
+    /// <summary>
+    /// Every active stop on the routes of one contract, including an expired contract.
+    /// </summary>
+    public static IReadOnlyList<ContractedRouteOutline> ForContract(CustomerContract contract)
+    {
+        return contract.ContractRoutes
+            .Where(contractRoute => contractRoute.Route != null)
+            .GroupBy(contractRoute => contractRoute.RouteId)
+            .Select(group =>
+            {
+                var route = group.First().Route;
+                return new ContractedRouteOutline
+                {
+                    Route = route,
+                    AllStops = true,
+                    Stops = OrderStops(route.Stops.Where(stop => stop.Status == StopStatus.Active)).ToList(),
+                    Contracts = new[] { contract }
+                };
+            })
+            .OrderBy(outline => outline.Route.RouteName)
+            .ToList();
+    }
+
+    private static Dictionary<int, CustomerRoute> ActiveCustomerRoutes(Customer customer) =>
+        customer.CustomerRoutes
+            .Where(customerRoute => customerRoute.Status == CustomerRouteStatus.Active)
+            .GroupBy(customerRoute => customerRoute.RouteId)
+            .ToDictionary(group => group.Key, group => group.First());
+
+    private static (bool AllStops, List<Stop> Stops) ResolveStops(
+        Models.Route route,
+        IReadOnlyDictionary<int, CustomerRoute> customerRoutesByRouteId)
+    {
+        customerRoutesByRouteId.TryGetValue(route.Id, out var customerRoute);
+        var allStops = customerRoute?.AllStops ?? true;
+        IEnumerable<Stop> stops = customerRoute == null || customerRoute.AllStops
+            ? OrderStops(route.Stops.Where(stop => stop.Status == StopStatus.Active))
+            : OrderStops(customerRoute.CustomerRouteStops
+                .Where(assignment => assignment.Stop is { Status: StopStatus.Active })
+                .Select(assignment => assignment.Stop));
+        return (allStops, stops.ToList());
     }
 
     public static string FormatLocation(Stop stop)

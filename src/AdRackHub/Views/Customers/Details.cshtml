@@ -52,6 +52,33 @@
         .ThenBy(x => x.Contract.ContractName)
         .ToList();
     var contractedRouteOutlines = CustomerRouteLocations.Build(Model);
+    var expiredRouteContracts = Model.Contracts
+        .Where(contract => !contract.IsProposal
+            && !BillingDueCalculator.IsActiveContract(contract)
+            && contract.ContractRoutes.Any(route => route.Route != null))
+        .OrderBy(contract => contract.ContractName)
+        .Select(contract => new
+        {
+            Contract = contract,
+            Outlines = CustomerRouteLocations.Build(Model, contract)
+        })
+        .ToList();
+    var mapContracts = Model.Contracts
+        .Where(contract => !contract.IsProposal && contract.ContractRoutes.Any(route => route.Route != null))
+        .Select(contract => new
+        {
+            Contract = contract,
+            Expired = !BillingDueCalculator.IsActiveContract(contract),
+            Outlines = CustomerRouteLocations.ForContract(contract)
+        })
+        .OrderBy(item => item.Expired)
+        .ThenBy(item => item.Contract.ContractName)
+        .ToList();
+    var mapHasCustomerPin = Model.Latitude.HasValue && Model.Longitude.HasValue;
+    var mapHasStopPins = mapContracts.Any(item => item.Outlines.Any(outline =>
+        outline.Stops.Any(stop => stop.Latitude.HasValue && stop.Longitude.HasValue)));
+    var routeColors = ViewBag.RouteColorById as IReadOnlyDictionary<int, string>
+        ?? new Dictionary<int, string>();
     var latestBrochure = Model.BrochureScans
         .OrderByDescending(s => s.UploadedAt)
         .FirstOrDefault();
@@ -870,36 +897,169 @@
 
                 <div class="tab-pane fade @(activeTab == "map" ? "show active" : "")" id="tab-map" role="tabpanel">
                     <div class="crm-panel">
-                        @if (Model.Latitude.HasValue && Model.Longitude.HasValue)
-                        {
-                            var mapAddress = CustomerAddressHelper.FormatFullAddress(Model.Address, Model.City, Model.State, Model.Zip);
-                            <div id="customerMap"
-                                 class="customer-map"
-                                 data-lat="@Model.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)"
-                                 data-lng="@Model.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)"
-                                 data-name="@Model.CustomerName"
-                                 data-address="@mapAddress"></div>
-                            <div class="d-flex flex-wrap justify-content-between gap-2 mt-2">
-                                <div class="text-muted small">
-                                    @if (!string.IsNullOrWhiteSpace(mapAddress))
+                        <div id="customerMapStage" class="customer-map-stage">
+                            <div class="customer-map-toolbar">
+                                @if (mapContracts.Any())
+                                {
+                                    <div class="customer-map-contract">
+                                        <label class="form-label mb-1" for="mapContractSelect">Contract</label>
+                                        <select class="form-select" id="mapContractSelect">
+                                            @foreach (var item in mapContracts)
+                                            {
+                                                var end = item.Contract.ContractEndDate?.ToString("MMM d, yyyy");
+                                                <option value="@item.Contract.Id">
+                                                    @item.Contract.ContractName@(item.Expired ? " (expired" + (end != null ? " " + end : "") + ")" : "")
+                                                </option>
+                                            }
+                                        </select>
+                                    </div>
+                                    var legendIndex = 0;
+                                    foreach (var item in mapContracts)
                                     {
-                                        @mapAddress
-                                        <span class="mx-1">·</span>
+                                        var hasProspects = item.Outlines.Any(outline => outline.Stops.Any(stop => stop.StopType == StopType.ProspectStop));
+                                        <div class="overview-map-legend customer-map-legend @(legendIndex++ == 0 ? "" : "d-none")" data-contract-id="@item.Contract.Id">
+                                            @foreach (var outline in item.Outlines)
+                                            {
+                                                var legendColor = routeColors.TryGetValue(outline.Route.Id, out var mappedLegendColor)
+                                                    ? mappedLegendColor
+                                                    : RouteMapPalette.Colors[0];
+                                                <span class="overview-map-legend-item">
+                                                    <span class="overview-map-swatch" style="background: @legendColor;"></span>
+                                                    @outline.Route.RouteName
+                                                </span>
+                                            }
+                                            @if (hasProspects)
+                                            {
+                                                <span class="overview-map-legend-item">
+                                                    <span class="overview-map-swatch customer-map-prospect-swatch" style="background: @RouteMapPalette.ProspectColor;"></span>
+                                                    Prospect hotels
+                                                </span>
+                                            }
+                                        </div>
                                     }
-                                    @Model.Latitude.Value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture),
-                                    @Model.Longitude.Value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)
-                                </div>
-                                <a class="small"
-                                   href="https://www.google.com/maps?q=@Uri.EscapeDataString($"{Model.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{Model.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}")"
-                                   target="_blank"
-                                   rel="noopener">Open in Google Maps</a>
+                                }
+                                @if (mapHasCustomerPin || mapHasStopPins)
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" id="customerMapFullscreen">Full screen</button>
+                                }
                             </div>
-                        }
-                        else
-                        {
-                            <p class="text-muted mb-2">No coordinates yet. Add an address or enter latitude and longitude.</p>
-                            <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-sm btn-outline-primary">Edit details</a>
-                        }
+                            @if (mapHasCustomerPin || mapHasStopPins)
+                            {
+                                var mapAddress = CustomerAddressHelper.FormatFullAddress(Model.Address, Model.City, Model.State, Model.Zip);
+                                <div id="customerMap"
+                                     class="customer-map"
+                                     data-lat="@(mapHasCustomerPin ? Model.Latitude!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "")"
+                                     data-lng="@(mapHasCustomerPin ? Model.Longitude!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "")"
+                                     data-name="@Model.CustomerName"
+                                     data-address="@mapAddress"></div>
+                                @if (mapHasCustomerPin)
+                                {
+                                    <div class="d-flex flex-wrap justify-content-between gap-2 mt-2">
+                                        <div class="text-muted small">
+                                            @if (!string.IsNullOrWhiteSpace(mapAddress))
+                                            {
+                                                @mapAddress
+                                                <span class="mx-1">·</span>
+                                            }
+                                            @Model.Latitude!.Value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture),
+                                            @Model.Longitude!.Value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture)
+                                        </div>
+                                        <a class="small"
+                                           href="https://www.google.com/maps?q=@Uri.EscapeDataString($"{Model.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{Model.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}")"
+                                           target="_blank"
+                                           rel="noopener">Open customer in Google Maps</a>
+                                    </div>
+                                }
+                            }
+                            else if (!mapContracts.Any())
+                            {
+                                <p class="text-muted mb-2">No coordinates yet. Add an address or enter latitude and longitude.</p>
+                                <a asp-action="Edit" asp-route-id="@Model.Id" class="btn btn-sm btn-outline-primary">Edit details</a>
+                            }
+                            @if (mapContracts.Any())
+                            {
+                                var mapContractIndex = 0;
+                                <div class="customer-map-stops">
+                                    @foreach (var item in mapContracts)
+                                    {
+                                        var stopCount = item.Outlines.Sum(outline => outline.Stops.Count);
+                                        <div class="map-contract-stops mt-3 @(mapContractIndex++ == 0 ? "" : "d-none")" data-contract-id="@item.Contract.Id">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <div class="fw-semibold">Stops on this contract</div>
+                                                <div class="small text-muted">@stopCount stop@(stopCount == 1 ? "" : "s") on @item.Outlines.Count route@(item.Outlines.Count == 1 ? "" : "s")</div>
+                                            </div>
+                                            @if (!item.Outlines.Any())
+                                            {
+                                                <p class="text-muted mb-0">This contract has no routes.</p>
+                                            }
+                                            else
+                                            {
+                                                @foreach (var outline in item.Outlines)
+                                                {
+                                                    var routeColor = routeColors.TryGetValue(outline.Route.Id, out var mappedRouteColor)
+                                                        ? mappedRouteColor
+                                                        : RouteMapPalette.Colors[0];
+                                                    <div class="mb-3">
+                                                        <div class="d-flex justify-content-between align-items-center mb-1">
+                                                            <div class="fw-semibold d-flex align-items-center gap-2">
+                                                                <span class="overview-map-swatch" style="background: @routeColor;"></span>
+                                                                <a asp-controller="Routes" asp-action="Details" asp-route-id="@outline.Route.Id">@outline.Route.RouteName</a>
+                                                            </div>
+                                                            <div class="small text-muted">@outline.Stops.Count stop@(outline.Stops.Count == 1 ? "" : "s")</div>
+                                                        </div>
+                                                        @if (outline.Stops.Any())
+                                                        {
+                                                            <div class="table-responsive">
+                                                                <table class="table table-sm align-middle mb-0">
+                                                                    <thead>
+                                                                        <tr>
+                                                                            <th style="width: 4rem;">#</th>
+                                                                            <th>Stop</th>
+                                                                            <th>Type</th>
+                                                                            <th>Location</th>
+                                                                            <th>Highway / Exit</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                    @foreach (var stop in outline.Stops)
+                                                                    {
+                                                                        var isProspect = stop.StopType == StopType.ProspectStop;
+                                                                        var pinColor = isProspect ? RouteMapPalette.ProspectColor : routeColor;
+                                                                        <tr class="map-stop"
+                                                                            data-lat="@(stop.Latitude?.ToString(System.Globalization.CultureInfo.InvariantCulture))"
+                                                                            data-lng="@(stop.Longitude?.ToString(System.Globalization.CultureInfo.InvariantCulture))"
+                                                                            data-name="@stop.StopName"
+                                                                            data-route="@outline.Route.RouteName"
+                                                                            data-step="@(stop.StepNumber?.ToString())"
+                                                                            data-address="@CustomerRouteLocations.FormatLocation(stop)"
+                                                                            data-color="@pinColor"
+                                                                            data-kind="@(isProspect ? "prospect" : "stop")"
+                                                                            data-url="@Url.Action("Details", "Stops", new { id = stop.Id })">
+                                                                            <td class="text-muted">@(stop.StepNumber?.ToString() ?? "—")</td>
+                                                                            <td>
+                                                                                <a asp-controller="Stops" asp-action="Details" asp-route-id="@stop.Id">@stop.StopName</a>
+                                                                            </td>
+                                                                            <td>@stop.StopType</td>
+                                                                            <td class="small text-muted">@CustomerRouteLocations.FormatLocation(stop)</td>
+                                                                            <td class="small">@(stop.HighwayExit ?? "—")</td>
+                                                                        </tr>
+                                                                    }
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        }
+                                                        else
+                                                        {
+                                                            <p class="text-muted mb-0 small">No stops on this route.</p>
+                                                        }
+                                                    </div>
+                                                }
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
                     </div>
                 </div>
 
@@ -907,86 +1067,59 @@
                 {
                     <div class="tab-pane fade @(activeTab == "routes" ? "show active" : "")" id="tab-routes" role="tabpanel">
                         <div class="crm-panel">
-                            <div class="d-flex justify-content-between align-items-center mb-3">
-                                <div class="fw-semibold">Contracted routes &amp; stops</div>
-                                @if (contractedRouteOutlines.Any())
+                            <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
+                                <div>
+                                    <div class="fw-semibold mb-2">Contracted routes &amp; stops</div>
+                                    @if (expiredRouteContracts.Any())
+                                    {
+                                        <label class="form-label small mb-1" for="routeContractSelect">Contract</label>
+                                        <select class="form-select form-select-sm" id="routeContractSelect" style="max-width: 28rem;">
+                                            <option value="current">Current contracts</option>
+                                            @foreach (var expired in expiredRouteContracts)
+                                            {
+                                                var end = expired.Contract.ContractEndDate?.ToString("MMM d, yyyy");
+                                                <option value="@expired.Contract.Id">@expired.Contract.ContractName (expired@(end != null ? " " + end : ""))</option>
+                                            }
+                                        </select>
+                                    }
+                                </div>
+                                @if (contractedRouteOutlines.Any() || expiredRouteContracts.Any(item => item.Outlines.Any()))
                                 {
-                                    <a asp-action="ExportRouteLocations" asp-route-id="@Model.Id" class="btn btn-sm btn-outline-primary">Export spreadsheet</a>
+                                    <a id="routeLocationsExport" asp-action="ExportRouteLocations" asp-route-id="@Model.Id" class="btn btn-sm btn-outline-primary">Export spreadsheet</a>
                                 }
                             </div>
-                            @if (contractedRouteOutlines.Any())
-                            {
-                                @foreach (var outline in contractedRouteOutlines)
+                            <div class="route-contract-panel" data-contract-id="current">
+                                @if (contractedRouteOutlines.Any())
                                 {
-                                    <div class="crm-side-card mb-3">
-                                        <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
-                                            <div>
-                                                <div class="fw-semibold">
-                                                    <a asp-controller="Routes" asp-action="Details" asp-route-id="@outline.Route.Id">@outline.Route.RouteName</a>
-                                                </div>
-                                                <div class="small text-muted">
-                                                    @RouteProductHelper.Label(outline.Route.Product)
-                                                    · @outline.Contracts.Count contract@(outline.Contracts.Count == 1 ? "" : "s"):
-                                                    @string.Join(", ", outline.Contracts.Select(c => c.ContractName))
-                                                </div>
-                                            </div>
-                                            <div class="text-end">
-                                                @if (outline.AllStops)
-                                                {
-                                                    <span class="badge bg-secondary">All stops</span>
-                                                }
-                                                else
-                                                {
-                                                    <span class="badge bg-primary">Selected stops</span>
-                                                }
-                                                <div class="small text-muted mt-1">@outline.Stops.Count stop@(outline.Stops.Count == 1 ? "" : "s")</div>
-                                            </div>
-                                        </div>
-                                        @if (outline.Stops.Any())
-                                        {
-                                            <details>
-                                                <summary class="small fw-semibold" style="cursor: pointer;">
-                                                    Stops (@outline.Stops.Count)
-                                                </summary>
-                                                <div class="table-responsive mt-2">
-                                                    <table class="table table-sm align-middle mb-0">
-                                                        <thead>
-                                                            <tr>
-                                                                <th style="width: 4rem;">#</th>
-                                                                <th>Stop</th>
-                                                                <th>Type</th>
-                                                                <th>Location</th>
-                                                                <th>Highway / Exit</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                        @foreach (var stop in outline.Stops)
-                                                        {
-                                                            <tr>
-                                                                <td class="text-muted">@(stop.StepNumber?.ToString() ?? "—")</td>
-                                                                <td>
-                                                                    <a asp-controller="Stops" asp-action="Details" asp-route-id="@stop.Id">@stop.StopName</a>
-                                                                </td>
-                                                                <td>@stop.StopType</td>
-                                                                <td class="small text-muted">@CustomerRouteLocations.FormatLocation(stop)</td>
-                                                                <td class="small">@(stop.HighwayExit ?? "—")</td>
-                                                            </tr>
-                                                        }
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </details>
-                                        }
-                                        else
-                                        {
-                                            <p class="text-muted mb-0 small">No stops selected for this route.</p>
-                                        }
-                                    </div>
+                                    @foreach (var outline in contractedRouteOutlines)
+                                    {
+                                        <partial name="_ContractedRouteOutline" model="outline" />
+                                    }
                                 }
-                            }
-                            else
+                                else if (expiredRouteContracts.Any())
+                                {
+                                    <p class="text-muted mb-0">No current contracted routes. Select an expired contract to see its routes.</p>
+                                }
+                                else
+                                {
+                                    <p class="text-muted mb-0">No contracted routes yet. Add a contract to assign routes and stops.</p>
+                                }
+                            </div>
+                            @foreach (var expired in expiredRouteContracts)
                             {
-                                <p class="text-muted mb-0">No contracted routes yet. Add a contract to assign routes and stops.</p>
+                                <div class="route-contract-panel d-none" data-contract-id="@expired.Contract.Id">
+                                    @if (expired.Outlines.Any())
+                                    {
+                                        @foreach (var outline in expired.Outlines)
+                                        {
+                                            <partial name="_ContractedRouteOutline" model="outline" />
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <p class="text-muted mb-0">This contract has no routes.</p>
+                                    }
+                                </div>
                             }
                         </div>
                     </div>
@@ -1438,7 +1571,7 @@
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
-    @if (Model.Latitude.HasValue && Model.Longitude.HasValue)
+    @if (mapHasCustomerPin || mapHasStopPins)
     {
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
                 integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
@@ -1447,7 +1580,10 @@
             AdRackCustomerMap.init({
                 mapId: 'customerMap',
                 tabButtonId: 'tab-map-btn',
-                tabPaneId: 'tab-map'
+                tabPaneId: 'tab-map',
+                contractSelectId: 'mapContractSelect',
+                stageId: 'customerMapStage',
+                fullscreenButtonId: 'customerMapFullscreen'
             });
         </script>
     }
@@ -1458,6 +1594,22 @@
                 if (btn) bootstrap.Tab.getOrCreateInstance(btn).show();
             });
         });
+
+        (function () {
+            var select = document.getElementById('routeContractSelect');
+            var exportLink = document.getElementById('routeLocationsExport');
+            if (!select)
+                return;
+            var exportBase = exportLink ? exportLink.getAttribute('href') : '';
+            select.addEventListener('change', function () {
+                var selected = select.value;
+                document.querySelectorAll('.route-contract-panel').forEach(function (panel) {
+                    panel.classList.toggle('d-none', panel.getAttribute('data-contract-id') !== selected);
+                });
+                if (exportLink)
+                    exportLink.setAttribute('href', selected === 'current' ? exportBase : exportBase + '?contractId=' + encodeURIComponent(selected));
+            });
+        })();
 
         (function () {
             function todayValue() {

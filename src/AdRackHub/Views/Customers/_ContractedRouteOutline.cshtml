@@ -1,0 +1,67 @@
+@using AdRackHub.Services
+@model ContractedRouteOutline
+<div class="crm-side-card mb-3">
+    <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+        <div>
+            <div class="fw-semibold">
+                <a asp-controller="Routes" asp-action="Details" asp-route-id="@Model.Route.Id">@Model.Route.RouteName</a>
+            </div>
+            <div class="small text-muted">
+                @RouteProductHelper.Label(Model.Route.Product)
+                · @Model.Contracts.Count contract@(Model.Contracts.Count == 1 ? "" : "s"):
+                @string.Join(", ", Model.Contracts.Select(contract =>
+                    contract.ContractName + (BillingDueCalculator.IsActiveContract(contract) ? "" : " (expired)")))
+            </div>
+        </div>
+        <div class="text-end">
+            @if (Model.AllStops)
+            {
+                <span class="badge bg-secondary">All stops</span>
+            }
+            else
+            {
+                <span class="badge bg-primary">Selected stops</span>
+            }
+            <div class="small text-muted mt-1">@Model.Stops.Count stop@(Model.Stops.Count == 1 ? "" : "s")</div>
+        </div>
+    </div>
+    @if (Model.Stops.Any())
+    {
+        <details>
+            <summary class="small fw-semibold" style="cursor: pointer;">
+                Stops (@Model.Stops.Count)
+            </summary>
+            <div class="table-responsive mt-2">
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th style="width: 4rem;">#</th>
+                            <th>Stop</th>
+                            <th>Type</th>
+                            <th>Location</th>
+                            <th>Highway / Exit</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var stop in Model.Stops)
+                    {
+                        <tr>
+                            <td class="text-muted">@(stop.StepNumber?.ToString() ?? "—")</td>
+                            <td>
+                                <a asp-controller="Stops" asp-action="Details" asp-route-id="@stop.Id">@stop.StopName</a>
+                            </td>
+                            <td>@stop.StopType</td>
+                            <td class="small text-muted">@CustomerRouteLocations.FormatLocation(stop)</td>
+                            <td class="small">@(stop.HighwayExit ?? "—")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </details>
+    }
+    else
+    {
+        <p class="text-muted mb-0 small">No stops selected for this route.</p>
+    }
+</div>

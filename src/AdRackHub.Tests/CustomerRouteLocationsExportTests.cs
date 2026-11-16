@@ -101,6 +101,36 @@ public class CustomerRouteLocationsExportTests
         Assert.Equal(new[] { "Earlier", "Later", "Alpha", "Zebra" }, stops);
     }
 
+    [Fact]
+    public void Build_IncludesRoutesFromASelectedExpiredContract()
+    {
+        var currentRoute = Route("Exit - Current", new[]
+        {
+            Stop(1, 1, "Open", StopType.Hotel, "I-75 Exit 1")
+        });
+        var expiredRoute = Route("Exit - Expired", new[]
+        {
+            Stop(2, 1, "Closed season", StopType.Attraction, "I-71 Exit 4")
+        });
+        var expired = Contract("2024", false, new DateOnly(2024, 10, 31), expiredRoute);
+        var customer = new Customer
+        {
+            CustomerName = "Seasonal",
+            Contracts =
+            {
+                Contract("2026", false, null, currentRoute),
+                expired
+            }
+        };
+
+        Assert.Equal(new[] { "Exit - Current" }, CustomerRouteLocations.Build(customer).Select(o => o.Route.RouteName));
+
+        var selected = CustomerRouteLocations.Build(customer, expired);
+        Assert.Equal(new[] { "Exit - Expired" }, selected.Select(o => o.Route.RouteName));
+        Assert.Equal("Closed season", selected.Single().Stops.Single().StopName);
+        Assert.Contains("2024", selected.Single().Contracts.Single().ContractName);
+    }
+
     private static int _nextRouteId = 1;
 
     private static CustomerContract Contract(

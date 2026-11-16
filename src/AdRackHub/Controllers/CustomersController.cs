@@ -257,6 +257,11 @@ public class CustomersController : Controller
             .FirstOrDefaultAsync(c => c.Id == id);
 
         if (customer == null) return NotFound();
+        var routeIds = await _context.Routes
+            .OrderBy(r => r.RouteName)
+            .Select(r => r.Id)
+            .ToListAsync();
+        ViewBag.RouteColorById = RouteMapPalette.Assign(routeIds);
         ViewBag.ActiveTab = NormalizeDetailTab(tab, CustomerTypeLabels.IsProspectLike(customer.Type));
         ViewBag.AnnualRevenue = CustomerRevenue.GetAnnual(customer);
         if (CustomerTypeLabels.IsProspectLike(customer.Type))
@@ -270,7 +275,7 @@ public class CustomersController : Controller
         return View(customer);
     }
 
-    public async Task<IActionResult> ExportRouteLocations(int id)
+    public async Task<IActionResult> ExportRouteLocations(int id, int? contractId)
     {
         var customer = await _context.Customers
             .AsNoTracking()
@@ -287,8 +292,21 @@ public class CustomersController : Controller
         if (customer == null || CustomerTypeLabels.IsProspectLike(customer.Type))
             return NotFound();
 
+        IReadOnlyList<ContractedRouteOutline> outlines;
+        if (contractId is int selectedId)
+        {
+            var contract = customer.Contracts.FirstOrDefault(item => item.Id == selectedId && !item.IsProposal);
+            if (contract == null)
+                return NotFound();
+            outlines = CustomerRouteLocations.Build(customer, contract);
+        }
+        else
+        {
+            outlines = CustomerRouteLocations.Build(customer);
+        }
+
         var stream = new MemoryStream();
-        CustomerRouteLocationsExportService.Write(stream, CustomerRouteLocations.Build(customer));
+        CustomerRouteLocationsExportService.Write(stream, outlines);
         stream.Position = 0;
         return File(
             stream,

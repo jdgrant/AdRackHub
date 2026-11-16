@@ -26,6 +26,14 @@ public static class BillingTermDisplay
         _ => $"paid every {Math.Max(months, 1)} months in advance"
     };
 
+    public static string BilledPhrase(int months) => months switch
+    {
+        1 => "billed monthly",
+        3 => "billed quarterly",
+        12 => "billed annually",
+        _ => $"billed every {Math.Max(months, 1)} months"
+    };
+
     public static string PaidInAdvancePhrase(CustomerContract contract) =>
         PaidInAdvancePhrase(AnnualBillingHelper.BillingMonths(contract));
 }

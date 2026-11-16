@@ -10,6 +10,13 @@ publish/
 *.suo
 .cursor/
 
+## Agent queue
+mcp/agent-queue/node_modules/
+mcp/agent-queue/dist/
+mcp/agent-queue/data/*.sqlite
+mcp/agent-queue/data/*.sqlite-wal
+mcp/agent-queue/data/*.sqlite-shm
+
 ## OS
 .DS_Store
 

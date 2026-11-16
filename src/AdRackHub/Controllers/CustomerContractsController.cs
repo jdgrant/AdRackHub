@@ -810,7 +810,7 @@ public class CustomerContractsController : Controller
 
         return routes.Select(r =>
         {
-            var defaultMonthly = AnnualBillingHelper.ToRatePerMonth(r.Price);
+            var defaultMonthly = SubscribedMonths.DefaultRatePerMonth(r);
             var routeStops = stops.Where(s => s.RouteId == r.Id).ToList();
             var customerRoute = customerRoutes.FirstOrDefault(cr => cr.RouteId == r.Id);
             postedByRouteId.TryGetValue(r.Id, out var posted);
@@ -892,7 +892,7 @@ public class CustomerContractsController : Controller
 
                 var monthlyRate = routeBillingAmounts.TryGetValue(routeId, out var postedAmount) && postedAmount >= 0
                     ? postedAmount
-                    : AnnualBillingHelper.ToRatePerMonth(route.Price);
+                    : SubscribedMonths.DefaultRatePerMonth(route);
                 var billingAmount = AnnualBillingHelper.MonthlyRateToBillingPeriodAmount(monthlyRate, contract);
 
                 _context.CustomerContractRoutes.Add(new CustomerContractRoute

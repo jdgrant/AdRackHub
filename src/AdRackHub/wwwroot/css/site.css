@@ -530,11 +530,107 @@ button.brochure-scan-preview {
   padding: 1.25rem;
 }
 
+.customer-map-stage {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.customer-map-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.customer-map-contract {
+  min-width: min(100%, 22rem);
+  flex: 1 1 18rem;
+}
+
 .customer-map {
-  height: 420px;
-  min-height: 320px;
+  height: calc(100vh - 16rem);
+  min-height: 520px;
   border: 1px solid #e9ecef;
   border-radius: 0.5rem;
+}
+
+.customer-map-stage.is-fullscreen,
+.customer-map-stage:fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1080;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  background: #fff;
+  overflow: hidden;
+}
+
+.customer-map-stage.is-fullscreen .customer-map,
+.customer-map-stage:fullscreen .customer-map {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+  border-radius: 0;
+}
+
+.customer-map-stage.is-fullscreen .customer-map-stops,
+.customer-map-stage:fullscreen .customer-map-stops {
+  max-height: 28vh;
+  overflow: auto;
+}
+
+body.customer-map-open {
+  overflow: hidden;
+}
+
+.overview-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+}
+
+.overview-map-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+}
+
+.overview-map-swatch {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  border: 1px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
+  flex-shrink: 0;
+}
+
+.customer-map-prospect-swatch {
+  border-radius: 50%;
+  transform: none;
+  border: 2px solid #212529;
+}
+
+.overview-map-pin {
+  background: none;
+  border: 0;
+}
+
+.overview-map-pin span {
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: 2px 0 0 2px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
 .overview-map img.leaflet-tile,

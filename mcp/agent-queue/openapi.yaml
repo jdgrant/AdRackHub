@@ -1,0 +1,365 @@
+openapi: 3.1.0
+info:
+  title: AdRack Agent Queue
+  version: 1.0.0
+  description: |
+    Shared queue for MCP clients. The same operations are available as MCP tools
+    on POST /mcp (Streamable HTTP) and as these REST actions for a Custom GPT.
+    Send Authorization: Bearer with MCP_AUTH_TOKEN on every request except GET /health.
+servers:
+  - url: http://127.0.0.1:8765
+    description: Local agent queue. Set the public host when you deploy it.
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      operationId: health
+      summary: Liveness check. Does not require a token.
+      security: []
+      responses:
+        "200":
+          description: The process is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+  /queue/prospects:
+    post:
+      operationId: enqueue_prospect
+      summary: Queue a Hub prospect. Use when the user says "Add prospect" or asks to log a lead.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProspectRequest"
+      responses:
+        "200":
+          description: The queued item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueItem"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /queue/hub-tasks:
+    post:
+      operationId: enqueue_hub_task
+      summary: Queue a Hub to-do. Use when the user says "Add task". client_or_prospect defaults to Ad-rack.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HubTaskRequest"
+      responses:
+        "200":
+          description: The queued item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueItem"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /queue/general:
+    post:
+      operationId: enqueue_general_item
+      summary: Queue a general item that is not a prospect and not a Hub task.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeneralRequest"
+      responses:
+        "200":
+          description: The queued item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueItem"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /queue/claim:
+    post:
+      operationId: claim_next_task
+      summary: Claim the oldest highest-priority pending item.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                agent_name:
+                  type: string
+                  default: chatgpt-worker
+      responses:
+        "200":
+          description: The claimed item, or item null when the queue is empty.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [item]
+                properties:
+                  item:
+                    oneOf:
+                      - $ref: "#/components/schemas/QueueItem"
+                      - type: "null"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /queue/items/{id}/complete:
+    post:
+      operationId: complete_task
+      summary: Mark an item completed and store the Hub confirmation.
+      parameters:
+        - $ref: "#/components/parameters/ItemId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [result_output]
+              properties:
+                result_output:
+                  type: string
+      responses:
+        "200":
+          description: The completed item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueItem"
+        "404":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /queue/items/{id}/fail:
+    post:
+      operationId: fail_task
+      summary: Mark an item failed, or return it to pending when retry is true.
+      parameters:
+        - $ref: "#/components/parameters/ItemId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [error_log]
+              properties:
+                error_log:
+                  type: string
+                retry:
+                  type: boolean
+                  default: false
+      responses:
+        "200":
+          description: The updated item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueItem"
+        "404":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /queue:
+    get:
+      operationId: list_queue
+      summary: List queue items.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/Status"
+        - name: task_type
+          in: query
+          schema:
+            $ref: "#/components/schemas/TaskType"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+      responses:
+        "200":
+          description: Matching items, newest update first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/QueueItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /mcp:
+    post:
+      operationId: mcp
+      summary: Model Context Protocol Streamable HTTP endpoint. The body is a JSON-RPC message.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: A JSON-RPC response, or an SSE stream.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: The MCP_AUTH_TOKEN configured on the queue server.
+  parameters:
+    ItemId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    Error:
+      description: The request was rejected.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+    Unauthorized:
+      description: Missing or wrong bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+  schemas:
+    TaskType:
+      type: string
+      enum: [prospect_creation, hub_task, general]
+    Priority:
+      type: string
+      enum: [low, medium, high]
+    Status:
+      type: string
+      enum: [pending, in_progress, completed, failed, needs_review]
+    ErrorBody:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    ProspectRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        company:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        source:
+          type: string
+        notes:
+          type: string
+        priority:
+          $ref: "#/components/schemas/Priority"
+        created_by:
+          type: string
+    HubTaskRequest:
+      type: object
+      required: [task_title]
+      properties:
+        task_title:
+          type: string
+        client_or_prospect:
+          type: string
+          default: Ad-rack
+        description:
+          type: string
+        due_date:
+          type: string
+        priority:
+          $ref: "#/components/schemas/Priority"
+        created_by:
+          type: string
+    GeneralRequest:
+      type: object
+      required: [title, instructions]
+      properties:
+        title:
+          type: string
+        instructions:
+          type: string
+        priority:
+          $ref: "#/components/schemas/Priority"
+        created_by:
+          type: string
+    QueueItem:
+      type: object
+      required:
+        - id
+        - task_type
+        - title
+        - payload
+        - instructions
+        - priority
+        - status
+        - assigned_agent
+        - created_by
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        task_type:
+          $ref: "#/components/schemas/TaskType"
+        title:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        instructions:
+          type: string
+        priority:
+          $ref: "#/components/schemas/Priority"
+        status:
+          $ref: "#/components/schemas/Status"
+        assigned_agent:
+          type: string
+        created_by:
+          type: string
+        result_output:
+          type: ["string", "null"]
+        error_log:
+          type: ["string", "null"]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
