@@ -33,6 +33,7 @@ public class AgentMcpTests
         Assert.True(AgentMcpTools.Instructions.Length <= 512);
         Assert.Contains("Prospect", AgentMcpTools.Instructions);
         Assert.Contains("Wave", AgentMcpTools.Instructions);
+        Assert.Contains("create_activity", AgentMcpTools.Instructions);
         Assert.Contains("list_activities", AgentMcpTools.Instructions);
         Assert.Contains("billing_outstanding", AgentMcpTools.Instructions);
         Assert.Contains("contract_end_dates", AgentMcpTools.Instructions);
@@ -187,7 +188,7 @@ public class AgentMcpTests
             new[]
             {
                 "add_contact", "billing_due", "billing_forecast", "billing_outstanding", "contract_end_dates",
-                "create_customer",
+                "create_activity", "create_customer",
                 "get_customer", "invoice_reminder_template", "list_activities", "list_visits", "log_stop_visit",
                 "search_customers", "search_stops", "update_contact", "update_customer"
             },
@@ -202,6 +203,8 @@ public class AgentMcpTests
         Assert.False(tools.Single(tool => tool.Name == "log_stop_visit").ProtocolTool.Annotations?.ReadOnlyHint);
         Assert.True(tools.Single(tool => tool.Name == "get_customer").ProtocolTool.Annotations?.ReadOnlyHint);
         Assert.False(tools.Single(tool => tool.Name == "create_customer").ProtocolTool.Annotations?.ReadOnlyHint);
+        Assert.False(tools.Single(tool => tool.Name == "create_activity").ProtocolTool.Annotations?.ReadOnlyHint);
+        Assert.Contains("Brochures Needed", tools.Single(tool => tool.Name == "create_activity").Description);
         Assert.Contains("Wave", tools.Single(tool => tool.Name == "create_customer").Description);
 
         var search = await client.CallToolAsync("search_customers", new Dictionary<string, object?>
@@ -365,6 +368,9 @@ public class AgentMcpTests
     private sealed class FakeActivityApi : IAgentActivityApi
     {
         public Task<AgentCallResult<AgentActivityListDto>> ListAsync(string? status, string? kind, int? customerId, string? search, int page, int pageSize, string hubBase, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<AgentCallResult<AgentActivityDto>> CreateAsync(int? customerId, string? customerName, string? kind, string? status, string? dueDate, string? body, string? createdBy, string hubBase, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
     }
 

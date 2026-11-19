@@ -104,6 +104,16 @@ public class AgentActivityListDto
     public List<AgentActivityDto> Items { get; set; } = new();
 }
 
+public class AgentNoteCreate
+{
+    public int? CustomerId { get; set; }
+    public string? CustomerName { get; set; }
+    public string? Kind { get; set; }
+    public string? Status { get; set; }
+    public string? DueDate { get; set; }
+    public string? Body { get; set; }
+}
+
 public class AgentActivityDto
 {
     public int Id { get; set; }

@@ -120,6 +120,22 @@ public class AgentApiController : ControllerBase
         return Execute(() => _activities.ListAsync(status, kind, customerId, search, page, pageSize, AgentApiGuide.BaseUrl(Request), cancellationToken));
     }
 
+    [HttpPost("activities")]
+    public Task<IActionResult> CreateActivity([FromBody] AgentNoteCreate? request, CancellationToken cancellationToken)
+    {
+        request ??= new AgentNoteCreate();
+        return Execute(() => _activities.CreateAsync(
+            request.CustomerId,
+            request.CustomerName,
+            request.Kind,
+            request.Status,
+            request.DueDate,
+            request.Body,
+            "Agent API",
+            AgentApiGuide.BaseUrl(Request),
+            cancellationToken));
+    }
+
     [HttpGet("stops")]
     public Task<IActionResult> Stops(
         [FromQuery] string? search,

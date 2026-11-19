@@ -16,7 +16,7 @@ public static class AgentApiGuide
         return """
             # AdRackHub agent API
 
-            Use this API to list, add, and update customers and prospects, including their contacts. It can also read open activities and log a stop visit with the driver and before and after photos.
+            Use this API to list, add, and update customers and prospects, including their contacts. It can also create activities of every type, read open activities, and log a stop visit with the driver and before and after photos.
 
             Base URL: `BASE_URL`
 
@@ -40,9 +40,9 @@ public static class AgentApiGuide
             7. Select Create as a plugin, then install it.
             8. When ChatGPT asks to connect, sign in to AdRackHub as an admin and choose Allow.
 
-            The plugin tools are `search_customers`, `get_customer`, `create_customer`, `update_customer`, `add_contact`, `update_contact`, `list_activities`, `billing_due`, `billing_outstanding`, `billing_forecast`, `contract_end_dates`, `invoice_reminder_template`, `search_stops`, `list_visits`, and `log_stop_visit`. New records default to Prospect. Creating a Customer, or changing a Prospect to Customer, assigns a brochure id and sends the customer to Wave. There is no delete tool.
+            The plugin tools are `search_customers`, `get_customer`, `create_customer`, `update_customer`, `add_contact`, `update_contact`, `create_activity`, `list_activities`, `billing_due`, `billing_outstanding`, `billing_forecast`, `contract_end_dates`, `invoice_reminder_template`, `search_stops`, `list_visits`, and `log_stop_visit`. New records default to Prospect. Creating a Customer, or changing a Prospect to Customer, assigns a brochure id and sends the customer to Wave. There is no delete tool.
 
-            `list_activities` reads open Hub tasks and email follow-ups. `billing_due`, `billing_outstanding`, `billing_forecast`, and `contract_end_dates` read bills due, unpaid invoices, the billing forecast, and contract end dates. They do not send invoices or mark them received. `invoice_reminder_template` reads and renders the Admin invoice reminder. It does not save or send it. `log_stop_visit` records the driver and the before and after photos. Pass each email image attachment as base64.
+            `create_activity` adds a Note, Call, Email, Meeting, Action, Task, or Brochures Needed item. `list_activities` reads open Hub tasks and email follow-ups. `billing_due`, `billing_outstanding`, `billing_forecast`, and `contract_end_dates` read bills due, unpaid invoices, the billing forecast, and contract end dates. They do not send invoices or mark them received. `invoice_reminder_template` reads and renders the Admin invoice reminder. It does not save or send it. `log_stop_visit` records the driver and the before and after photos. Pass each email image attachment as base64.
 
             Search before creating. If create returns possible duplicates, do not create another record until the user picks one, or call create again with `acknowledgeDuplicateIds` set to every returned id.
 
@@ -81,6 +81,7 @@ public static class AgentApiGuide
             - Update a customer or prospect.
             - Add a contact.
             - Update a contact.
+            - Create an activity: Note, Call, Email, Meeting, Action, Task, or Brochures Needed.
             - List activities. Open tasks and email follow-ups are included by default.
             - Search stops and list visits.
             - Log a stop visit with the driver and before and after photos.
@@ -88,7 +89,7 @@ public static class AgentApiGuide
 
             Do not send DELETE. Delete requests return HTTP 405. This API cannot delete records.
 
-            Billing can be read. This API cannot send invoices, mark them received, or change contracts. The invoice reminder template can be read and rendered. Saving it returns HTTP 403 unless `AgentApi:CanManageInvoiceReminderTemplate` is true. Warehouse bins are outside this API. Activities are read-only. A stop visit can be logged with photos.
+            Billing can be read. This API cannot send invoices, mark them received, or change contracts. The invoice reminder template can be read and rendered. Saving it returns HTTP 403 unless `AgentApi:CanManageInvoiceReminderTemplate` is true. Warehouse bins are outside this API. An activity can be created as a Note, Call, Email, Meeting, Action, Task, or Brochures Needed. A stop visit can be logged with photos.
 
             ## Records
 
@@ -249,6 +250,20 @@ public static class AgentApiGuide
             - `page` and `pageSize` — same limits as the customer list.
 
             Each item includes `customerId`, `customerName`, `kind`, `status`, `dueDate`, `body`, `createdAt`, `createdBy`, `isOverdue`, and `hubUrl`.
+
+            `POST /api/agent/activities` creates one activity. The plugin tool with the same job is `create_activity`.
+
+            ```json
+            {
+              "customerId": 42,
+              "kind": "Call",
+              "body": "Left a voicemail about the rest area route."
+            }
+            ```
+
+            `kind` is `Note`, `Call`, `Email`, `Meeting`, `Action`, `Task`, or `Brochures Needed`. Omit `kind` only for a plain note. `status` defaults to `New`. `body` is required. `dueDate` is `yyyy-MM-dd`. A task or Brochures Needed item defaults the due date to today. Pass `customerId` from search, or `customerName` when exactly one record has that name.
+
+            The response is HTTP 201 and the saved activity.
 
             ## Stops
 
@@ -508,6 +523,8 @@ public static class AgentApiGuide
         var writeRef = "#/components/schemas/CustomerWrite";
         var contactWriteRef = "#/components/schemas/ContactWrite";
         var activityListRef = "#/components/schemas/ActivityList";
+        var activityRef = "#/components/schemas/Activity";
+        var activityWriteRef = "#/components/schemas/ActivityWrite";
         var stopListRef = "#/components/schemas/StopList";
         var visitListRef = "#/components/schemas/VisitList";
         var visitRef = "#/components/schemas/Visit";
@@ -530,7 +547,7 @@ public static class AgentApiGuide
             {
                 ["title"] = "AdRackHub Agent API",
                 ["version"] = "1.0.0",
-                ["description"] = "List, create, and update customers and prospects, including contacts. Read activities, bills due, outstanding invoices, the billing forecast, contract end dates, and the invoice reminder template. Rendering a reminder does not save it. Updating the saved reminder requires AgentApi:CanManageInvoiceReminderTemplate. Log a stop visit with before and after photos. Delete is not available. Read /docs/agent.html for the full guide."
+                ["description"] = "List, create, and update customers and prospects, including contacts. Create an activity of any type and read activities. Read bills due, outstanding invoices, the billing forecast, contract end dates, and the invoice reminder template. Rendering a reminder does not save it. Updating the saved reminder requires AgentApi:CanManageInvoiceReminderTemplate. Log a stop visit with before and after photos. Delete is not available. Read /docs/agent.html for the full guide."
             },
             ["servers"] = new JsonArray { new JsonObject { ["url"] = baseUrl.TrimEnd('/') } },
             ["security"] = new JsonArray
@@ -623,6 +640,14 @@ public static class AgentApiGuide
                         ["200"] = Response("A page of activities.", activityListRef),
                         ["400"] = ErrorResponse(),
                         ["401"] = Unauthorized()
+                    }),
+                    ["post"] = Operation("createActivity", "Create a Note, Call, Email, Meeting, Action, Task, or Brochures Needed activity.", null, activityWriteRef, new JsonObject
+                    {
+                        ["201"] = Response("The saved activity.", activityRef),
+                        ["400"] = ErrorResponse(),
+                        ["401"] = Unauthorized(),
+                        ["404"] = NotFound(),
+                        ["409"] = ErrorResponse()
                     })
                 },
                 ["/api/agent/stops"] = new JsonObject
@@ -790,6 +815,20 @@ public static class AgentApiGuide
                     ["CustomerWrite"] = CustomerSchema(includeId: false),
                     ["Contact"] = ContactSchema(includeId: true),
                     ["ContactWrite"] = ContactSchema(includeId: false),
+                    ["ActivityWrite"] = new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["required"] = new JsonArray("body"),
+                        ["properties"] = new JsonObject
+                        {
+                            ["customerId"] = IntProp(),
+                            ["customerName"] = StringProp("Used when customerId is omitted and exactly one record matches."),
+                            ["kind"] = StringProp("Note, Call, Email, Meeting, Action, Task, or Brochures Needed. Omit for Note."),
+                            ["status"] = StringProp("New, Working, or Done. Omit for New."),
+                            ["dueDate"] = StringProp("yyyy-MM-dd. Tasks and Brochures Needed default to today."),
+                            ["body"] = StringProp("Activity text. Required. 4000 characters or fewer.")
+                        }
+                    },
                     ["ActivityList"] = PageSchema("#/components/schemas/Activity"),
                     ["Activity"] = new JsonObject
                     {

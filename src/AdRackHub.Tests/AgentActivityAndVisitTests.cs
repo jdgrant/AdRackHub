@@ -48,6 +48,33 @@ public class AgentActivityAndVisitTests
     }
 
     [Fact]
+    public async Task CreateActivityAcceptsEveryKind()
+    {
+        await using var db = NewDb();
+        db.Customers.Add(new Customer { CustomerName = "Riverside Museum", Type = CustomerType.Prospect, Status = CustomerStatus.Active });
+        await db.SaveChangesAsync();
+        var customerId = db.Customers.Single().Id;
+        var api = new AgentActivityService(db);
+
+        var kinds = new[] { "Note", "Call", "Email", "Meeting", "Action", "Task", "Brochures Needed" };
+        foreach (var kind in kinds)
+        {
+            var saved = await api.CreateAsync(customerId, null, kind, null, null, "Logged " + kind, "agent@ad-rack.net", "https://hub.ad-rack.net", CancellationToken.None);
+            Assert.Equal(201, saved.StatusCode);
+            Assert.Equal(kind == "Brochures Needed" ? "BrochuresNeeded" : kind, saved.Body!.Kind);
+            Assert.Equal("Logged " + kind, saved.Body.Body);
+        }
+
+        Assert.Equal(7, await db.CustomerNotes.CountAsync());
+        var task = await db.CustomerNotes.SingleAsync(n => n.Kind == CustomerNoteKind.Task);
+        Assert.Equal(DateOnly.FromDateTime(DateTime.Today), task.DueDate);
+        var brochure = await db.CustomerNotes.SingleAsync(n => n.Kind == CustomerNoteKind.BrochuresNeeded);
+        Assert.Equal(DateOnly.FromDateTime(DateTime.Today), brochure.DueDate);
+        var call = await db.CustomerNotes.SingleAsync(n => n.Kind == CustomerNoteKind.Call);
+        Assert.Null(call.DueDate);
+    }
+
+    [Fact]
     public async Task VisitUploadFromEmailSavesDriverAndBothPhotos()
     {
         var root = Path.Combine(Path.GetTempPath(), "adrack-visits-" + Guid.NewGuid().ToString("N"));

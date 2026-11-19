@@ -122,6 +122,7 @@ builder.Services.AddSingleton<InvoicePdfGenerator>();
 builder.Services.AddSingleton<ContractAgreementPdfGenerator>();
 builder.Services.AddSingleton<ContractTermsSource>();
 builder.Services.AddScoped<RouteCustomerReportPdfGenerator>();
+builder.Services.AddScoped<RateSheetPdfGenerator>();
 builder.Services.AddScoped<BrochureLabelIdService>();
 builder.Services.AddScoped<BrochureLabelPdfGenerator>();
 builder.Services.AddScoped<ToteLabelPdfGenerator>();
@@ -210,6 +211,26 @@ using (var scope = app.Services.CreateScope())
         var generator = scope.ServiceProvider.GetRequiredService<InvoicePdfGenerator>();
         var bytes = generator.Generate(InvoicePdfGenerator.Sample());
         var samplePath = Path.Combine(invoiceUploadRoot, "AdRack-sample.pdf");
+        File.WriteAllBytes(samplePath, bytes);
+        Console.WriteLine(samplePath);
+        return;
+    }
+
+    if (args.Contains("--rate-sheet-pdf"))
+    {
+        var generator = scope.ServiceProvider.GetRequiredService<RateSheetPdfGenerator>();
+        var bytes = await generator.BuildAsync();
+        var samplePath = Path.Combine(invoiceUploadRoot, $"Ad-Rack-rate-schedule-{DateTime.Today:yyyyMMdd}.pdf");
+        File.WriteAllBytes(samplePath, bytes);
+        Console.WriteLine(samplePath);
+        return;
+    }
+
+    if (args.Contains("--rest-area-rate-sheet-pdf"))
+    {
+        var generator = scope.ServiceProvider.GetRequiredService<RateSheetPdfGenerator>();
+        var bytes = await generator.BuildRestAreaAsync();
+        var samplePath = Path.Combine(invoiceUploadRoot, $"Ad-Rack-rest-area-rate-schedule-{DateTime.Today:yyyyMMdd}.pdf");
         File.WriteAllBytes(samplePath, bytes);
         Console.WriteLine(samplePath);
         return;

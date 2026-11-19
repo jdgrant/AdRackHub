@@ -14,7 +14,7 @@ namespace AdRackHub.Services;
 public sealed class AgentMcpTools
 {
     public const string Instructions =
-        "Use search_customers before create_customer. New records default to Prospect. Creating a Customer, or changing a Prospect to Customer, assigns a brochure ID and sends it to Wave. Omit unchanged fields; null or \"\" clears a field. No delete. list_activities reads open tasks and email follow-ups. billing_due, billing_outstanding, billing_forecast, contract_end_dates, and invoice_reminder_template are read-only. log_stop_visit saves the driver and before and after photos from an email.";
+        "Use search_customers before create_customer. New records default to Prospect. Creating a Customer, or changing a Prospect to Customer, assigns a brochure ID and sends it to Wave. Omit unchanged fields; null or \"\" clears a field. No delete. create_activity. list_activities reads open tasks and email follow-ups. billing_due, billing_outstanding, billing_forecast, contract_end_dates, and invoice_reminder_template are read-only. log_stop_visit saves the driver and before and after photos from an email.";
 
     private readonly IAgentCustomerApi _api;
     private readonly IAgentActivityApi _activities;
@@ -171,6 +171,24 @@ public sealed class AgentMcpTools
     {
         RequireScope(McpPolicies.ReadScope);
         return Complete(_activities.ListAsync(status, kind, customerId, search, page, pageSize, HubBase(), cancellationToken), "list_activities");
+    }
+
+    [Authorize(Policy = McpPolicies.Write)]
+    [McpServerTool(Name = "create_activity", Title = "Create activity", ReadOnly = false, OpenWorld = false, Destructive = false, Idempotent = false, UseStructuredContent = true)]
+    [Description("Create any Hub activity on a customer or prospect. kind is Note, Call, Email, Meeting, Action, Task, or Brochures Needed. Omit kind only for a plain note. Use search_customers first and pass customerId. customerName works only when one record has that exact name. status defaults to New. body is required.")]
+    public Task<AgentActivityDto> CreateActivity(
+        [Description("Activity text. Required. 4000 characters or fewer.")] string body,
+        [Description("Note, Call, Email, Meeting, Action, Task, or Brochures Needed. Omit only for a plain note.")] string? kind = null,
+        [Description("AdRackHub customer or prospect id from search_customers.")] int? customerId = null,
+        [Description("Business name. Used only when customerId is omitted and exactly one record matches.")] string? customerName = null,
+        [Description("New, Working, or Done. Omit for New.")] string? status = null,
+        [Description("Due date as yyyy-MM-dd. Tasks and Brochures Needed default to today when omitted.")] string? dueDate = null,
+        CancellationToken cancellationToken = default)
+    {
+        RequireScope(McpPolicies.WriteScope);
+        var user = _http.HttpContext?.User;
+        var createdBy = user?.FindFirstValue(ClaimTypes.Email) ?? user?.Identity?.Name;
+        return Complete(_activities.CreateAsync(customerId, customerName, kind, status, dueDate, body, createdBy, HubBase(), cancellationToken), "create_activity");
     }
 
     [Authorize(Policy = McpPolicies.Read)]

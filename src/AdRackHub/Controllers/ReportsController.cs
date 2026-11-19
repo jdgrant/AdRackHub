@@ -13,6 +13,7 @@ public class ReportsController : Controller
 {
     private readonly ApplicationDbContext _context;
     private readonly RouteCustomerReportPdfGenerator _routeCustomerReportPdf;
+    private readonly RateSheetPdfGenerator _rateSheetPdf;
     private readonly BrochureLabelPdfGenerator _brochureLabelPdf;
     private readonly ToteLabelPdfGenerator _toteLabelPdf;
     private readonly BrochureWarehouseSheetService _warehouseSheet;
@@ -21,6 +22,7 @@ public class ReportsController : Controller
     public ReportsController(
         ApplicationDbContext context,
         RouteCustomerReportPdfGenerator routeCustomerReportPdf,
+        RateSheetPdfGenerator rateSheetPdf,
         BrochureLabelPdfGenerator brochureLabelPdf,
         ToteLabelPdfGenerator toteLabelPdf,
         BrochureWarehouseSheetService warehouseSheet,
@@ -28,6 +30,7 @@ public class ReportsController : Controller
     {
         _context = context;
         _routeCustomerReportPdf = routeCustomerReportPdf;
+        _rateSheetPdf = rateSheetPdf;
         _brochureLabelPdf = brochureLabelPdf;
         _toteLabelPdf = toteLabelPdf;
         _warehouseSheet = warehouseSheet;
@@ -61,6 +64,18 @@ public class ReportsController : Controller
     {
         var report = await _inventoryReport.BuildContractsWithoutInventoryAsync(cancellationToken);
         return View(report);
+    }
+
+    public async Task<IActionResult> RateSheetPdf(CancellationToken cancellationToken)
+    {
+        var pdf = await _rateSheetPdf.BuildAsync(cancellationToken);
+        return File(pdf, "application/pdf", $"Ad-Rack-rate-schedule-{DateTime.Today:yyyyMMdd}.pdf");
+    }
+
+    public async Task<IActionResult> RestAreaRateSheetPdf(CancellationToken cancellationToken)
+    {
+        var pdf = await _rateSheetPdf.BuildRestAreaAsync(cancellationToken);
+        return File(pdf, "application/pdf", $"Ad-Rack-rest-area-rate-schedule-{DateTime.Today:yyyyMMdd}.pdf");
     }
 
     public async Task<IActionResult> HotelCustomersPdf(CancellationToken cancellationToken)

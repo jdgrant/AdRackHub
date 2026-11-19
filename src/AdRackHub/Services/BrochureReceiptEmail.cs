@@ -18,9 +18,7 @@ public static class BrochureReceiptEmail
         string? sampleNote = null)
     {
         var name = string.IsNullOrWhiteSpace(customerName) ? "Customer" : customerName.Trim();
-        var subject = string.IsNullOrWhiteSpace(sampleNote)
-            ? $"We received your brochures — {name}"
-            : $"Sample brochure receipt — {name}";
+        var subject = $"Ad-Rack Brochure Receipt — {name}";
 
         var lines = new List<string>();
         if (!string.IsNullOrWhiteSpace(sampleNote))
