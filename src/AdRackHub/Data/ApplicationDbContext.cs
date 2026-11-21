@@ -30,6 +30,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<CustomerNote> CustomerNotes => Set<CustomerNote>();
     public DbSet<CustomerNoteSubNote> CustomerNoteSubNotes => Set<CustomerNoteSubNote>();
     public DbSet<CustomerTask> CustomerTasks => Set<CustomerTask>();
+    public DbSet<ContractHistoryLine> ContractHistoryLines => Set<ContractHistoryLine>();
+    public DbSet<ProfitLossHistoryLine> ProfitLossHistoryLines => Set<ProfitLossHistoryLine>();
     public DbSet<InvoiceReminderTemplate> InvoiceReminderTemplates => Set<InvoiceReminderTemplate>();
     public DbSet<InvoiceReminderTemplateRevision> InvoiceReminderTemplateRevisions => Set<InvoiceReminderTemplateRevision>();
 
@@ -276,6 +278,30 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
                 .WithMany(i => i.Lines)
                 .HasForeignKey(l => l.BillingRunInvoiceId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ProfitLossHistoryLine>(e =>
+        {
+            e.Property(line => line.Amount).HasPrecision(18, 2);
+            e.HasIndex(line => new { line.Year, line.Month, line.Section, line.Category }).IsUnique();
+            e.HasIndex(line => new { line.Year, line.Category });
+        });
+
+        modelBuilder.Entity<ContractHistoryLine>(e =>
+        {
+            e.HasIndex(line => line.CustomerId);
+            e.HasIndex(line => line.RouteId);
+            e.HasIndex(line => new { line.Year, line.Product, line.RouteId });
+            e.Property(line => line.MonthlyAmount).HasPrecision(18, 2);
+            e.Property(line => line.ContractMonthlyTotal).HasPrecision(18, 2);
+            e.HasOne(line => line.Customer)
+                .WithMany()
+                .HasForeignKey(line => line.CustomerId)
+                .OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(line => line.Route)
+                .WithMany()
+                .HasForeignKey(line => line.RouteId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<InvoiceReminderTemplate>(e =>

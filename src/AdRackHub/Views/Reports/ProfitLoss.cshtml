@@ -1,0 +1,301 @@
+@model ProfitLossRevenuePage
+@{
+    ViewData["Title"] = "Profit and loss";
+    string Money(decimal amount) => amount.ToString("C2");
+    string MoneyOrDash(bool hasAmount, decimal amount) => hasAmount ? amount.ToString("C2") : "—";
+    string SignedMoney(decimal? change) => change switch
+    {
+        null => "—",
+        0 => "$0.00",
+        > 0 => "+" + change.Value.ToString("C2"),
+        _ => change.Value.ToString("C2")
+    };
+    string Percent(decimal? ratio) => ratio switch
+    {
+        null => "",
+        _ => (ratio.Value * 100m).ToString("+0.0;-0.0;0.0") + "%"
+    };
+    string ChangeClass(decimal? change) => change switch
+    {
+        > 0 => "text-success",
+        < 0 => "text-danger",
+        _ => "text-muted"
+    };
+    string Latest(int year) => year == Model.LatestYear ? " pl-latest" : "";
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Profit and loss</h1>
+    <a asp-action="Index" class="btn btn-outline-secondary">All reports</a>
+</div>
+
+@if (Model.LineCount == 0)
+{
+    <p class="text-muted">No profit-and-loss history is loaded yet.</p>
+}
+else
+{
+    <p class="text-muted">
+        From September 2026 on. Sales come from @(Model.SourceFile ?? "the profit-and-loss file").
+        Received is Hub invoices marked Received.
+        Month over month compares receipts with the previous month in this window.
+        When a month has no uploaded sales, year over year compares those receipts with the same month's sales last year.
+    </p>
+
+    <div class="row g-3 mb-4">
+        @foreach (var summary in Model.Summaries)
+        {
+            <div class="col-md-6 col-xl-4">
+                <div class="card h-100@(summary.Year == Model.LatestYear ? " border-warning" : "")">
+                    <div class="card-body">
+                        @if (summary.HasSales)
+                        {
+                            <div class="text-muted small">@summary.Year sales@(summary.PeriodLabel is null ? "" : $" · {summary.PeriodLabel}")</div>
+                            <div class="h4 mb-1">@Money(summary.Sales)</div>
+                        }
+                        else
+                        {
+                            <div class="text-muted small">@summary.Year received@(summary.PeriodLabel is null ? "" : $" · {summary.PeriodLabel}")</div>
+                            <div class="h4 mb-1">@MoneyOrDash(summary.HasBilling, summary.Received)</div>
+                        }
+                        @if (summary.VersusPriorPercent != null || summary.VersusPriorAmount != null)
+                        {
+                            <div class="small @ChangeClass(summary.VersusPriorAmount)">
+                                @SignedMoney(summary.VersusPriorAmount)
+                                @Percent(summary.VersusPriorPercent)
+                                vs @(summary.Year - 1)@(summary.PeriodLabel is null ? "" : $" {summary.PeriodLabel}") sales
+                            </div>
+                        }
+                        @if (summary.HasSales && summary.HasBilling)
+                        {
+                            <div class="small text-muted mt-2">
+                                Received @Money(summary.Received)
+                                · @SignedMoney(summary.Received - summary.Sales) vs sales
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="table-responsive mb-4">
+        <table class="table table-sm align-middle pl-revenue mb-0">
+            <thead>
+                <tr>
+                    <th rowspan="2">Month</th>
+                    @foreach (var column in Model.Columns)
+                    {
+                        var span = 2 + (column.IncludeYoy ? 1 : 0) + (column.IncludeHub ? 1 : 0);
+                        <th colspan="@span" class="text-center pl-group@(column.Latest ? " pl-latest" : "")">@column.Year</th>
+                    }
+                </tr>
+                <tr>
+                    @foreach (var column in Model.Columns)
+                    {
+                        <th class="text-end pl-group@(column.Latest ? " pl-latest" : "")">Sales</th>
+                        <th class="text-end@(column.Latest ? " pl-latest" : "")">MoM</th>
+                        @if (column.IncludeYoy)
+                        {
+                            <th class="text-end@(column.Latest ? " pl-latest" : "")">YoY</th>
+                        }
+                        @if (column.IncludeHub)
+                        {
+                            <th class="text-end@(column.Latest ? " pl-latest" : "")">Received</th>
+                        }
+                    }
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var month in Model.Months)
+            {
+                <tr class="@(month.Month == Model.CurrentMonth ? "pl-current" : null)">
+                    <td>@month.Label</td>
+                    @foreach (var cell in month.Years)
+                    {
+                        var latest = Latest(cell.Year);
+                        <td class="text-end pl-group@(latest)">@MoneyOrDash(cell.HasSales, cell.Sales)</td>
+                        <td class="text-end @ChangeClass(cell.MomAmount)@(latest)">
+                            @if (cell.HasMom)
+                            {
+                                <div>@SignedMoney(cell.MomAmount)</div>
+                                <div class="small">@Percent(cell.MomPercent)</div>
+                            }
+                            else
+                            {
+                                <span>—</span>
+                            }
+                        </td>
+                        @if (cell.IncludeYoy)
+                        {
+                            <td class="text-end @ChangeClass(cell.YoyAmount)@(latest)">
+                                @if (cell.HasYoy)
+                                {
+                                    <div>@SignedMoney(cell.YoyAmount)</div>
+                                    <div class="small">@Percent(cell.YoyPercent)</div>
+                                    @if (cell.ComparisonLabel != null)
+                                    {
+                                        <div class="small text-muted">@cell.ComparisonLabel</div>
+                                    }
+                                }
+                                else
+                                {
+                                    <span>—</span>
+                                }
+                            </td>
+                        }
+                        @if (cell.IncludeHub)
+                        {
+                            <td class="text-end@(latest)">
+                                @if (cell.HasBilling)
+                                {
+                                    <div>@Money(cell.Received)</div>
+                                    @if (cell.HasSales)
+                                    {
+                                        <div class="small text-muted">@SignedMoney(cell.Received - cell.Sales) vs sales</div>
+                                    }
+                                }
+                                else
+                                {
+                                    <span>—</span>
+                                }
+                            </td>
+                        }
+                    }
+                </tr>
+            }
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th>@Model.Total.Label</th>
+                    @foreach (var cell in Model.Total.Years)
+                    {
+                        var latest = Latest(cell.Year);
+                        <th class="text-end pl-group@(latest)">
+                            <div>@MoneyOrDash(cell.HasSales, cell.Sales)</div>
+                            @if (cell.HasSales && cell.PeriodLabel != null)
+                            {
+                                <div class="small fw-normal text-muted">@cell.PeriodLabel</div>
+                            }
+                        </th>
+                        <th class="@(latest)"></th>
+                        @if (cell.IncludeYoy)
+                        {
+                            <th class="text-end @ChangeClass(cell.YoyAmount)@(latest)">
+                                @if (cell.HasYoy)
+                                {
+                                    <div>@SignedMoney(cell.YoyAmount)</div>
+                                    <div class="small fw-normal">@Percent(cell.YoyPercent)</div>
+                                    @if (cell.ComparisonLabel != null)
+                                    {
+                                        <div class="small fw-normal text-muted">@cell.ComparisonLabel</div>
+                                    }
+                                }
+                            </th>
+                        }
+                        @if (cell.IncludeHub)
+                        {
+                            <th class="text-end@(latest)">
+                                @if (cell.HasBilling)
+                                {
+                                    <div>@Money(cell.Received)</div>
+                                    @if (!cell.HasSales && cell.PeriodLabel != null)
+                                    {
+                                        <div class="small fw-normal text-muted">@cell.PeriodLabel</div>
+                                    }
+                                    @if (cell.HasSales)
+                                    {
+                                        <div class="small fw-normal text-muted">@SignedMoney(cell.Received - cell.Sales) vs sales</div>
+                                    }
+                                }
+                            </th>
+                        }
+                    }
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    @if (Model.BillingOnlyMonths.Count > 0)
+    {
+        <p class="text-muted small">
+            @string.Join(", ", Model.BillingOnlyMonths) have receipts and no sales line in the file. Year over year uses last year's sales for those months.
+        </p>
+    }
+    else if (!Model.Columns.Any(column => column.IncludeHub))
+    {
+        <p class="text-muted small">No received Hub invoices from September 2026 on sit beside these months yet.</p>
+    }
+
+    @if (Model.Statement.Any(row => row.Years.Any(cell => cell.HasAmount)))
+    {
+    <h2 class="h5 mt-4">Profit and loss totals</h2>
+    <div class="table-responsive">
+        <table class="table table-sm align-middle pl-revenue mb-0">
+            <thead>
+                <tr>
+                    <th>Category</th>
+                    @foreach (var year in Model.Years)
+                    {
+                        <th class="text-end pl-group@(year == Model.LatestYear ? " pl-latest" : "")">@year</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var row in Model.Statement)
+            {
+                <tr>
+                    <td>@row.Label</td>
+                    @foreach (var cell in row.Years)
+                    {
+                        <td class="text-end pl-group@(cell.Year == Model.LatestYear ? " pl-latest" : "")">
+                            <div>@MoneyOrDash(cell.HasAmount, cell.Amount)</div>
+                            @if (cell.PeriodLabel != null)
+                            {
+                                <div class="small text-muted">@cell.PeriodLabel</div>
+                            }
+                            @if (cell.HasComparison)
+                            {
+                                <div class="small @ChangeClass(cell.VersusPriorAmount)">
+                                    @SignedMoney(cell.VersusPriorAmount) @Percent(cell.VersusPriorPercent)
+                                </div>
+                            }
+                        </td>
+                    }
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    }
+}
+
+@section Styles {
+    <style>
+        .pl-revenue th,
+        .pl-revenue td {
+            white-space: nowrap;
+        }
+        .pl-revenue th:first-child,
+        .pl-revenue td:first-child {
+            position: sticky;
+            left: 0;
+            background: #fff;
+            z-index: 1;
+        }
+        .pl-revenue thead th:first-child,
+        .pl-revenue tfoot th:first-child {
+            z-index: 2;
+            background: #f8f9fa;
+        }
+        .pl-group {
+            border-left: 2px solid #dee2e6;
+        }
+        .pl-latest {
+            background: #fff8eb;
+        }
+        .pl-current td {
+            box-shadow: inset 3px 0 0 #f5a623;
+        }
+    </style>
+}

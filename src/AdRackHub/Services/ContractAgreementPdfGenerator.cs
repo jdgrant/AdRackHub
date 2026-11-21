@@ -31,12 +31,7 @@ public class ContractAgreementPdfGenerator
         var model = Build(contract);
         return Document.Create(container =>
         {
-            if (model.IncludeRestArea)
-                container.Page(page => ComposePage(page, model, RouteProduct.RestArea));
-            if (model.IncludeExits)
-                container.Page(page => ComposePage(page, model, RouteProduct.Exits));
-            if (!model.IncludeRestArea && !model.IncludeExits)
-                container.Page(page => ComposePage(page, model, RouteProduct.Exits));
+            container.Page(page => ComposePage(page, model));
         }).GeneratePdf();
     }
 
@@ -86,7 +81,7 @@ public class ContractAgreementPdfGenerator
         };
     }
 
-    private void ComposePage(PageDescriptor page, ContractAgreementPdfModel model, RouteProduct product)
+    private void ComposePage(PageDescriptor page, ContractAgreementPdfModel model)
     {
         page.Size(PageSizes.Letter);
         page.MarginLeft(50);
@@ -94,18 +89,12 @@ public class ContractAgreementPdfGenerator
         page.MarginTop(36);
         page.MarginBottom(40);
         page.DefaultTextStyle(text => text.FontSize(10).FontColor(Colors.Grey.Darken4));
-        page.Header().Element(header => ComposeHeader(header, product, model));
+        page.Header().Element(header => ComposeHeader(header, model));
         page.Content().PaddingTop(4).Column(col =>
         {
             col.Item().LineHorizontal(1).LineColor(Rule);
-            col.Item().PaddingTop(10).Element(body => DrawPreamble(body, model, product));
-            col.Item().PaddingTop(22).Element(routes =>
-            {
-                if (product == RouteProduct.RestArea)
-                    DrawRestAreaRoutes(routes, model.RestAreaLines);
-                else
-                    DrawExitRoutes(routes, model.ExitLines);
-            });
+            col.Item().PaddingTop(10).Element(body => DrawPreamble(body, model));
+            col.Item().PaddingTop(22).Element(routes => DrawRoutes(routes, model));
             col.Item().AlignRight().Width(250).PaddingTop(10).Column(totals =>
             {
                 totals.Item().Row(total =>
@@ -134,11 +123,13 @@ public class ContractAgreementPdfGenerator
         page.Footer().Element(ComposeFooter);
     }
 
-    private void ComposeHeader(IContainer container, RouteProduct product, ContractAgreementPdfModel model)
+    private void ComposeHeader(IContainer container, ContractAgreementPdfModel model)
     {
-        var subtitle = product == RouteProduct.RestArea
-            ? "Rest Area Brochure Distribution"
-            : "Hotel Brochure Distribution";
+        var subtitle = model.IncludeRestArea && model.IncludeExits
+            ? "Rest Area & Hotel Brochure Distribution"
+            : model.IncludeRestArea
+                ? "Rest Area Brochure Distribution"
+                : "Hotel Brochure Distribution";
 
         container.Row(row =>
         {
@@ -217,9 +208,13 @@ public class ContractAgreementPdfGenerator
         });
     }
 
-    private static void DrawPreamble(IContainer container, ContractAgreementPdfModel model, RouteProduct product)
+    private static void DrawPreamble(IContainer container, ContractAgreementPdfModel model)
     {
-        var spaceNoun = product == RouteProduct.RestArea ? "rest area" : "display rack";
+        var spaceNoun = model.IncludeRestArea && model.IncludeExits
+            ? "rest area or display rack"
+            : model.IncludeRestArea
+                ? "rest area"
+                : "display rack";
         container.Column(col =>
         {
             col.Spacing(10);
@@ -278,6 +273,53 @@ public class ContractAgreementPdfGenerator
         if (terms.EndsWith(phrase, StringComparison.Ordinal))
             return string.Concat(terms.AsSpan(0, terms.Length - phrase.Length), "Terms and Conditions on the next page.");
         return terms.TrimEnd() + " Terms and Conditions on the next page.";
+    }
+
+    private static void DrawRoutes(IContainer container, ContractAgreementPdfModel model)
+    {
+        var showRest = model.IncludeRestArea;
+        var showExits = model.IncludeExits || !showRest;
+        if (showRest && model.IncludeExits)
+        {
+            DrawCombinedRoutes(container, model);
+            return;
+        }
+
+        if (showRest)
+            DrawRestAreaRoutes(container, model.RestAreaLines);
+        else if (showExits)
+            DrawExitRoutes(container, model.ExitLines);
+    }
+
+    private static void DrawCombinedRoutes(IContainer container, ContractAgreementPdfModel model)
+    {
+        var lines = model.RestAreaLines.Where(line => line.Selected)
+            .Concat(model.ExitLines.Where(line => line.Selected));
+        container.Table(table =>
+        {
+            table.ColumnsDefinition(columns =>
+            {
+                columns.RelativeColumn();
+                columns.ConstantColumn(88);
+                columns.ConstantColumn(78);
+                columns.ConstantColumn(80);
+            });
+            table.Header(header =>
+            {
+                HeaderCell(header, "Items");
+                HeaderCell(header, "Type");
+                HeaderCell(header, "Locations", alignCenter: true);
+                HeaderCell(header, "Monthly", alignRight: true);
+            });
+            foreach (var line in lines)
+            {
+                var restArea = line.Product == RouteProduct.RestArea;
+                ItemNameCell(table, line.Title.Replace("\n", " ", StringComparison.Ordinal));
+                ItemValueCell(table, restArea ? "Rest area" : "Exits");
+                ItemValueCell(table, restArea ? line.LocationCount.ToString(Us) : "—", alignCenter: true);
+                ItemValueCell(table, line.MonthlyAmount.ToString("C", Us), alignRight: true);
+            }
+        });
     }
 
     private static void DrawRestAreaRoutes(IContainer container, IReadOnlyList<ContractAgreementRouteLine> lines)

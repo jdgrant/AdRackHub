@@ -23,6 +23,8 @@ public sealed class RateSheetModel
 {
     public DateOnly Effective { get; init; }
     public string ServiceLabel { get; init; } = "HOTEL BROCHURE DISTRIBUTION";
+    public string NameHeader { get; init; } = "Route";
+    public bool ShowCount { get; init; } = true;
     public string CountHeader { get; init; } = "Racks**";
     public float CountColumnWidth { get; init; } = 58;
     public string PrimaryRateHeader { get; init; } = "Annual / mo*";
@@ -72,14 +74,13 @@ public class RateSheetPdfGenerator
     private static readonly string[] HotelNotes =
     {
         "* 5% discount if paid annually. Suggested prices only for new customers or a current customer adding a route. Customers may have been in the service for many years and may be paying lower rates. Prices may differ because of multiple routes contracted by the customer, the number of available pockets in the route, and seasonal rates.",
-        "** Number of racks in a route is subject to change.",
-        "*** One of the 2 TN locations on the I-65 route is on I-24. We do not sell it now as I-65/24, just I-65. This route used to have several more racks on I-24, so we sold it as I-65 & I-24."
+        "** Number of racks in a route is subject to change."
     };
 
     private static readonly string[] RestAreaNotes =
     {
         $"* Monthly rate per location. {Money(RestAreaMonthlyRate(1))} for 1–3 locations, {Money(RestAreaMonthlyRate(4))} for 4–5 locations, and {Money(RestAreaMonthlyRate(6))} for 6 or more. Suggested price for new customers or a current customer adding the route. Customers may have been in the service for many years and may be paying lower rates.",
-        $"** Number of locations is subject to change. A double pocket increases the rate to {Money(IncreasedQuote(55m))}–{Money(IncreasedQuote(65m))} per pocket, depending on how many locations.",
+        $"Number of locations is subject to change. A double pocket increases the rate to {Money(IncreasedQuote(55m))}–{Money(IncreasedQuote(65m))} per pocket, depending on how many locations.",
         "Kentucky rest-area distribution is contingent upon Ad-Rack maintaining authorization from the Commonwealth of Kentucky. If that authorization ends, Ad-Rack may provide substitute distribution, a credit, or a prorated refund for services not provided."
     };
 
@@ -147,8 +148,7 @@ public class RateSheetPdfGenerator
                 var ky = stops.Count(stop => NormalizeState(stop.State) == "KY");
                 var tn = stops.Count(stop => NormalizeState(stop.State) == "TN");
                 var label = spec.Key == "I-75" ? "I-75" : "I-65";
-                var marker = spec.Key == "I-65 & 24" ? "***" : "";
-                geography.Add($"{label}: {racks} total: {ky} in KY & {tn} in TN{marker}");
+                geography.Add($"{label}: {racks} total: {ky} in KY & {tn} in TN");
             }
         }
 
@@ -176,47 +176,51 @@ public class RateSheetPdfGenerator
             .Where(route => route.Status == RouteStatus.Active)
             .ToListAsync(cancellationToken);
 
-        var rows = new List<RateSheetRow>();
+        var stops = new List<(int Number, int Step, string Name, decimal Price)>();
         foreach (var spec in RestAreaSchedule)
         {
             var route = routes.FirstOrDefault(candidate =>
                 candidate.Product == RouteProduct.RestArea
                 && RouteNaming.NamesMatch(candidate.RouteName, spec.Key));
-            var stops = route?.Stops.Where(stop => stop.Status == StopStatus.Active).ToList()
+            var routeStops = route?.Stops.Where(stop => stop.Status == StopStatus.Active).ToList()
                 ?? new List<Stop>();
-            var locations = stops.Count > 0 ? stops.Count : spec.FallbackRacks;
-            var monthly = RestAreaMonthlyRate(locations);
-            var numbers = stops
-                .Select(stop => LocationNumber(stop.StopName))
-                .Where(number => number.HasValue)
-                .Select(number => number!.Value)
-                .Distinct()
-                .OrderBy(number => number)
-                .ToList();
-            var detail = numbers.Count > 0
-                ? $"Locations {FormatNumberList(numbers)}. {spec.Detail}"
-                : spec.Detail;
-            rows.Add(new RateSheetRow
+            if (routeStops.Count == 0)
+                continue;
+
+            var perStop = RestAreaMonthlyRate(routeStops.Count);
+            foreach (var stop in routeStops)
             {
-                Name = spec.Name,
-                Detail = detail,
-                Racks = locations,
-                AnnualRate = monthly,
-                ShortTermRate = 0
-            });
+                stops.Add((
+                    LocationNumber(stop.StopName) ?? int.MaxValue,
+                    stop.StepNumber ?? int.MaxValue,
+                    stop.StopName.Trim(),
+                    perStop));
+            }
         }
+
+        var rows = stops
+            .OrderBy(stop => stop.Number)
+            .ThenBy(stop => stop.Step)
+            .ThenBy(stop => stop.Name)
+            .Select(stop => new RateSheetRow
+            {
+                Name = stop.Name,
+                Racks = 1,
+                AnnualRate = stop.Price,
+                ShortTermRate = 0
+            })
+            .ToList();
 
         return new RateSheetModel
         {
             Effective = DateOnly.FromDateTime(DateTime.Today),
             ServiceLabel = "REST AREA BROCHURE DISTRIBUTION",
-            CountHeader = "Locations**",
-            CountColumnWidth = 78,
-            PrimaryRateHeader = "Monthly*",
+            NameHeader = "Stop",
+            ShowCount = false,
+            PrimaryRateHeader = "Per stop*",
             ShowShortTermRate = false,
             MapTitle = "REST AREA MAP",
             MapPath = _restAreaMapPath,
-            MapOnFirstPage = true,
             Rows = rows,
             Notes = RestAreaNotes
         };
@@ -314,7 +318,8 @@ public class RateSheetPdfGenerator
             table.ColumnsDefinition(columns =>
             {
                 columns.RelativeColumn();
-                columns.ConstantColumn(model.CountColumnWidth);
+                if (model.ShowCount)
+                    columns.ConstantColumn(model.CountColumnWidth);
                 columns.ConstantColumn(88);
                 if (model.ShowShortTermRate)
                     columns.ConstantColumn(88);
@@ -322,8 +327,9 @@ public class RateSheetPdfGenerator
 
             table.Header(header =>
             {
-                HeaderCell(header, "Route", alignRight: false);
-                HeaderCell(header, model.CountHeader, alignRight: false, center: true);
+                HeaderCell(header, model.NameHeader, alignRight: false);
+                if (model.ShowCount)
+                    HeaderCell(header, model.CountHeader, alignRight: false, center: true);
                 HeaderCell(header, model.PrimaryRateHeader, alignRight: true);
                 if (model.ShowShortTermRate)
                     HeaderCell(header, "4-6 mo*", alignRight: true);
@@ -338,8 +344,11 @@ public class RateSheetPdfGenerator
                     if (!string.IsNullOrWhiteSpace(row.Detail))
                         item.Item().Text(row.Detail).FontSize(8.5f).FontColor(Muted);
                 });
-                table.Cell().BorderBottom(1).BorderColor(Line).PaddingVertical(5).PaddingHorizontal(8)
-                    .AlignMiddle().Text(row.Racks.ToString("N0", Us)).AlignCenter();
+                if (model.ShowCount)
+                {
+                    table.Cell().BorderBottom(1).BorderColor(Line).PaddingVertical(5).PaddingHorizontal(8)
+                        .AlignMiddle().Text(row.Racks.ToString("N0", Us)).AlignCenter();
+                }
                 table.Cell().BorderBottom(1).BorderColor(Line).PaddingVertical(5).PaddingHorizontal(8)
                     .AlignMiddle().Text(Money(row.AnnualRate)).AlignRight();
                 if (model.ShowShortTermRate)
@@ -381,17 +390,6 @@ public class RateSheetPdfGenerator
         if (index == 0 || !int.TryParse(name[..index], out var number))
             return null;
         return number;
-    }
-
-    private static string FormatNumberList(IReadOnlyList<int> numbers)
-    {
-        if (numbers.Count == 1)
-            return numbers[0].ToString(Us);
-        if (numbers.Count == 2)
-            return $"{numbers[0].ToString(Us)} and {numbers[1].ToString(Us)}";
-
-        return string.Join(", ", numbers.Take(numbers.Count - 1).Select(number => number.ToString(Us)))
-            + $" and {numbers[^1].ToString(Us)}";
     }
 
     private void ComposeHeader(IContainer container, string title)

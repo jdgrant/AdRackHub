@@ -236,3 +236,139 @@ public class BrochureLabelClientRow
     public List<int> RouteIds { get; set; } = new();
     public List<string> RouteNames { get; set; } = new();
 }
+
+public class ContractHistoryKpiColumn
+{
+    public int Key { get; set; }
+    public string Label { get; set; } = string.Empty;
+    public bool Debug { get; set; }
+}
+
+public class ContractHistoryKpiPage
+{
+    public string Product { get; set; } = "all";
+    public List<int> Years { get; set; } = new();
+    public List<ContractHistoryKpiColumn> Columns { get; set; } = new();
+    public int LatestYear { get; set; }
+    public int? PriorYear { get; set; }
+    public List<ContractHistoryKpiMonthRow> Months { get; set; } = new();
+    public ContractHistoryKpiMonthRow YearTotal { get; set; } = new();
+    public List<ContractHistoryKpiRouteRow> Routes { get; set; } = new();
+    public int LinesWithoutDates { get; set; }
+
+    public bool IsHotel => Product == "hotel";
+    public bool IsRest => Product == "rest";
+}
+
+public class ContractHistoryKpiRouteRow
+{
+    public string RouteName { get; set; } = string.Empty;
+    public List<ContractHistoryKpiMonthRow> Months { get; set; } = new();
+    public ContractHistoryKpiMonthRow YearTotal { get; set; } = new();
+}
+
+public class ContractHistoryKpiMonthRow
+{
+    public int Month { get; set; }
+    public string Label { get; set; } = string.Empty;
+    public List<ContractHistoryKpiCell> Years { get; set; } = new();
+    public int? ClientChange { get; set; }
+    public decimal? RevenueChange { get; set; }
+}
+
+public class ContractHistoryKpiCell
+{
+    public int Clients { get; set; }
+    public decimal Revenue { get; set; }
+}
+
+public class ContractHistoryKpiTable
+{
+    public List<int> Years { get; set; } = new();
+    public List<ContractHistoryKpiColumn> Columns { get; set; } = new();
+    public int LatestYear { get; set; }
+    public int? PriorYear { get; set; }
+    public int CurrentMonth { get; set; }
+    public List<ContractHistoryKpiMonthRow> Months { get; set; } = new();
+    public ContractHistoryKpiMonthRow YearTotal { get; set; } = new();
+}
+
+public class ProfitLossRevenuePage
+{
+    public string? SourceFile { get; set; }
+    public int LineCount { get; set; }
+    public List<int> Years { get; set; } = new();
+    public List<ProfitLossRevenueColumn> Columns { get; set; } = new();
+    public int LatestYear { get; set; }
+    public int CurrentMonth { get; set; }
+    public List<ProfitLossYearSummary> Summaries { get; set; } = new();
+    public List<ProfitLossRevenueMonthRow> Months { get; set; } = new();
+    public ProfitLossRevenueMonthRow Total { get; set; } = new();
+    public List<string> BillingOnlyMonths { get; set; } = new();
+    public List<ProfitLossStatementRow> Statement { get; set; } = new();
+}
+
+public class ProfitLossRevenueColumn
+{
+    public int Year { get; set; }
+    public bool Latest { get; set; }
+    public bool IncludeYoy { get; set; }
+    public bool IncludeHub { get; set; }
+}
+
+public class ProfitLossYearSummary
+{
+    public int Year { get; set; }
+    public bool HasSales { get; set; }
+    public decimal Sales { get; set; }
+    public string? PeriodLabel { get; set; }
+    public decimal? VersusPriorAmount { get; set; }
+    public decimal? VersusPriorPercent { get; set; }
+    public bool HasBilling { get; set; }
+    public decimal Billed { get; set; }
+    public decimal Received { get; set; }
+}
+
+public class ProfitLossRevenueMonthRow
+{
+    public int Month { get; set; }
+    public string Label { get; set; } = string.Empty;
+    public List<ProfitLossRevenueYearCell> Years { get; set; } = new();
+}
+
+public class ProfitLossRevenueYearCell
+{
+    public int Year { get; set; }
+    public bool IncludeYoy { get; set; }
+    public bool IncludeHub { get; set; }
+    public bool HasSales { get; set; }
+    public decimal Sales { get; set; }
+    public bool HasMom { get; set; }
+    public decimal? MomAmount { get; set; }
+    public decimal? MomPercent { get; set; }
+    public bool HasYoy { get; set; }
+    public decimal? YoyAmount { get; set; }
+    public decimal? YoyPercent { get; set; }
+    public string? PeriodLabel { get; set; }
+    public string? ComparisonLabel { get; set; }
+    public bool HasBilling { get; set; }
+    public decimal Billed { get; set; }
+    public decimal Received { get; set; }
+}
+
+public class ProfitLossStatementRow
+{
+    public string Label { get; set; } = string.Empty;
+    public List<ProfitLossStatementCell> Years { get; set; } = new();
+}
+
+public class ProfitLossStatementCell
+{
+    public int Year { get; set; }
+    public bool HasAmount { get; set; }
+    public decimal Amount { get; set; }
+    public string? PeriodLabel { get; set; }
+    public bool HasComparison { get; set; }
+    public decimal? VersusPriorAmount { get; set; }
+    public decimal? VersusPriorPercent { get; set; }
+}

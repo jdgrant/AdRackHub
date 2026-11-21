@@ -1,0 +1,84 @@
+@model ContractHistoryKpiPage
+@{
+    ViewData["Title"] = "Contract history";
+    var currentMonth = DateTime.Today.Year == Model.LatestYear ? DateTime.Today.Month : 0;
+    ContractHistoryKpiTable Table(List<ContractHistoryKpiMonthRow> months, ContractHistoryKpiMonthRow yearTotal) => new()
+    {
+        Years = Model.Years,
+        Columns = Model.Columns,
+        LatestYear = Model.LatestYear,
+        PriorYear = Model.PriorYear,
+        CurrentMonth = currentMonth,
+        Months = months,
+        YearTotal = yearTotal
+    };
+}
+
+<div class="page-header">
+    <h1 class="h2 mb-0">Contract history</h1>
+    <a asp-action="Index" class="btn btn-outline-secondary">All reports</a>
+</div>
+
+<p class="text-muted">Each row is a month. The count is clients, and the amount under it is that month’s revenue. 2026 Hub uses the contracts in the Hub. A Hub contract with no end date is counted as running. 2026 archive uses the scanned 2026 contracts. @Model.LatestYear is compared with @(Model.PriorYear?.ToString() ?? "the year before").</p>
+
+<ul class="nav nav-pills gap-2 mb-4">
+    <li class="nav-item">
+        <a class="nav-link@(!Model.IsHotel && !Model.IsRest ? " active" : "")"
+           asp-action="History" asp-route-product="all">All routes</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link@(Model.IsHotel ? " active" : "")"
+           asp-action="History" asp-route-product="hotel">Hotels</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link@(Model.IsRest ? " active" : "")"
+           asp-action="History" asp-route-product="rest">Rest areas</a>
+    </li>
+</ul>
+
+@if (Model.Years.Count == 0)
+{
+    <p class="text-muted">No contract history to compare.</p>
+}
+else
+{
+    <h2 class="h5">All routes</h2>
+    <partial name="_HistoryKpiTable" model="@Table(Model.Months, Model.YearTotal)" />
+
+    @foreach (var route in Model.Routes)
+    {
+        <h2 class="h5 mt-4">@route.RouteName</h2>
+        <partial name="_HistoryKpiTable" model="@Table(route.Months, route.YearTotal)" />
+    }
+}
+
+@if (Model.LinesWithoutDates > 0)
+{
+    <p class="text-muted small mt-3">@Model.LinesWithoutDates contract rows have no usable start and end date, so they are left out.</p>
+}
+
+@section Styles {
+    <style>
+        .history-kpi th:first-child,
+        .history-kpi td:first-child {
+            position: sticky;
+            left: 0;
+            background: #fff;
+            z-index: 1;
+        }
+        .history-kpi thead th:first-child,
+        .history-kpi tfoot th:first-child {
+            z-index: 2;
+            background: #f8f9fa;
+        }
+        .history-kpi-latest {
+            background: #fff8eb;
+        }
+        .history-kpi-debug {
+            background: #f4f7f4;
+        }
+        .history-kpi-current td {
+            box-shadow: inset 3px 0 0 #f5a623;
+        }
+    </style>
+}

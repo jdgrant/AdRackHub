@@ -11,6 +11,24 @@
     <div class="col-md-6 col-xl-4">
         <div class="card h-100">
             <div class="card-body d-flex flex-column">
+                <h2 class="h5">Contract history</h2>
+                <p class="text-muted small flex-grow-1">Clients and revenue each month, year over year. 2026 and 2027 use the contracts already in the Hub.</p>
+                <a asp-action="History" class="btn btn-outline-primary">Open report</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-4">
+        <div class="card h-100">
+            <div class="card-body d-flex flex-column">
+                <h2 class="h5">Profit and loss</h2>
+                <p class="text-muted small flex-grow-1">From September 2026 on. Uploaded sales beside Hub receipts, with the same month last year.</p>
+                <a asp-action="ProfitLoss" class="btn btn-outline-primary">Open report</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 col-xl-4">
+        <div class="card h-100">
+            <div class="card-body d-flex flex-column">
                 <h2 class="h5">Hotel rate schedule</h2>
                 <p class="text-muted small flex-grow-1">Hotel routes, rack counts, and the route map, laid out like an invoice. Each rate is the 4–6 month list price plus 3%, rounded to the nearest dollar. A 5% discount applies if paid annually.</p>
                 <a asp-action="RateSheetPdf" class="btn btn-outline-primary">Download PDF</a>
@@ -21,7 +39,7 @@
         <div class="card h-100">
             <div class="card-body d-flex flex-column">
                 <h2 class="h5">Rest area rate schedule</h2>
-                <p class="text-muted small flex-grow-1">Rest area routes, location counts, and the Kentucky map, laid out like an invoice. Each rate is 3% above the current per-location quote, rounded to the nearest dollar.</p>
+                <p class="text-muted small flex-grow-1">Each rest area stop and its monthly per-stop price, plus the Kentucky map. The price follows the per-location quote, 3% higher and rounded to the nearest dollar.</p>
                 <a asp-action="RestAreaRateSheetPdf" class="btn btn-outline-primary">Download PDF</a>
             </div>
         </div>

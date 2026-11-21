@@ -140,6 +140,10 @@ builder.Services.AddScoped<HighValueProspectProximityService>();
         builder.Services.AddScoped<BrochureWarehouseSheetService>();
         builder.Services.AddScoped<BrochureInventoryReportService>();
 builder.Services.AddScoped<Sept2026ContractImportService>();
+builder.Services.AddScoped<ContractHistoryImportService>();
+builder.Services.AddScoped<ContractHistoryKpiService>();
+builder.Services.AddScoped<ProfitLossHistoryImportService>();
+builder.Services.AddScoped<ProfitLossRevenueReportService>();
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
 {
     options.ValueCountLimit = 16384;
@@ -1082,6 +1086,26 @@ using (var scope = app.Services.CreateScope())
     if (args.Contains("--import-central-oh"))
     {
         await ImportRouteAsync(context, stopImportService, app.Environment.ContentRootPath, "central-oh");
+        return;
+    }
+
+    if (args.Contains("--import-contract-history"))
+    {
+        var historyImport = scope.ServiceProvider.GetRequiredService<ContractHistoryImportService>();
+        var history = await historyImport.ReplaceFromWorkbookAsync(app.Environment.ContentRootPath);
+        Console.WriteLine(
+            $"Imported {history.Imported} contract history rows. " +
+            $"{history.WithCustomer} linked to a customer. Skipped {history.Skipped}.");
+        return;
+    }
+
+    if (args.Contains("--import-profit-loss"))
+    {
+        var profitLossImport = scope.ServiceProvider.GetRequiredService<ProfitLossHistoryImportService>();
+        var profitLoss = await profitLossImport.ReplaceFromWorkbookAsync(app.Environment.ContentRootPath);
+        Console.WriteLine(
+            $"Imported {profitLoss.Lines} profit-and-loss lines " +
+            $"across {profitLoss.Years} years and {profitLoss.Months} months.");
         return;
     }
 

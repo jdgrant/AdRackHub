@@ -18,6 +18,8 @@ public class ReportsController : Controller
     private readonly ToteLabelPdfGenerator _toteLabelPdf;
     private readonly BrochureWarehouseSheetService _warehouseSheet;
     private readonly BrochureInventoryReportService _inventoryReport;
+    private readonly ContractHistoryKpiService _historyKpi;
+    private readonly ProfitLossRevenueReportService _profitLoss;
 
     public ReportsController(
         ApplicationDbContext context,
@@ -26,7 +28,9 @@ public class ReportsController : Controller
         BrochureLabelPdfGenerator brochureLabelPdf,
         ToteLabelPdfGenerator toteLabelPdf,
         BrochureWarehouseSheetService warehouseSheet,
-        BrochureInventoryReportService inventoryReport)
+        BrochureInventoryReportService inventoryReport,
+        ContractHistoryKpiService historyKpi,
+        ProfitLossRevenueReportService profitLoss)
     {
         _context = context;
         _routeCustomerReportPdf = routeCustomerReportPdf;
@@ -35,6 +39,8 @@ public class ReportsController : Controller
         _toteLabelPdf = toteLabelPdf;
         _warehouseSheet = warehouseSheet;
         _inventoryReport = inventoryReport;
+        _historyKpi = historyKpi;
+        _profitLoss = profitLoss;
     }
 
     public async Task<IActionResult> Index(CancellationToken cancellationToken)
@@ -57,6 +63,18 @@ public class ReportsController : Controller
     public async Task<IActionResult> InventoryByRoute(CancellationToken cancellationToken)
     {
         var report = await _inventoryReport.BuildByRouteAsync(cancellationToken);
+        return View(report);
+    }
+
+    public async Task<IActionResult> History(string? product, CancellationToken cancellationToken)
+    {
+        var report = await _historyKpi.BuildAsync(product, cancellationToken);
+        return View(report);
+    }
+
+    public async Task<IActionResult> ProfitLoss(CancellationToken cancellationToken)
+    {
+        var report = await _profitLoss.BuildAsync(cancellationToken);
         return View(report);
     }
 

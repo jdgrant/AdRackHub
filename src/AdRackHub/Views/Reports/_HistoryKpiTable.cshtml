@@ -1,0 +1,90 @@
+@model ContractHistoryKpiTable
+@{
+    string Count(int count) => count == 0 ? "—" : count.ToString();
+    string Money(decimal amount) => amount == 0 ? "—" : amount.ToString("C0");
+    string SignedCount(int? change) => change switch
+    {
+        null or 0 => change == 0 ? "0" : "—",
+        > 0 => $"+{change}",
+        _ => change.Value.ToString()
+    };
+    string SignedMoney(decimal? change) => change switch
+    {
+        null or 0 => change == 0 ? "$0" : "",
+        > 0 => $"+{change:C0}",
+        _ => change.Value.ToString("C0")
+    };
+    string ChangeClass(int? clients) => clients switch
+    {
+        > 0 => "text-success",
+        < 0 => "text-danger",
+        _ => "text-muted"
+    };
+    var compareLabel = Model.PriorYear is int prior ? $"{Model.LatestYear} vs {prior}" : "vs last year";
+}
+
+<div class="table-responsive mb-2">
+    <table class="table table-sm align-middle history-kpi mb-0">
+        <thead>
+            <tr>
+                <th>Month</th>
+                @foreach (var column in Model.Columns)
+                {
+                    var css = column.Debug ? " history-kpi-debug" : column.Key == Model.LatestYear ? " history-kpi-latest" : "";
+                    <th class="text-end@(css)">@column.Label</th>
+                }
+                @if (Model.PriorYear != null)
+                {
+                    <th class="text-end">@compareLabel</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var month in Model.Months)
+        {
+            <tr class="@(month.Month == Model.CurrentMonth ? "history-kpi-current" : null)">
+                <td>@month.Label</td>
+                @for (var index = 0; index < month.Years.Count; index++)
+                {
+                    var cell = month.Years[index];
+                    var column = Model.Columns[index];
+                    var css = column.Debug ? " history-kpi-debug" : column.Key == Model.LatestYear ? " history-kpi-latest" : "";
+                    <td class="text-end@(css)">
+                        <div>@Count(cell.Clients)</div>
+                        <div class="small text-muted">@Money(cell.Revenue)</div>
+                    </td>
+                }
+                @if (Model.PriorYear != null)
+                {
+                    <td class="text-end @ChangeClass(month.ClientChange)">
+                        <div>@SignedCount(month.ClientChange)</div>
+                        <div class="small">@SignedMoney(month.RevenueChange)</div>
+                    </td>
+                }
+            </tr>
+        }
+        </tbody>
+        <tfoot>
+            <tr>
+                <th>Year</th>
+                @for (var index = 0; index < Model.YearTotal.Years.Count; index++)
+                {
+                    var cell = Model.YearTotal.Years[index];
+                    var column = Model.Columns[index];
+                    var css = column.Debug ? " history-kpi-debug" : column.Key == Model.LatestYear ? " history-kpi-latest" : "";
+                    <th class="text-end@(css)">
+                        <div>@Count(cell.Clients)</div>
+                        <div class="small">@Money(cell.Revenue)</div>
+                    </th>
+                }
+                @if (Model.PriorYear != null)
+                {
+                    <th class="text-end @ChangeClass(Model.YearTotal.ClientChange)">
+                        <div>@SignedCount(Model.YearTotal.ClientChange)</div>
+                        <div class="small">@SignedMoney(Model.YearTotal.RevenueChange)</div>
+                    </th>
+                }
+            </tr>
+        </tfoot>
+    </table>
+</div>

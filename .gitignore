@@ -35,3 +35,4 @@ src/AdRackHub/App_Data/mcp-oauth-store.json
 src/AdRackHub/Data/Scans/Batch-*/
 Data/Uploads/
 Data/Scans/
+src/AdRackHub/Data/Imports/.contract-ocr-cache.json
