@@ -105,7 +105,7 @@ public class McpOAuthController : Controller
         {
             result = await _oauth.ExchangeAuthorizationCodeAsync(
                 form["code"], form["client_id"], form["redirect_uri"], form["code_verifier"], form["resource"],
-                clientAuthenticated, cancellationToken);
+                clientAuthenticated, Loopback(), cancellationToken);
         }
         else if (grant == "refresh_token")
         {
@@ -139,7 +139,7 @@ public class McpOAuthController : Controller
         try
         {
             document = await JsonDocument.ParseAsync(Request.Body, cancellationToken: cancellationToken);
-            var result = _oauth.Register(document.RootElement, Loopback());
+            var result = _oauth.Register(document.RootElement);
             if (!result.Succeeded || result.Client == null)
                 return OAuthError(result.Error ?? "invalid_client_metadata", result.Description ?? "Registration failed.");
 

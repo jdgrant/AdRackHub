@@ -71,6 +71,7 @@ builder.Services.PostConfigure<MailgunOptions>(options =>
 });
 builder.Services.Configure<WaveSyncOptions>(builder.Configuration.GetSection(WaveSyncOptions.SectionName));
 builder.Services.Configure<AgentApiOptions>(builder.Configuration.GetSection(AgentApiOptions.SectionName));
+builder.Services.Configure<McpOAuthOptions>(builder.Configuration.GetSection(McpOAuthOptions.SectionName));
 builder.Services.PostConfigure<AgentApiOptions>(options =>
 {
     if (!string.IsNullOrWhiteSpace(options.ApiKey))

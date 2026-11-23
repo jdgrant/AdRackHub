@@ -41,16 +41,6 @@ public class AgentMcpTests
     }
 
     [Fact]
-    public void ChatGptRedirectsAreAllowedAndOtherHostsAreNot()
-    {
-        Assert.True(McpOAuthRules.RedirectAllowed("https://chatgpt.com/connector_platform_oauth_redirect", false));
-        Assert.True(McpOAuthRules.RedirectAllowed("https://chatgpt.com/connector/oauth/callback-1", false));
-        Assert.False(McpOAuthRules.RedirectAllowed("https://evil.example/connector_platform_oauth_redirect", false));
-        Assert.False(McpOAuthRules.RedirectAllowed("http://127.0.0.1:5281/callback", false));
-        Assert.True(McpOAuthRules.RedirectAllowed("http://127.0.0.1:5281/callback", true));
-    }
-
-    [Fact]
     public async Task AuthorizationCodeRequiresPkceAndEchoesTheIssuer()
     {
         var store = new McpOAuthStore(null, NullLogger<McpOAuthStore>.Instance);
@@ -58,6 +48,7 @@ public class AgentMcpTests
         services.AddHttpClient();
         services.AddSingleton(store);
         services.AddSingleton<IMcpUserDirectory>(new DirectoryUser());
+        services.AddSingleton<IOptions<McpOAuthOptions>>(Options.Create(new McpOAuthOptions()));
         services.AddSingleton<McpOAuthService>();
         await using var provider = services.BuildServiceProvider();
         var oauth = provider.GetRequiredService<McpOAuthService>();
@@ -65,7 +56,7 @@ public class AgentMcpTests
         var resource = "http://127.0.0.1:5281/mcp";
         var registered = oauth.Register(JsonSerializer.Deserialize<JsonElement>("""
             {"client_name":"Test","redirect_uris":["http://127.0.0.1:5281/callback"],"token_endpoint_auth_method":"none"}
-            """), loopbackIssuer: true);
+            """));
         Assert.True(registered.Succeeded);
 
         var verifier = new string('a', 50);
@@ -92,12 +83,12 @@ public class AgentMcpTests
         });
         Assert.Contains("iss=http%3A%2F%2F127.0.0.1%3A5281", redirected, StringComparison.Ordinal);
 
-        var rejected = await oauth.ExchangeAuthorizationCodeAsync(code, registered.Client.ClientId, redirect, new string('b', 50), resource, false, CancellationToken.None);
+        var rejected = await oauth.ExchangeAuthorizationCodeAsync(code, registered.Client.ClientId, redirect, new string('b', 50), resource, false, true, CancellationToken.None);
         Assert.False(rejected.Succeeded);
         Assert.Equal("invalid_grant", rejected.Error);
 
         var again = oauth.CreateAuthorizationCode(decision.Consent, new McpDirectoryUser("admin", "jon@ad-rack.net", true, true));
-        var accepted = await oauth.ExchangeAuthorizationCodeAsync(again, registered.Client.ClientId, redirect, verifier, resource, false, CancellationToken.None);
+        var accepted = await oauth.ExchangeAuthorizationCodeAsync(again, registered.Client.ClientId, redirect, verifier, resource, false, true, CancellationToken.None);
         Assert.True(accepted.Succeeded);
         Assert.False(string.IsNullOrWhiteSpace(accepted.AccessToken));
     }

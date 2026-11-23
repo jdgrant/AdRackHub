@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
 using AdRackHub.ViewModels;
+using Microsoft.Extensions.Options;
 
 namespace AdRackHub.Services;
 
@@ -14,19 +15,27 @@ public sealed class McpOAuthService
     private readonly IHttpClientFactory _http;
     private readonly IMcpUserDirectory _users;
     private readonly ILogger<McpOAuthService> _logger;
+    private readonly McpOAuthOptions _options;
     private readonly Dictionary<string, (DateTimeOffset Expires, McpRegisteredClient Client)> _metadataCache = new();
 
     public McpOAuthService(
         McpOAuthStore store,
         IHttpClientFactory http,
         IMcpUserDirectory users,
-        ILogger<McpOAuthService> logger)
+        ILogger<McpOAuthService> logger,
+        IOptions<McpOAuthOptions> options)
     {
         _store = store;
         _http = http;
         _users = users;
         _logger = logger;
+        _options = options.Value;
     }
+
+    private IReadOnlyList<string> RedirectPrefixes =>
+        _options.AllowedRedirectUriPrefixes is { Length: > 0 }
+            ? _options.AllowedRedirectUriPrefixes
+            : McpOAuthRules.DefaultRedirectUriPrefixes;
 
     public async Task<McpAuthorizationDecision> ValidateAuthorizationAsync(
         McpAuthorizationRequest request,
@@ -39,12 +48,19 @@ public sealed class McpOAuthService
         if (string.IsNullOrWhiteSpace(request.ClientId) || request.ClientId.Length > 512)
             return McpAuthorizationDecision.PageError("client_id is missing.");
 
-        if (!McpOAuthRules.RedirectAllowed(request.RedirectUri, loopbackIssuer))
-            return McpAuthorizationDecision.PageError("redirect_uri is not an allowed ChatGPT callback.");
+        if (!McpOAuthRules.RedirectAllowed(request.RedirectUri, RedirectPrefixes))
+        {
+            LogRejectedRedirect(request.RedirectUri, _store.FindClient(request.ClientId)?.ClientName);
+            return McpAuthorizationDecision.PageError("redirect_uri is not allowed.");
+        }
 
         var client = await ResolveClientAsync(request.ClientId, loopbackIssuer, cancellationToken);
         if (client == null || !client.RedirectUris.Contains(request.RedirectUri, StringComparer.Ordinal))
-            return McpAuthorizationDecision.PageError("This ChatGPT connection is not registered for that callback.");
+        {
+            if (client != null)
+                LogRejectedRedirect(request.RedirectUri, client.ClientName);
+            return McpAuthorizationDecision.PageError("This client is not registered for that callback.");
+        }
 
         if (!string.Equals(request.CodeChallengeMethod, "S256", StringComparison.Ordinal)
             || string.IsNullOrWhiteSpace(request.CodeChallenge)
@@ -101,6 +117,7 @@ public sealed class McpOAuthService
         string? codeVerifier,
         string? resource,
         bool clientAuthenticated,
+        bool loopbackIssuer,
         CancellationToken cancellationToken)
     {
         if (clientAuthenticated)
@@ -109,14 +126,32 @@ public sealed class McpOAuthService
         if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(redirectUri))
             return McpTokenResult.Failed("invalid_request", "code, client_id, and redirect_uri are required.");
 
+        if (!McpOAuthRules.RedirectAllowed(redirectUri, RedirectPrefixes))
+        {
+            LogRejectedRedirect(redirectUri, _store.FindClient(clientId)?.ClientName);
+            return McpTokenResult.Failed("invalid_grant", "redirect_uri is not allowed.");
+        }
+
         var stored = _store.TakeAuthorizationCode(code);
         if (stored == null
             || !string.Equals(stored.ClientId, clientId, StringComparison.Ordinal)
-            || !string.Equals(stored.RedirectUri, redirectUri, StringComparison.Ordinal)
             || !string.Equals(stored.Resource, resource, StringComparison.Ordinal))
         {
             _logger.LogInformation("MCP token request rejected: invalid_grant.");
             return McpTokenResult.Failed("invalid_grant", "The authorization code is invalid or expired.");
+        }
+
+        if (!string.Equals(stored.RedirectUri, redirectUri, StringComparison.Ordinal))
+        {
+            LogRejectedRedirect(redirectUri, _store.FindClient(clientId)?.ClientName);
+            return McpTokenResult.Failed("invalid_grant", "redirect_uri does not match the authorization request.");
+        }
+
+        var registered = await ResolveClientAsync(clientId, loopbackIssuer, cancellationToken);
+        if (registered == null || !registered.RedirectUris.Contains(redirectUri, StringComparer.Ordinal))
+        {
+            LogRejectedRedirect(redirectUri, registered?.ClientName);
+            return McpTokenResult.Failed("invalid_grant", "redirect_uri does not match the registered client.");
         }
 
         if (!McpOAuthStore.PkceMatches(codeVerifier ?? "", stored.CodeChallenge))
@@ -170,7 +205,7 @@ public sealed class McpOAuthService
         return new McpAccessPrincipal(token.UserId, token.Email, token.EmailVerified, token.Scope);
     }
 
-    public McpRegistrationResult Register(JsonElement body, bool loopbackIssuer)
+    public McpRegistrationResult Register(JsonElement body)
     {
         if (body.ValueKind != JsonValueKind.Object)
             return McpRegistrationResult.Failed("invalid_client_metadata", "Registration body must be a JSON object.");
@@ -182,13 +217,19 @@ public sealed class McpOAuthService
         if (!TryStringArray(body, "redirect_uris", out var redirects) || redirects.Count == 0)
             return McpRegistrationResult.Failed("invalid_redirect_uri", "redirect_uris must list at least one callback.");
 
-        if (redirects.Any(uri => !McpOAuthRules.RedirectAllowed(uri, loopbackIssuer)))
-            return McpRegistrationResult.Failed("invalid_redirect_uri", "A redirect URI is not an allowed ChatGPT callback.");
+        var clientName = Trim(StringValue(body, "client_name"), 120) ?? "MCP client";
+        var rejected = redirects.Where(uri => !McpOAuthRules.RedirectAllowed(uri, RedirectPrefixes)).ToList();
+        if (rejected.Count > 0)
+        {
+            foreach (var uri in rejected)
+                LogRejectedRedirect(uri, clientName);
+            return McpRegistrationResult.Failed("invalid_redirect_uri", "A redirect URI is not allowed.");
+        }
 
         var client = new McpRegisteredClient
         {
             ClientId = "adrackhub-" + Guid.NewGuid().ToString("N"),
-            ClientName = Trim(StringValue(body, "client_name"), 120) ?? "ChatGPT",
+            ClientName = clientName,
             RedirectUris = redirects
         };
         _store.SaveClient(client);
@@ -247,7 +288,7 @@ public sealed class McpOAuthService
         bool loopbackIssuer,
         CancellationToken cancellationToken)
     {
-        if (!McpOAuthRules.ClientMetadataUrlAllowed(clientId, loopbackIssuer))
+        if (!McpOAuthRules.ClientMetadataUrlAllowed(clientId, RedirectPrefixes, loopbackIssuer))
             return null;
 
         lock (_metadataCache)
@@ -290,13 +331,20 @@ public sealed class McpOAuthService
             return null;
         if (!TryStringArray(root, "redirect_uris", out var redirects))
             return null;
-        if (redirects.Any(uri => !McpOAuthRules.RedirectAllowed(uri, loopbackIssuer)))
+
+        var clientName = Trim(StringValue(root, "client_name"), 120) ?? "MCP client";
+        var rejected = redirects.Where(uri => !McpOAuthRules.RedirectAllowed(uri, RedirectPrefixes)).ToList();
+        if (rejected.Count > 0)
+        {
+            foreach (var uri in rejected)
+                LogRejectedRedirect(uri, clientName);
             return null;
+        }
 
         var registered = new McpRegisteredClient
         {
             ClientId = clientId,
-            ClientName = Trim(StringValue(root, "client_name"), 120) ?? "ChatGPT",
+            ClientName = clientName,
             RedirectUris = redirects
         };
         lock (_metadataCache)
@@ -337,6 +385,14 @@ public sealed class McpOAuthService
         if (!AgentJson.Try(body, name, out var element) || element.ValueKind != JsonValueKind.String)
             return null;
         return element.GetString();
+    }
+
+    private void LogRejectedRedirect(string? redirectUri, string? clientName)
+    {
+        _logger.LogWarning(
+            "Rejected MCP OAuth redirect_uri {RedirectUri} for client {ClientName}.",
+            redirectUri ?? "",
+            string.IsNullOrWhiteSpace(clientName) ? "(unknown)" : clientName);
     }
 
     private static string? Trim(string? value, int max)

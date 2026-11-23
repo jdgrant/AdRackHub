@@ -11,6 +11,12 @@ public static class AdRackMcpExtensions
     public static IServiceCollection AddAdRackMcp(this IServiceCollection services, string? storePath)
     {
         services.AddSingleton(sp => new McpOAuthStore(storePath, sp.GetRequiredService<ILogger<McpOAuthStore>>()));
+        services.AddOptions<McpOAuthOptions>()
+            .PostConfigure(options =>
+            {
+                if (options.AllowedRedirectUriPrefixes is not { Length: > 0 })
+                    options.AllowedRedirectUriPrefixes = McpOAuthRules.DefaultRedirectUriPrefixes.ToArray();
+            });
         services.AddScoped<McpOAuthService>();
         services.AddHttpClient("McpClientMetadata", client => client.Timeout = TimeSpan.FromSeconds(5))
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
