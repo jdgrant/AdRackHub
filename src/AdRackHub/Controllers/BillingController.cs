@@ -78,21 +78,22 @@ public class BillingController : Controller
         return View(model);
     }
 
-    public async Task<IActionResult> Forecast(int? year, int? month, bool ignoreEndDate = false)
+    public async Task<IActionResult> Forecast(int? year, int? month, bool useProposals = false)
     {
         var now = DateTime.Today;
         var selectedYear = year ?? now.Year;
         var selectedMonth = month ?? now.Month;
         var start = new DateOnly(now.Year, now.Month, 1);
-        var months = await _billingService.GetForecastAsync(start, 12, selectedYear, selectedMonth, ignoreEndDate);
-        var selected = months.FirstOrDefault(m => m.IsSelectedPeriod) ?? months.FirstOrDefault(m => m.IsCurrentMonth);
+        var (actual, ignored) = await _billingService.GetForecastComparisonAsync(start, 12, selectedYear, selectedMonth, useProposals);
+        var selected = actual.FirstOrDefault(m => m.IsSelectedPeriod) ?? actual.FirstOrDefault(m => m.IsCurrentMonth);
 
         var model = new BillingForecastPageViewModel
         {
             Year = selected?.Year ?? selectedYear,
             Month = selected?.Month ?? selectedMonth,
-            IgnoreEndDate = ignoreEndDate,
-            Months = months,
+            UseProposals = useProposals,
+            Months = actual,
+            IgnoringEndDates = ignored,
             Selected = selected
         };
 

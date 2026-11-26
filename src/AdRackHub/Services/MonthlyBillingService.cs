@@ -35,6 +35,29 @@ public class MonthlyBillingService
         bool ignoreEndDate = false,
         CancellationToken cancellationToken = default)
     {
+        var (contracts, sent) = await LoadForecastInputsAsync(fromMonth, months, cancellationToken);
+        return BillingForecastCalculator.Build(contracts, fromMonth, months, selectedYear, selectedMonth, sent, ignoreEndDate);
+    }
+
+    public async Task<(IReadOnlyList<BillingMonthForecast> Actual, IReadOnlyList<BillingMonthForecast> IgnoringEndDates)> GetForecastComparisonAsync(
+        DateOnly fromMonth,
+        int months,
+        int selectedYear,
+        int selectedMonth,
+        bool useProposals = false,
+        CancellationToken cancellationToken = default)
+    {
+        var (contracts, sent) = await LoadForecastInputsAsync(fromMonth, months, cancellationToken);
+        return (
+            BillingForecastCalculator.Build(contracts, fromMonth, months, selectedYear, selectedMonth, sent, ignoreEndDate: false),
+            BillingForecastCalculator.Build(contracts, fromMonth, months, selectedYear, selectedMonth, sent, ignoreEndDate: true, preferProposals: useProposals));
+    }
+
+    async Task<(List<CustomerContract> Contracts, List<SentForecastInvoice> Sent)> LoadForecastInputsAsync(
+        DateOnly fromMonth,
+        int months,
+        CancellationToken cancellationToken)
+    {
         var contracts = await _context.CustomerContracts
             .AsNoTracking()
             .Include(c => c.Customer)
@@ -92,7 +115,7 @@ public class MonthlyBillingService
             })
             .ToList();
 
-        return BillingForecastCalculator.Build(contracts, fromMonth, months, selectedYear, selectedMonth, sent, ignoreEndDate);
+        return (contracts, sent);
     }
 
     public async Task<List<DueContractItem>> GetDueBillingsAsync(int year, int month, CancellationToken cancellationToken = default)

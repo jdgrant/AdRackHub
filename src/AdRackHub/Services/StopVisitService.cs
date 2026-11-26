@@ -34,8 +34,10 @@ public class StopVisitService
             throw new InvalidOperationException("Driver name must be 200 characters or fewer.");
 
         var note = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
-        if (note is { Length: > 1000 })
-            throw new InvalidOperationException("Notes must be 1000 characters or fewer.");
+        if (note == null)
+            throw new InvalidOperationException("Enter an inspection summary of what was replaced.");
+        if (note.Length > 1000)
+            throw new InvalidOperationException("Inspection summary must be 1000 characters or fewer.");
 
         var previousVisit = stop.LastVisitedAt;
         var visit = new StopVisit

@@ -1,0 +1,92 @@
+@using AdRackHub.Models
+@model ForecastMonthTableModel
+@{
+    var lines = Model.Month.Lines;
+}
+
+<div class="card h-100">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+            <strong>@Model.Title</strong>
+            <span class="text-muted ms-2">@Model.Month.Amount.ToString("C0")</span>
+        </div>
+        @if (Model.LinkToBilling)
+        {
+            <a asp-action="Index" asp-route-year="@Model.Month.Year" asp-route-month="@Model.Month.Month" class="btn btn-sm btn-outline-primary">Open in Billing</a>
+        }
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle">
+            <thead>
+                <tr>
+                    <th>Customer</th>
+                    <th>Contract</th>
+                    <th>Type</th>
+                    <th>Ends</th>
+                    <th>Status</th>
+                    <th class="text-end">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+            @if (lines.Count == 0)
+            {
+                <tr>
+                    <td colspan="6" class="text-muted">No clients this month.</td>
+                </tr>
+            }
+            else
+            {
+                foreach (var line in lines)
+                {
+                    var onActualInvoice = Model.ActualAmounts != null && Model.ActualAmounts.ContainsKey(line.ContractId);
+                    var onlyIfRenewed = Model.ActualAmounts != null && !onActualInvoice;
+                    decimal? actualAmount = onActualInvoice ? Model.ActualAmounts![line.ContractId] : null;
+                    var amountChanged = actualAmount.HasValue && actualAmount.Value != line.Amount;
+                    <tr class="@(onlyIfRenewed ? "forecast-renewal-only" : null)">
+                        <td>
+                            <a asp-controller="Customers" asp-action="Details" asp-route-id="@line.CustomerId">@line.CustomerName</a>
+                        </td>
+                        <td>@line.ContractName</td>
+                        <td>@line.TermLabel</td>
+                        <td>@(line.ContractEndDate?.ToString("MMM d, yyyy") ?? "—")</td>
+                        <td>
+                            @if (line.Sent)
+                            {
+                                <span class="badge bg-success">Sent</span>
+                            }
+                            else if (line.IsProposal)
+                            {
+                                <span class="badge bg-info text-dark">Proposal</span>
+                            }
+                            else if (onlyIfRenewed)
+                            {
+                                <span class="badge bg-warning text-dark">Only if renewed</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Due</span>
+                            }
+                        </td>
+                        <td class="text-end">
+                            @line.Amount.ToString("C")
+                            @if (amountChanged)
+                            {
+                                <div class="small text-muted">Invoice is @actualAmount!.Value.ToString("C")</div>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+            </tbody>
+            @if (lines.Count > 0)
+            {
+                <tfoot>
+                    <tr>
+                        <th colspan="5">@lines.Count client@(lines.Count == 1 ? "" : "s")</th>
+                        <th class="text-end">@Model.Month.Amount.ToString("C")</th>
+                    </tr>
+                </tfoot>
+            }
+        </table>
+    </div>
+</div>

@@ -108,10 +108,29 @@ public class BillingForecastPageViewModel
 {
     public int Year { get; set; }
     public int Month { get; set; }
-    public bool IgnoreEndDate { get; set; }
+    public bool UseProposals { get; set; }
+
+    public string AlternateTitle => UseProposals
+        ? "Proposal when one exists"
+        : "If end dates are ignored";
     public IReadOnlyList<BillingMonthForecast> Months { get; set; } = Array.Empty<BillingMonthForecast>();
+    public IReadOnlyList<BillingMonthForecast> IgnoringEndDates { get; set; } = Array.Empty<BillingMonthForecast>();
     public BillingMonthForecast? Selected { get; set; }
     public decimal ForecastTotal => Months.Sum(m => m.Amount);
+    public decimal IgnoredForecastTotal => IgnoringEndDates.Sum(m => m.Amount);
     public int ForecastInvoiceCount => Months.Sum(m => m.InvoiceCount);
     public string PeriodLabel => BillingDueCalculator.PeriodLabel(Year, Month);
+
+    public BillingMonthForecast? IgnoredFor(int year, int month) =>
+        IgnoringEndDates.FirstOrDefault(item => item.Year == year && item.Month == month);
+}
+
+public class ForecastMonthTableModel
+{
+    public string Title { get; set; } = string.Empty;
+    public BillingMonthForecast Month { get; set; } = new();
+    public bool LinkToBilling { get; set; }
+
+    /// <summary>When set, this table is the renewal view and amounts are the as-is invoice for the same contract.</summary>
+    public IReadOnlyDictionary<int, decimal>? ActualAmounts { get; set; }
 }

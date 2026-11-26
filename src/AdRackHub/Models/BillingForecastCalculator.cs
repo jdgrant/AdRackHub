@@ -11,6 +11,7 @@ public class BillingForecastLine
     public DateOnly? ContractEndDate { get; set; }
     public decimal Amount { get; set; }
     public bool Sent { get; set; }
+    public bool IsProposal { get; set; }
 
     public string TermLabel =>
         BillingTermDisplay.Label(BillingMonthCount > 0 ? BillingMonthCount : AnnualBillingHelper.MonthsInTerm(Term));
@@ -54,7 +55,8 @@ public static class BillingForecastCalculator
         int selectedYear,
         int selectedMonth,
         IEnumerable<SentForecastInvoice>? sentInvoices = null,
-        bool ignoreEndDate = false)
+        bool ignoreEndDate = false,
+        bool preferProposals = false)
     {
         months = Math.Clamp(months, 1, 24);
         var start = new DateOnly(fromMonth.Year, fromMonth.Month, 1);
@@ -94,11 +96,12 @@ public static class BillingForecastCalculator
             });
         }
 
+        var customersWithProposals = preferProposals
+            ? contracts.Where(IsSchedulableProposal).Select(c => c.CustomerId).ToHashSet()
+            : [];
+
         foreach (var contract in contracts)
         {
-            if (!BillingDueCalculator.IsActiveContract(contract, start))
-                continue;
-
             if (contract.Customer is { Type: not CustomerType.Customer })
                 continue;
 
@@ -106,7 +109,22 @@ public static class BillingForecastCalculator
                 continue;
 
             var customerName = contract.Customer?.CustomerName ?? "";
-            AddScheduledDates(contract, customerName, start, horizon, index, ignoreEndDate);
+            if (contract.IsProposal)
+            {
+                if (!customersWithProposals.Contains(contract.CustomerId))
+                    continue;
+                if (contract.ContractEndDate is { } proposalEnd && proposalEnd < start)
+                    continue;
+
+                AddScheduledDates(contract, customerName, start, horizon, index, ignoreEndDate: false, includeProposal: true);
+                continue;
+            }
+
+            if (!BillingDueCalculator.IsActiveContract(contract, start))
+                continue;
+
+            var assumeRenewal = ignoreEndDate && !customersWithProposals.Contains(contract.CustomerId);
+            AddScheduledDates(contract, customerName, start, horizon, index, assumeRenewal, includeProposal: false);
         }
 
         foreach (var bucket in buckets)
@@ -128,20 +146,21 @@ public static class BillingForecastCalculator
         DateOnly start,
         DateOnly horizon,
         Dictionary<(int Year, int Month), BillingMonthForecast> index,
-        bool ignoreEndDate)
+        bool ignoreEndDate,
+        bool includeProposal)
     {
         void consider(DateOnly date)
         {
             if (date < start || date >= horizon)
                 return;
-            if (!BillingDueCalculator.WouldBeDueOn(contract, date, ignoreEndDate))
+            if (!BillingDueCalculator.WouldBeDueOn(contract, date, ignoreEndDate, includeProposal))
                 return;
             if (!index.TryGetValue((date.Year, date.Month), out var bucket))
                 return;
 
-            var span = BillingDueCalculator.BillableSpanFor(contract, date);
+            var span = BillingDueCalculator.BillableSpanFor(contract, date, ignoreEndDate);
             var amount = contract.ContractRoutes.Sum(cr =>
-                BillingDueCalculator.RouteAmount(contract, AnnualBillingHelper.GetBillingAmount(cr), date));
+                BillingDueCalculator.RouteAmount(contract, AnnualBillingHelper.GetBillingAmount(cr), date, ignoreEndDate));
             AddLine(bucket, new BillingForecastLine
             {
                 CustomerId = contract.CustomerId,
@@ -152,11 +171,12 @@ public static class BillingForecastCalculator
                 BillingMonthCount = span.MonthCount > 0 ? span.MonthCount : AnnualBillingHelper.BillingMonths(contract),
                 ContractEndDate = contract.ContractEndDate,
                 Amount = amount,
-                Sent = false
+                Sent = false,
+                IsProposal = contract.IsProposal
             });
         }
 
-        if (contract.NextBillDate is not { } nextBill)
+        if (!TryScheduleAnchor(contract, includeProposal, out var nextBill, out var anchoredOnStart))
             return;
 
         var forward = nextBill;
@@ -169,7 +189,9 @@ public static class BillingForecastCalculator
             forward = advanced;
         }
 
-        if (nextBill < start)
+        // A proposal with no next bill date starts on its contract start. Cycles before that
+        // date are not part of the proposal, so do not walk backward from the start.
+        if (anchoredOnStart || nextBill < start)
             return;
 
         var backward = nextBill;
@@ -183,6 +205,26 @@ public static class BillingForecastCalculator
             consider(previous);
             backward = previous;
         }
+    }
+
+    static bool TryScheduleAnchor(CustomerContract contract, bool includeProposal, out DateOnly anchor, out bool anchoredOnStart)
+    {
+        anchoredOnStart = false;
+        if (contract.NextBillDate is { } nextBill)
+        {
+            anchor = nextBill;
+            return true;
+        }
+
+        if (includeProposal && contract.ContractStartDate is { } proposalStart)
+        {
+            anchor = proposalStart;
+            anchoredOnStart = true;
+            return true;
+        }
+
+        anchor = default;
+        return false;
     }
 
     static bool TryAdvance(DateOnly current, CustomerContract contract, out DateOnly next)
@@ -212,6 +254,11 @@ public static class BillingForecastCalculator
             return false;
         }
     }
+
+    static bool IsSchedulableProposal(CustomerContract contract) =>
+        contract.IsProposal
+        && (contract.NextBillDate != null || contract.ContractStartDate != null)
+        && contract.ContractRoutes.Any(cr => AnnualBillingHelper.GetBillingAmount(cr) > 0m);
 
     static void AddLine(BillingMonthForecast bucket, BillingForecastLine line)
     {

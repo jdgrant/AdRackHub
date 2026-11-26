@@ -24,9 +24,9 @@ public static class BillingDueCalculator
         return WouldBeDueOn(contract, nextBill);
     }
 
-    public static bool WouldBeDueOn(CustomerContract contract, DateOnly billDate, bool ignoreEndDate = false)
+    public static bool WouldBeDueOn(CustomerContract contract, DateOnly billDate, bool ignoreEndDate = false, bool includeProposal = false)
     {
-        if (contract.IsProposal)
+        if (contract.IsProposal && !includeProposal)
             return false;
 
         if (!contract.ContractRoutes.Any())
@@ -148,11 +148,12 @@ public static class BillingDueCalculator
     /// <summary>
     /// Months in the billing window that are both in service and inside the contract dates.
     /// Inactive months are omitted, so a bill dated in November covers the same active
-    /// months as one dated in February.
+    /// months as one dated in February. When ignoreEndDate is set, the contract end date
+    /// does not remove months; a renewal keeps the full billing term.
     /// </summary>
     public readonly record struct BillableSpan(DateOnly Start, DateOnly End, int MonthCount);
 
-    public static BillableSpan BillableSpanFor(CustomerContract contract, DateOnly anchor)
+    public static BillableSpan BillableSpanFor(CustomerContract contract, DateOnly anchor, bool ignoreEndDate = false)
     {
         var billingMonths = Math.Max(AnnualBillingHelper.BillingMonths(contract), 1);
         var origin = new DateOnly(anchor.Year, anchor.Month, 1);
@@ -160,7 +161,7 @@ public static class BillingDueCalculator
         for (var i = 0; i < billingMonths; i++)
         {
             var monthStart = origin.AddMonths(i);
-            if (IsBillableMonth(contract, monthStart))
+            if (IsBillableMonth(contract, monthStart, ignoreEndDate))
                 months.Add(monthStart);
         }
 
@@ -173,10 +174,10 @@ public static class BillingDueCalculator
         return new BillableSpan(start, end, months.Count);
     }
 
-    public static decimal RouteAmount(CustomerContract contract, decimal storedPeriodAmount, DateOnly anchor)
+    public static decimal RouteAmount(CustomerContract contract, decimal storedPeriodAmount, DateOnly anchor, bool ignoreEndDate = false)
     {
         var billingMonths = Math.Max(AnnualBillingHelper.BillingMonths(contract), 1);
-        var span = BillableSpanFor(contract, anchor);
+        var span = BillableSpanFor(contract, anchor, ignoreEndDate);
         if (span.MonthCount == billingMonths)
             return storedPeriodAmount;
 
@@ -184,7 +185,7 @@ public static class BillingDueCalculator
         return AnnualBillingHelper.MonthlyRateToBillingPeriodAmount(monthly, span.MonthCount);
     }
 
-    static bool IsBillableMonth(CustomerContract contract, DateOnly monthStart)
+    static bool IsBillableMonth(CustomerContract contract, DateOnly monthStart, bool ignoreEndDate)
     {
         if (!IsMonthInService(contract.ServiceMonthMask, monthStart.Month))
             return false;
@@ -192,7 +193,7 @@ public static class BillingDueCalculator
         var monthEnd = new DateOnly(monthStart.Year, monthStart.Month, DateTime.DaysInMonth(monthStart.Year, monthStart.Month));
         if (contract.ContractStartDate is { } start && monthEnd < start)
             return false;
-        if (contract.ContractEndDate is { } end && monthStart > end)
+        if (!ignoreEndDate && contract.ContractEndDate is { } end && monthStart > end)
             return false;
         return true;
     }

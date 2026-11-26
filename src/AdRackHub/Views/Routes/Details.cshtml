@@ -125,7 +125,7 @@ else
     <h3 class="h5 mt-4">Log a visit</h3>
     <form asp-action="LogPhotoVisit" asp-route-id="@Model.Id" method="post" enctype="multipart/form-data" class="card mb-4">
         <div class="card-body">
-            <p class="text-muted">Upload the before and after photos and name the driver who made the stop.</p>
+            <p class="text-muted">Record the date, driver, before and after photos, and what was replaced.</p>
             <div class="row g-3">
                 <div class="col-md-4">
                     <label class="form-label" for="visit-stop">Stop</label>
@@ -154,8 +154,8 @@ else
                     <input class="form-control" id="visit-after" name="afterPhoto" type="file" accept="image/jpeg,image/png,image/gif,image/webp" required />
                 </div>
                 <div class="col-12">
-                    <label class="form-label" for="visit-notes">Notes</label>
-                    <input class="form-control" id="visit-notes" name="notes" maxlength="1000" />
+                    <label class="form-label" for="visit-summary">Inspection summary</label>
+                    <textarea class="form-control" id="visit-summary" name="notes" rows="3" maxlength="1000" required placeholder="What was replaced"></textarea>
                 </div>
             </div>
             <button type="submit" class="btn btn-success mt-3">Log Visit</button>
@@ -174,7 +174,7 @@ else
                 <th>Driver</th>
                 <th>Before</th>
                 <th>After</th>
-                <th>Notes</th>
+                <th>Inspection summary</th>
             </tr>
         </thead>
         <tbody>
@@ -206,7 +206,7 @@ else
                         <span class="text-muted">—</span>
                     }
                 </td>
-                <td>@(visit.Notes ?? "—")</td>
+                <td style="white-space: pre-wrap">@(visit.Notes ?? "—")</td>
             </tr>
         }
         </tbody>

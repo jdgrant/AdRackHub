@@ -35,6 +35,122 @@
     <div class="col-auto"><button type="submit" class="btn btn-outline-secondary">Filter</button></div>
 </form>
 
+@{
+    var visitStops = ViewBag.VisitStops as IEnumerable<Stop> ?? Enumerable.Empty<Stop>();
+    var recentVisits = ViewBag.RecentVisits as IEnumerable<StopVisit> ?? Enumerable.Empty<StopVisit>();
+    var selectedRouteId = ViewBag.SelectedRouteId as int?;
+    var selectedStatus = ViewBag.Status as StopStatus?;
+    var selectedType = ViewBag.StopType as StopType?;
+}
+
+<form asp-action="LogListedVisit" method="post" enctype="multipart/form-data" id="log-visit" class="card mb-4">
+    <div class="card-body">
+        <h2 class="h5">Log a visit</h2>
+        <p class="text-muted mb-3">Record the date, driver, before and after photos, and what was replaced.</p>
+        @if (selectedRouteId.HasValue)
+        {
+            <input type="hidden" name="routeId" value="@selectedRouteId" />
+        }
+        @if (selectedStatus.HasValue)
+        {
+            <input type="hidden" name="status" value="@selectedStatus" />
+        }
+        @if (selectedType.HasValue)
+        {
+            <input type="hidden" name="stopType" value="@selectedType" />
+        }
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label" for="log-stop">Stop</label>
+                <select class="form-select" id="log-stop" name="stopId" required>
+                    <option value="">Choose a stop</option>
+                    @foreach (var stop in visitStops)
+                    {
+                        <option value="@stop.Id">@stop.Route?.RouteName — @stop.StopName</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="log-driver">Driver</label>
+                <input class="form-control" id="log-driver" name="driverName" maxlength="200" required />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="log-when">Visited</label>
+                <input class="form-control" id="log-when" name="visitedAt" type="datetime-local" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="log-before">Before photo</label>
+                <input class="form-control" id="log-before" name="beforePhoto" type="file" accept="image/jpeg,image/png,image/gif,image/webp" required />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="log-after">After photo</label>
+                <input class="form-control" id="log-after" name="afterPhoto" type="file" accept="image/jpeg,image/png,image/gif,image/webp" required />
+            </div>
+            <div class="col-12">
+                <label class="form-label" for="log-summary">Inspection summary</label>
+                <textarea class="form-control" id="log-summary" name="notes" rows="3" maxlength="1000" required placeholder="What was replaced"></textarea>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-success mt-3">Log visit</button>
+    </div>
+</form>
+
+<h2 class="h5">Recent visits</h2>
+@if (recentVisits.Any())
+{
+    <table class="table table-sm mb-4">
+        <thead>
+            <tr>
+                <th>Visited</th>
+                <th>Route</th>
+                <th>Stop</th>
+                <th>Driver</th>
+                <th>Before</th>
+                <th>After</th>
+                <th>Inspection summary</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var visit in recentVisits)
+        {
+            var before = visit.Photos.FirstOrDefault(p => p.Kind == StopVisitPhotoKind.Before);
+            var after = visit.Photos.FirstOrDefault(p => p.Kind == StopVisitPhotoKind.After);
+            <tr>
+                <td>@VisitDisplay.Format(visit.VisitedAt)</td>
+                <td>@(visit.Stop?.Route?.RouteName ?? "—")</td>
+                <td><a asp-action="Details" asp-route-id="@visit.StopId">@visit.Stop?.StopName</a></td>
+                <td>@(visit.DriverName ?? "—")</td>
+                <td>
+                    @if (before != null)
+                    {
+                        <a asp-action="VisitPhoto" asp-route-id="@before.Id"><img src="@Url.Action("VisitPhoto", new { id = before.Id })" alt="Before @visit.Stop?.StopName" style="height:64px" /></a>
+                    }
+                    else
+                    {
+                        <span class="text-muted">—</span>
+                    }
+                </td>
+                <td>
+                    @if (after != null)
+                    {
+                        <a asp-action="VisitPhoto" asp-route-id="@after.Id"><img src="@Url.Action("VisitPhoto", new { id = after.Id })" alt="After @visit.Stop?.StopName" style="height:64px" /></a>
+                    }
+                    else
+                    {
+                        <span class="text-muted">—</span>
+                    }
+                </td>
+                <td style="white-space: pre-wrap">@(visit.Notes ?? "—")</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+else
+{
+    <p class="text-muted">No visits logged yet.</p>
+}
+
 <table class="table table-hover">
     <thead><tr><th>Route</th><th>Stop</th><th>Type</th><th>City</th><th>State</th><th>Status</th><th></th></tr></thead>
     <tbody>
@@ -56,7 +172,13 @@
             <td>@(item.City ?? "—")</td>
             <td>@(item.State ?? "—")</td>
             <td>@item.Status</td>
-            <td class="text-end"><a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-sm btn-outline-primary">Edit</a></td>
+            <td class="text-end text-nowrap">
+                @if (item.Status == StopStatus.Active)
+                {
+                    <button type="button" class="btn btn-sm btn-outline-success me-1" onclick="document.getElementById('log-stop').value='@item.Id'; document.getElementById('log-visit').scrollIntoView();">Log visit</button>
+                }
+                <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-sm btn-outline-primary">Edit</a>
+            </td>
         </tr>
     }
     </tbody>

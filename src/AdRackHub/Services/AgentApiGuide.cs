@@ -282,7 +282,7 @@ public static class AgentApiGuide
               "stopId": 12,
               "driverName": "Sam Rivera",
               "visitedAt": "2026-10-22T18:30:00Z",
-              "notes": "Restocked the rack",
+              "notes": "Replaced the faded hotel rack card with the new summer brochure.",
               "beforeFileName": "before.jpg",
               "beforeImageBase64": "<base64 from the email attachment>",
               "afterFileName": "after.jpg",
@@ -290,7 +290,7 @@ public static class AgentApiGuide
             }
             ```
 
-            Send `stopId`, or `stopName` plus an optional `routeName` when that pair matches one stop. `driverName` is required. `visitedAt` is optional and defaults to now. Both photos are required. Each one is a JPG, PNG, GIF, or WEBP image, 8 MB or smaller. A data URL (`data:image/jpeg;base64,...`) is accepted. The bytes are checked, so a renamed file that is not an image is rejected.
+            Send `stopId`, or `stopName` plus an optional `routeName` when that pair matches one stop. `driverName` is required. `visitedAt` is optional and defaults to now. `notes` is required: a short inspection summary of what was replaced, 1000 characters or fewer. Both photos are required. Each one is a JPG, PNG, GIF, or WEBP image, 8 MB or smaller. A data URL (`data:image/jpeg;base64,...`) is accepted. The bytes are checked, so a renamed file that is not an image is rejected.
 
             If several stops match, the response is HTTP 409 and nothing is saved. Call `GET /api/agent/stops` and send `stopId`.
 

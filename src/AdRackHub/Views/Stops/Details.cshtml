@@ -62,7 +62,7 @@
     <h3 class="h5 mt-4">Log a visit</h3>
     <form asp-action="LogPhotoVisit" asp-route-id="@Model.Id" method="post" enctype="multipart/form-data" class="card mb-4">
         <div class="card-body">
-            <p class="text-muted">Upload the before and after photos and name the driver who made the stop.</p>
+            <p class="text-muted">Record the date, driver, before and after photos, and what was replaced.</p>
             <div class="row g-3">
                 <div class="col-md-4">
                     <label class="form-label" for="visit-driver">Driver</label>
@@ -72,10 +72,6 @@
                     <label class="form-label" for="visit-when">Visited</label>
                     <input class="form-control" id="visit-when" name="visitedAt" type="datetime-local" />
                 </div>
-                <div class="col-md-4">
-                    <label class="form-label" for="visit-notes">Notes</label>
-                    <input class="form-control" id="visit-notes" name="notes" maxlength="1000" />
-                </div>
                 <div class="col-md-6">
                     <label class="form-label" for="visit-before">Before photo</label>
                     <input class="form-control" id="visit-before" name="beforePhoto" type="file" accept="image/jpeg,image/png,image/gif,image/webp" required />
@@ -83,6 +79,10 @@
                 <div class="col-md-6">
                     <label class="form-label" for="visit-after">After photo</label>
                     <input class="form-control" id="visit-after" name="afterPhoto" type="file" accept="image/jpeg,image/png,image/gif,image/webp" required />
+                </div>
+                <div class="col-12">
+                    <label class="form-label" for="visit-summary">Inspection summary</label>
+                    <textarea class="form-control" id="visit-summary" name="notes" rows="3" maxlength="1000" required placeholder="What was replaced"></textarea>
                 </div>
             </div>
             <button type="submit" class="btn btn-success mt-3">Log Visit</button>
@@ -101,7 +101,7 @@
                 <th>Before</th>
                 <th>After</th>
                 <th>Visited By</th>
-                <th>Notes</th>
+                <th>Inspection summary</th>
             </tr>
         </thead>
         <tbody>
@@ -133,7 +133,7 @@
                     }
                 </td>
                 <td>@(visit.VisitedByName ?? "—")</td>
-                <td>@(visit.Notes ?? "—")</td>
+                <td style="white-space: pre-wrap">@(visit.Notes ?? "—")</td>
             </tr>
         }
         </tbody>

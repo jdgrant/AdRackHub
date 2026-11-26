@@ -278,7 +278,7 @@ public sealed class AgentMcpTools
 
     [Authorize(Policy = McpPolicies.Read)]
     [McpServerTool(Name = "list_visits", Title = "List visits", ReadOnly = true, OpenWorld = false, Destructive = false, Idempotent = true, UseStructuredContent = true)]
-    [Description("List logged stop visits, including the driver and before and after photo links.")]
+    [Description("List logged stop visits, including the date, driver, inspection summary, and before and after photo links.")]
     public Task<AgentVisitListDto> ListVisits(
         [Description("Limit to one stop id.")] int? stopId,
         [Description("Limit to one route id.")] int? routeId,
@@ -292,7 +292,7 @@ public sealed class AgentMcpTools
 
     [Authorize(Policy = McpPolicies.Write)]
     [McpServerTool(Name = "log_stop_visit", Title = "Log stop visit", ReadOnly = false, OpenWorld = false, Destructive = false, Idempotent = false, UseStructuredContent = true)]
-    [Description("Log one stop visit with the driver and before and after photos. Pass email image attachments as base64 or data URLs in beforeImageBase64 and afterImageBase64. JPG, PNG, GIF, or WEBP, 8 MB or smaller each. Send stopId from search_stops, or stopName plus routeName when that pair matches one stop.")]
+    [Description("Log one stop visit with the date, driver, before and after photos, and an inspection summary of what was replaced. Pass images as base64 or data URLs in beforeImageBase64 and afterImageBase64. JPG, PNG, GIF, or WEBP, 8 MB or smaller each. Send stopId from search_stops, or stopName plus routeName when that pair matches one stop.")]
     public Task<AgentVisitDto> LogStopVisit(
         [Description("Driver who made the visit.")] string driverName,
         [Description("Before photo from the email, as base64 or a data URL.")] string beforeImageBase64,
@@ -305,7 +305,7 @@ public sealed class AgentMcpTools
         [Description("Optional. Image type is detected from the bytes.")] string? beforeContentType = null,
         [Description("Optional. Image type is detected from the bytes.")] string? afterContentType = null,
         [Description("When the visit happened, as an ISO-8601 date and time. Omit to use the current time.")] string? visitedAt = null,
-        [Description("Optional note, up to 1000 characters.")] string? notes = null,
+        [Description("Required inspection summary of what was replaced. 1000 characters or fewer.")] string? notes = null,
         CancellationToken cancellationToken = default)
     {
         RequireScope(McpPolicies.WriteScope);

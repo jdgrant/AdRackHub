@@ -39,6 +39,22 @@ public class StopsController : Controller
         ViewBag.RouteId = new SelectList(await _context.Routes.OrderBy(r => r.RouteName).ToListAsync(), "Id", "RouteName", routeId);
         ViewBag.Status = status;
         ViewBag.StopType = stopType;
+        ViewBag.SelectedRouteId = routeId;
+        ViewBag.VisitStops = await _context.Stops
+            .AsNoTracking()
+            .Include(s => s.Route)
+            .Where(s => s.Status == StopStatus.Active)
+            .OrderBy(s => s.Route!.RouteName)
+            .ThenBy(s => s.StopName)
+            .ToListAsync();
+        ViewBag.RecentVisits = await _context.StopVisits
+            .AsNoTracking()
+            .Include(v => v.Photos)
+            .Include(v => v.Stop)
+                .ThenInclude(s => s.Route)
+            .OrderByDescending(v => v.VisitedAt)
+            .Take(20)
+            .ToListAsync();
 
         return View(await query.OrderBy(s => s.Route.RouteName).ThenBy(s => s.StopName).ToListAsync());
     }
@@ -108,6 +124,51 @@ public class StopsController : Controller
         }
 
         return RedirectToAction(nameof(Details), new { id });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [RequestSizeLimit(20 * 1024 * 1024)]
+    public async Task<IActionResult> LogListedVisit(
+        int stopId,
+        string? driverName,
+        string? visitedAt,
+        string? notes,
+        IFormFile? beforePhoto,
+        IFormFile? afterPhoto,
+        int? routeId,
+        StopStatus? status,
+        StopType? stopType)
+    {
+        var stop = await _context.Stops.FirstOrDefaultAsync(s => s.Id == stopId && s.Status == StopStatus.Active);
+        if (stop == null)
+        {
+            TempData["Error"] = "Choose an active stop.";
+            return RedirectToAction(nameof(Index), new { routeId, status, stopType });
+        }
+
+        try
+        {
+            var before = VisitImageRules.FromUpload(beforePhoto, "Before photo");
+            var after = VisitImageRules.FromUpload(afterPhoto, "After photo");
+            var when = VisitImageRules.ParseVisitedAt(visitedAt);
+            await _visitService.LogWithPhotosAsync(
+                stop,
+                User.FindFirstValue(ClaimTypes.NameIdentifier),
+                User.Identity?.Name,
+                driverName,
+                notes,
+                when,
+                before,
+                after);
+            TempData["Message"] = $"Visit logged for {stop.StopName} by {driverName?.Trim()}.";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData["Error"] = ex.Message;
+        }
+
+        return RedirectToAction(nameof(Index), new { routeId, status, stopType });
     }
 
     public async Task<IActionResult> VisitPhoto(int id)
